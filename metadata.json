@@ -1,0 +1,6 @@
+{
+  "name": "Tropik Ada: Hazine Avı",
+  "description": "Üstten görünüm, prosedürel adalarla dolu açık dünya hayatta kalma ve hazine avı oyunu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
