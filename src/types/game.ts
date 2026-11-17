@@ -116,6 +116,10 @@ export interface IslandEnemy extends IslandEnemySpawn {
   patrolCenter: Vec2;
   patrolAngle: number;
   attackSwingTime: number;
+  aiNextScanTime?: number;
+  cachedTargetKind?: 'PLAYER' | 'ALLY_SOLDIER' | 'RIVAL_ENEMY';
+  cachedTargetAlly?: AllySoldier | null;
+  cachedTargetRival?: IslandEnemy | null;
 }
 
 export interface AllySoldierRosterItem {
@@ -137,6 +141,8 @@ export interface AllySoldier extends AllySoldierRosterItem {
   roamWaitUntil?: number;
   personalSpeedMult?: number;
   wanderSeed?: number;
+  aiNextScanTime?: number;
+  cachedTarget?: IslandEnemy | null;
 }
 
 export interface AllyShip {
@@ -154,6 +160,8 @@ export interface AllyShip {
   nextDecisionTime?: number;
   cruiseSpeedMult?: number;
   orbitSign?: 1 | -1;
+  aiNextScanTime?: number;
+  cachedTarget?: EnemyShip | null;
 }
 
 export interface LandProjectile {

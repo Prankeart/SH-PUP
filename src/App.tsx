@@ -70,6 +70,7 @@ import {
 import { pickStrongerWeapon, WEAPONS } from './engine/weapons';
 import { renderGameFrame } from './engine/renderer';
 import { SpatialGrid } from './engine/spatialGrid';
+import { PerformanceGovernor } from './engine/perfGovernor';
 import { soundEngine } from './engine/audio';
 import { clamp, dist, lerp, lerpAngle } from './utils/prng';
 import {
@@ -81,8 +82,10 @@ import {
   OnlineWorldEvent,
   PlayerIdentity,
   PlayerProfileLedger,
+  RemoteEscortShipSnapshot,
   RemotePlayerSnapshot,
   RemotePlayerView,
+  RemoteSoldierSnapshot,
   StarterSlot,
 } from './types/online';
 import { loadPlayerIdentity, savePlayerIdentity } from './engine/onlineStorage';
@@ -172,6 +175,7 @@ export default function App() {
   const [onlineLobbyPlayers, setOnlineLobbyPlayers] = useState<RemotePlayerSnapshot[]>([]);
   const [onlineStarterSlots, setOnlineStarterSlots] = useState<StarterSlot[]>([]);
   const [onlineIslandOwners, setOnlineIslandOwners] = useState<Record<string, string>>({});
+  const [onlineWarDeclarations, setOnlineWarDeclarations] = useState<Record<string, string[]>>({});
   const [onlinePing, setOnlinePing] = useState<number | null>(null);
   const [, setOnlineChat] = useState<OnlineChatMessage[]>([]);
   const [isCoarseDevice, setIsCoarseDevice] = useState<boolean>(() => {
@@ -211,6 +215,7 @@ export default function App() {
   const settingsRef = useRef<GameSettings>(settings);
   const phaseRef = useRef<GamePhase>(phase);
   const modalRef = useRef<ActiveModal>(activeModal);
+  const hasTouchControlsRef = useRef<boolean>(false);
   const identityRef = useRef<PlayerIdentity>(identity);
   const onlineActiveRef = useRef<boolean>(false);
   const onlineManagerRef = useRef<OnlineSessionManager | null>(null);
@@ -219,9 +224,12 @@ export default function App() {
   const onlineOwnersForRenderRef = useRef<
     Record<string, { shortName: string; color: string; isCapturable?: boolean }> | undefined
   >(undefined);
+  const onlineWarDeclarationsRef = useRef<Record<string, string[]>>({});
+  const onlineAtWarSetRef = useRef<Set<string>>(new Set());
   const remotePlayersRef = useRef<Map<string, RemotePlayerView>>(new Map());
   const onlineProjectilesRef = useRef<OnlineProjectileSnapshot[]>([]);
   const lastPoseSendRef = useRef<number>(0);
+  const lastArmyPoseSendRef = useRef<number>(0);
   const lastRosterUiSyncRef = useRef<number>(0);
   const lastClaimSentRef = useRef<{ islandId: string; at: number }>({ islandId: '', at: 0 });
 
@@ -230,10 +238,24 @@ export default function App() {
   );
   const openedTreasureSetRef = useRef<Set<string>>(new Set(save.openedTreasureIds));
   const collectedPickupSetRef = useRef<Set<string>>(new Set(save.collectedPickupIds));
-  const enemyGridRef = useRef<SpatialGrid<IslandEnemy>>(new SpatialGrid<IslandEnemy>(110));
-  const allyGridRef = useRef<SpatialGrid<AllySoldier>>(new SpatialGrid<AllySoldier>(110));
+  const enemyCombatGridRef = useRef<SpatialGrid<IslandEnemy>>(new SpatialGrid<IslandEnemy>(240));
+  const allyCombatGridRef = useRef<SpatialGrid<AllySoldier>>(new SpatialGrid<AllySoldier>(240));
+  const enemySepGridRef = useRef<SpatialGrid<IslandEnemy>>(new SpatialGrid<IslandEnemy>(44));
+  const allySepGridRef = useRef<SpatialGrid<AllySoldier>>(new SpatialGrid<AllySoldier>(44));
+  const enemyShipGridRef = useRef<SpatialGrid<EnemyShip>>(new SpatialGrid<EnemyShip>(260));
+  const allyShipGridRef = useRef<SpatialGrid<AllyShip>>(new SpatialGrid<AllyShip>(260));
   const enemyQueryBufRef = useRef<IslandEnemy[]>([]);
   const allyQueryBufRef = useRef<AllySoldier[]>([]);
+  const enemyShipQueryBufRef = useRef<EnemyShip[]>([]);
+  const allyShipQueryBufRef = useRef<AllyShip[]>([]);
+  const perfGovRef = useRef<PerformanceGovernor>(new PerformanceGovernor());
+  const pendingSyncRef = useRef({
+    rosterDirty: false,
+    shipCountDirty: false,
+    landKills: 0,
+    seaKills: 0,
+    lastSyncAt: 0,
+  });
 
   const simRef = useRef({
     playerX: save.player.x,
@@ -282,6 +304,7 @@ export default function App() {
     lastTributeTime: performance.now(),
     lastWakeTime: 0,
     lastSoldierSfxTime: 0,
+    lastCannonSfxTime: 0,
     lastAutoSaveTime: performance.now(),
   });
 
@@ -305,6 +328,21 @@ export default function App() {
   useEffect(() => {
     onlineIslandOwnersRef.current = onlineIslandOwners;
   }, [onlineIslandOwners]);
+
+  useEffect(() => {
+    onlineWarDeclarationsRef.current = onlineWarDeclarations;
+    const nextWarSet = new Set<string>();
+    const selfId = identity.playerId;
+    if (onlineRoomInfo?.rule === 'PVP') {
+      const myDecls = onlineWarDeclarations[selfId] ?? [];
+      for (const otherId of myDecls) {
+        if (onlineWarDeclarations[otherId]?.includes(selfId)) {
+          nextWarSet.add(otherId);
+        }
+      }
+    }
+    onlineAtWarSetRef.current = nextWarSet;
+  }, [onlineWarDeclarations, onlineRoomInfo?.rule, identity.playerId]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -390,8 +428,16 @@ export default function App() {
 
   const addFloatingText = useCallback(
     (x: number, y: number, text: string, color: string, priority = true) => {
-      if (!priority && simRef.current.floatingTexts.length >= 26) return;
-      simRef.current.floatingTexts.push({
+      const budget = perfGovRef.current.getCurrentBudget();
+      if (!priority && budget.skipDamageFloatingTexts) return;
+      const list = simRef.current.floatingTexts;
+      if (!priority && list.length >= budget.maxFloatingTexts) return;
+      if (list.length >= budget.maxFloatingTexts + 10) {
+        // Evict oldest text with swap-and-pop
+        list[0] = list[list.length - 1];
+        list.pop();
+      }
+      list.push({
         id: `${Date.now()}_${Math.random()}`,
         x,
         y,
@@ -415,13 +461,21 @@ export default function App() {
       size = 3.5,
       arcZ = false
     ) => {
-      const currentLen = simRef.current.particles.length;
-      if (currentLen > 460) return;
-      const actualCount = currentLen > 300 ? Math.max(2, Math.ceil(count / 2)) : count;
-      for (let i = 0; i < actualCount; i++) {
+      const budget = perfGovRef.current.getCurrentBudget();
+      const particles = simRef.current.particles;
+      const currentLen = particles.length;
+      if (currentLen >= budget.maxParticles) return;
+      const actualCount =
+        currentLen > budget.maxParticles * 0.65
+          ? Math.max(1, Math.ceil(count / 3))
+          : budget.tier === 'MASS_BATTLE'
+          ? Math.max(2, Math.ceil(count / 2))
+          : count;
+      const allowed = Math.min(actualCount, budget.maxParticles - currentLen);
+      for (let i = 0; i < allowed; i++) {
         const a = Math.random() * Math.PI * 2;
         const v = speed * (0.4 + Math.random() * 0.8);
-        simRef.current.particles.push({
+        particles.push({
           x,
           y,
           z: arcZ ? 2 + Math.random() * 4 : 0,
@@ -510,7 +564,13 @@ export default function App() {
     sim.cameraY = nextSave.player.isSailing ? nextSave.boat.y : nextSave.player.y;
     sim.allyShips = buildInitialEscortShips(nextSave);
     sim.allySoldiers = buildInitialSoldiers(nextSave);
+    pendingSyncRef.current.rosterDirty = false;
+    pendingSyncRef.current.shipCountDirty = false;
+    pendingSyncRef.current.landKills = 0;
+    pendingSyncRef.current.seaKills = 0;
+    pendingSyncRef.current.lastSyncAt = 0;
     if (resetWorldEntities) {
+      perfGovRef.current.reset();
       sim.enemies = [];
       sim.islandEnemies = [];
       sim.landProjectiles = [];
@@ -547,6 +607,7 @@ export default function App() {
         setOnlineRoomInfo(msg.roomInfo);
         setOnlineStarterSlots(msg.starterSlots);
         setOnlineIslandOwners(msg.islandOwners);
+        setOnlineWarDeclarations(msg.warDeclarations ?? {});
         setOnlineLobbyPlayers(msg.players);
         setOnlineRole(mgr.getRole());
 
@@ -687,14 +748,34 @@ export default function App() {
           }
         }
 
-        if (sim.allySoldiers.length !== prof.soldiers.length) {
-          const existingMap = new Map<string, AllySoldier>(sim.allySoldiers.map((s) => [s.id, s]));
+        const nowMs = performance.now();
+        const existingMap = new Map<string, AllySoldier>(sim.allySoldiers.map((s) => [s.id, s]));
+        let needsRebuild = sim.allySoldiers.length !== prof.soldiers.length;
+        if (!needsRebuild) {
+          for (let i = 0; i < prof.soldiers.length; i++) {
+            const rs = prof.soldiers[i];
+            const sol = sim.allySoldiers[i];
+            if (!sol || sol.id !== rs.id) {
+              needsRebuild = true;
+              break;
+            }
+            if (rs.hp < sol.hp) sol.hitFlashTime = nowMs;
+            sol.hp = rs.hp;
+            sol.maxHp = rs.maxHp;
+          }
+        }
+        if (needsRebuild) {
           const baseX = sim.isSailing ? sim.boatX : sim.playerX;
           const baseY = sim.isSailing ? sim.boatY : sim.playerY;
           sim.allySoldiers = prof.soldiers.map((rs, idx) => {
             const ex = existingMap.get(rs.id);
             if (ex) {
-              return { ...ex, hp: rs.hp, maxHp: rs.maxHp };
+              return {
+                ...ex,
+                hp: rs.hp,
+                maxHp: rs.maxHp,
+                hitFlashTime: rs.hp < ex.hp ? nowMs : ex.hitFlashTime,
+              };
             }
             const a = (idx / Math.max(1, prof.soldiers.length)) * Math.PI * 2;
             const r = 24 + Math.random() * 34;
@@ -709,13 +790,6 @@ export default function App() {
               attackSwingTime: 0,
             };
           });
-        } else {
-          for (let i = 0; i < prof.soldiers.length; i++) {
-            if (sim.allySoldiers[i]) {
-              sim.allySoldiers[i].hp = prof.soldiers[i].hp;
-              sim.allySoldiers[i].maxHp = prof.soldiers[i].maxHp;
-            }
-          }
         }
 
         saveRef.current = nextSave;
@@ -770,7 +844,67 @@ export default function App() {
             existing.starterSlotIndex = p.starterSlotIndex;
             existing.conqueredCount = p.conqueredCount;
             existing.lastSnapshotTime = now;
+
+            if (p.soldiers) {
+              const prevMap = new Map<string, RemoteSoldierSnapshot>(
+                (existing.soldiers ?? []).map((s) => [s.id, s])
+              );
+              const tMap = existing.soldierTargets ?? new Map<string, RemoteSoldierSnapshot>();
+              tMap.clear();
+              const nextSoldiers: RemoteSoldierSnapshot[] = [];
+              for (const rs of p.soldiers) {
+                tMap.set(rs.id, rs);
+                const prevS = prevMap.get(rs.id);
+                nextSoldiers.push(
+                  prevS
+                    ? {
+                        ...rs,
+                        x: prevS.x,
+                        y: prevS.y,
+                        angle: prevS.angle,
+                      }
+                    : { ...rs }
+                );
+              }
+              existing.soldiers = nextSoldiers;
+              existing.soldierTargets = tMap;
+            } else {
+              existing.soldiers = undefined;
+              existing.soldierTargets?.clear();
+            }
+
+            if (p.ships) {
+              const prevShipMap = new Map<string, RemoteEscortShipSnapshot>(
+                (existing.ships ?? []).map((sh) => [sh.id, sh])
+              );
+              const shMap = existing.shipTargets ?? new Map<string, RemoteEscortShipSnapshot>();
+              shMap.clear();
+              const nextShips: RemoteEscortShipSnapshot[] = [];
+              for (const sh of p.ships) {
+                shMap.set(sh.id, sh);
+                const prevSh = prevShipMap.get(sh.id);
+                nextShips.push(
+                  prevSh
+                    ? {
+                        ...sh,
+                        x: prevSh.x,
+                        y: prevSh.y,
+                        angle: prevSh.angle,
+                      }
+                    : { ...sh }
+                );
+              }
+              existing.ships = nextShips;
+              existing.shipTargets = shMap;
+            } else {
+              existing.ships = undefined;
+              existing.shipTargets?.clear();
+            }
           } else {
+            const soldierTargets = new Map<string, RemoteSoldierSnapshot>();
+            p.soldiers?.forEach((s) => soldierTargets.set(s.id, s));
+            const shipTargets = new Map<string, RemoteEscortShipSnapshot>();
+            p.ships?.forEach((sh) => shipTargets.set(sh.id, sh));
             remotePlayersRef.current.set(p.id, {
               ...p,
               targetX: p.x,
@@ -780,6 +914,10 @@ export default function App() {
               targetBoatY: p.boatY,
               targetBoatAngle: p.boatAngle,
               lastSnapshotTime: now,
+              soldiers: p.soldiers?.map((s) => ({ ...s })),
+              ships: p.ships?.map((sh) => ({ ...sh })),
+              soldierTargets,
+              shipTargets,
             });
           }
         }
@@ -881,7 +1019,60 @@ export default function App() {
             sim.boatHp = Math.round(getMaxBoatHp(saveRef.current.upgrades.boatLevel) * 0.75);
             addFloatingText(rx, ry - 30, 'Başlangıç Adana Çekildin!', '#FBBF24');
           }
+        } else if (evt.type === 'war:status') {
+          const fromId = String(payload.fromId || '');
+          const fromName = String(payload.fromName || 'Bir kaptan');
+          const targetId = String(payload.targetId || '');
+          const targetName = String(payload.targetName || 'Bir kaptan');
+          const mutual = Boolean(payload.mutual);
+          const cancelled = Boolean(payload.cancelled);
+          const selfId = identityRef.current.playerId;
+          const fx = sim.isSailing ? sim.boatX : sim.playerX;
+          const fy = (sim.isSailing ? sim.boatY : sim.playerY) - 36;
+          if (!cancelled) {
+            if (mutual) {
+              soundEngine.playWarHorn();
+              addFloatingText(fx, fy, `⚔ ${fromName} & ${targetName} Savaşta!`, '#FCA5A5');
+            } else if (targetId === selfId) {
+              soundEngine.playWarHorn();
+              addFloatingText(
+                fx,
+                fy,
+                `${fromName} sana savaş açtı! Devlet menüsünden karşılık ver.`,
+                '#FBBF24'
+              );
+            } else if (fromId === selfId) {
+              addFloatingText(fx, fy, `${targetName}'e savaş ilanı gönderildi`, '#FDE68A');
+            }
+          }
+        } else if (evt.type === 'army:hit') {
+          const hx = Number(payload.x || 0);
+          const hy = Number(payload.y || 0);
+          const dmg = Number(payload.damage || 0);
+          const isShip = String(payload.unitKind || '') === 'SHIP';
+          const killed = Boolean(payload.killed);
+          if (
+            dist(hx, hy, sim.isSailing ? sim.boatX : sim.playerX, sim.isSailing ? sim.boatY : sim.playerY) <
+            950
+          ) {
+            spawnParticles(
+              hx,
+              hy,
+              killed ? 8 : 4,
+              isShip ? '#B45309' : '#FCA5A5',
+              isShip ? 'SPLINTER' : 'SPARK',
+              85,
+              2.6,
+              true
+            );
+            if (dmg > 0) {
+              addFloatingText(hx, hy - 18, `-${dmg}`, killed ? '#EF4444' : '#FCA5A5', false);
+            }
+          }
         }
+      },
+      onWarSync: (decl) => {
+        setOnlineWarDeclarations(decl);
       },
       onChat: (msg) => {
         setOnlineChat((prev) => [...prev.slice(-24), msg]);
@@ -910,6 +1101,8 @@ export default function App() {
       setOnlineLobbyPlayers([]);
       setOnlineStarterSlots([]);
       setOnlineIslandOwners({});
+      setOnlineWarDeclarations({});
+      onlineAtWarSetRef.current.clear();
       setOnlinePing(null);
       remotePlayersRef.current.clear();
       onlineProjectilesRef.current = [];
@@ -977,33 +1170,33 @@ export default function App() {
     return best;
   }, []);
 
-  const defeatIslandEnemy = useCallback(
-    (enemy: IslandEnemy, idx: number) => {
-      simRef.current.islandEnemies.splice(idx, 1);
-      soundEngine.playEnemySunk();
-      spawnParticles(enemy.x, enemy.y, 16, enemy.squadColor, 'SPARK', 110, 3.6, true);
+  const recordEnemyDefeat = useCallback(
+    (enemy: IslandEnemy, nowMs?: number) => {
+      const t = nowMs ?? performance.now();
+      if (t - simRef.current.lastSoldierSfxTime > 95) {
+        simRef.current.lastSoldierSfxTime = t;
+        soundEngine.playEnemySunk();
+      }
+      spawnParticles(enemy.x, enemy.y, 12, enemy.squadColor, 'SPARK', 110, 3.6, true);
 
-      const bounty = enemy.tier === 3 ? 65 : enemy.tier === 2 ? 45 : 28;
-      const dropsHeal = Math.random() < 0.38;
-      simRef.current.floatingLoot.push({
-        id: `land_loot_${Date.now()}_${Math.random()}`,
-        x: enemy.x,
-        y: enemy.y,
-        goldValue: bounty,
-        healHp: dropsHeal ? 22 : undefined,
-        bobOffset: Math.random() * Math.PI * 2,
-        life: 38,
-      });
+      const lootList = simRef.current.floatingLoot;
+      if (lootList.length < 75) {
+        const bounty = enemy.tier === 3 ? 65 : enemy.tier === 2 ? 45 : 28;
+        const dropsHeal = Math.random() < 0.38;
+        lootList.push({
+          id: `land_loot_${Date.now()}_${Math.random()}`,
+          x: enemy.x,
+          y: enemy.y,
+          goldValue: bounty,
+          healHp: dropsHeal ? 22 : undefined,
+          bobOffset: Math.random() * Math.PI * 2,
+          life: 38,
+        });
+      }
 
-      commitSave(
-        (prev) => ({
-          ...prev,
-          landEnemiesDefeated: prev.landEnemiesDefeated + 1,
-        }),
-        true
-      );
+      pendingSyncRef.current.landKills += 1;
     },
-    [commitSave, spawnParticles]
+    [spawnParticles]
   );
 
   // Land Weapon Attack (Melee Cutlass or Ranged Pistol/Musket)
@@ -1021,17 +1214,60 @@ export default function App() {
     sim.lastAttackTime = now;
     sim.attackAnimStart = now;
 
-    // Gentle soft-assist aim toward nearest island enemy in front/close range so mobile controls feel crisp
+    // SpatialGrid-accelerated soft-assist aim toward nearest island enemy
     let aimAngle = sim.playerAngle;
-    let nearestDist = Infinity;
-    for (const ie of sim.islandEnemies) {
-      const d = dist(sim.playerX, sim.playerY, ie.x, ie.y);
-      if (d <= def.range + 40 && d < nearestDist) {
-        const toEnemy = Math.atan2(ie.y - sim.playerY, ie.x - sim.playerX);
+    let nearestDistSq = Infinity;
+    const scanR = def.range + 45;
+    const nearbyEnemies = enemyCombatGridRef.current.queryRadius(
+      sim.playerX,
+      sim.playerY,
+      scanR,
+      enemyQueryBufRef.current
+    );
+    for (let i = 0; i < nearbyEnemies.length; i++) {
+      const ie = nearbyEnemies[i];
+      if (ie.hp <= 0) continue;
+      const dx = ie.x - sim.playerX;
+      const dy = ie.y - sim.playerY;
+      const dSq = dx * dx + dy * dy;
+      if (dSq <= scanR * scanR && dSq < nearestDistSq) {
+        const toEnemy = Math.atan2(dy, dx);
         const angleDiff = Math.abs(Math.atan2(Math.sin(toEnemy - sim.playerAngle), Math.cos(toEnemy - sim.playerAngle)));
-        if (angleDiff < 1.35 || d < 85) {
-          nearestDist = d;
+        if (angleDiff < 1.35 || dSq < 85 * 85) {
+          nearestDistSq = dSq;
           aimAngle = toEnemy;
+        }
+      }
+    }
+    if (onlineActiveRef.current && onlineAtWarSetRef.current.size > 0) {
+      for (const rp of remotePlayersRef.current.values()) {
+        if (!rp.connected || rp.isSailing || !onlineAtWarSetRef.current.has(rp.id)) continue;
+        const capDx = rp.x - sim.playerX;
+        const capDy = rp.y - sim.playerY;
+        const capDSq = capDx * capDx + capDy * capDy;
+        if (capDSq <= scanR * scanR && capDSq < nearestDistSq) {
+          const toCap = Math.atan2(capDy, capDx);
+          const angleDiff = Math.abs(Math.atan2(Math.sin(toCap - sim.playerAngle), Math.cos(toCap - sim.playerAngle)));
+          if (angleDiff < 1.35 || capDSq < 85 * 85) {
+            nearestDistSq = capDSq;
+            aimAngle = toCap;
+          }
+        }
+        if (rp.soldiers) {
+          for (let si = 0; si < rp.soldiers.length; si++) {
+            const rs = rp.soldiers[si];
+            const sdx = rs.x - sim.playerX;
+            const sdy = rs.y - sim.playerY;
+            const sdSq = sdx * sdx + sdy * sdy;
+            if (sdSq <= scanR * scanR && sdSq < nearestDistSq) {
+              const toSol = Math.atan2(sdy, sdx);
+              const angleDiff = Math.abs(Math.atan2(Math.sin(toSol - sim.playerAngle), Math.cos(toSol - sim.playerAngle)));
+              if (angleDiff < 1.35 || sdSq < 85 * 85) {
+                nearestDistSq = sdSq;
+                aimAngle = toSol;
+              }
+            }
+          }
         }
       }
     }
@@ -1042,29 +1278,38 @@ export default function App() {
       sim.screenShake = Math.max(sim.screenShake, 2.0);
       let hitCount = 0;
 
-      for (let i = sim.islandEnemies.length - 1; i >= 0; i--) {
-        const ie = sim.islandEnemies[i];
-        const d = dist(sim.playerX, sim.playerY, ie.x, ie.y);
-        if (d <= def.range) {
-          const toE = Math.atan2(ie.y - sim.playerY, ie.x - sim.playerX);
+      for (let i = 0; i < nearbyEnemies.length; i++) {
+        const ie = nearbyEnemies[i];
+        if (ie.hp <= 0) continue;
+        const dx = ie.x - sim.playerX;
+        const dy = ie.y - sim.playerY;
+        const dSq = dx * dx + dy * dy;
+        if (dSq <= def.range * def.range) {
+          const toE = Math.atan2(dy, dx);
           const diff = Math.abs(Math.atan2(Math.sin(toE - aimAngle), Math.cos(toE - aimAngle)));
-          if (diff <= 1.25 || d < 28) {
+          if (diff <= 1.25 || dSq < 28 * 28) {
             ie.hp -= def.damage;
             ie.hitFlashTime = now;
             ie.alerted = true;
             ensureWarWithFaction(ie.factionId);
-            // Knockback impulse
             ie.x += Math.cos(toE) * 16;
             ie.y += Math.sin(toE) * 16;
             hitCount++;
 
-            spawnParticles(ie.x, ie.y, 8, '#F8FAFC', 'SPARK', 90, 3, true);
+            spawnParticles(ie.x, ie.y, 7, '#F8FAFC', 'SPARK', 90, 3, true);
             addFloatingText(ie.x, ie.y - 20, `-${def.damage}`, '#FDE047');
 
             if (ie.hp <= 0) {
-              defeatIslandEnemy(ie, i);
+              recordEnemyDefeat(ie, now);
             }
           }
+        }
+      }
+      // Compact defeated enemies immediately via swap-and-pop
+      for (let i = sim.islandEnemies.length - 1; i >= 0; i--) {
+        if (sim.islandEnemies[i].hp <= 0) {
+          sim.islandEnemies[i] = sim.islandEnemies[sim.islandEnemies.length - 1];
+          sim.islandEnemies.pop();
         }
       }
       if (hitCount > 0) soundEngine.playCannonHit();
@@ -1135,7 +1380,7 @@ export default function App() {
         type: 'MUZZLE',
       });
     }
-  }, [addFloatingText, defeatIslandEnemy, ensureWarWithFaction, spawnParticles]);
+  }, [addFloatingText, ensureWarWithFaction, recordEnemyDefeat, spawnParticles]);
 
   const fireBroadside = useCallback(
     (
@@ -1161,16 +1406,20 @@ export default function App() {
       const sinA = Math.sin(shipAngle);
       const speed = owner === 'PLAYER' ? 410 : 355;
 
+      const budget = perfGovRef.current.getCurrentBudget();
+      const sim = simRef.current;
+
       for (const side of sides) {
         const fireAngle = shipAngle + side * (Math.PI / 2);
         const dirX = Math.cos(fireAngle);
         const dirY = Math.sin(fireAngle);
 
         for (const ox of offsets) {
+          if (sim.cannonballs.length >= budget.maxCannonballs) break;
           const portX = shipX + cosA * ox + dirX * (16 * shipScale);
           const portY = shipY + sinA * ox + dirY * (16 * shipScale);
 
-          simRef.current.cannonballs.push({
+          sim.cannonballs.push({
             id: `cb_${Date.now()}_${Math.random()}`,
             owner,
             x: portX,
@@ -1183,40 +1432,51 @@ export default function App() {
             life: 1.15,
           });
 
-          simRef.current.particles.push({
-            x: portX,
-            y: portY,
-            z: 6,
-            vx: dirX * 45,
-            vy: dirY * 45,
-            vz: 10,
-            size: 6.5,
-            color: '#FDE047',
-            alpha: 1,
-            life: 0.14,
-            maxLife: 0.14,
-            type: 'MUZZLE',
-          });
-          for (let s = 0; s < 3; s++) {
-            simRef.current.particles.push({
-              x: portX + (Math.random() - 0.5) * 6,
-              y: portY + (Math.random() - 0.5) * 6,
-              z: 7,
-              vx: dirX * (55 + Math.random() * 45) + (Math.random() - 0.5) * 25,
-              vy: dirY * (55 + Math.random() * 45) + (Math.random() - 0.5) * 25,
-              vz: 14,
-              size: 6 + Math.random() * 5,
-              color: '#F1F5F9',
-              alpha: 0.78,
-              life: 0.5 + Math.random() * 0.25,
-              maxLife: 0.75,
-              type: 'SMOKE',
+          if (sim.particles.length < budget.maxParticles) {
+            sim.particles.push({
+              x: portX,
+              y: portY,
+              z: 6,
+              vx: dirX * 45,
+              vy: dirY * 45,
+              vz: 10,
+              size: 6.5,
+              color: '#FDE047',
+              alpha: 1,
+              life: 0.14,
+              maxLife: 0.14,
+              type: 'MUZZLE',
             });
+            const smokeCount = budget.tier === 'MASS_BATTLE' ? 1 : budget.tier === 'BALANCED' ? 2 : 3;
+            for (let s = 0; s < smokeCount && sim.particles.length < budget.maxParticles; s++) {
+              sim.particles.push({
+                x: portX + (Math.random() - 0.5) * 6,
+                y: portY + (Math.random() - 0.5) * 6,
+                z: 7,
+                vx: dirX * (55 + Math.random() * 45) + (Math.random() - 0.5) * 25,
+                vy: dirY * (55 + Math.random() * 45) + (Math.random() - 0.5) * 25,
+                vz: 14,
+                size: 6 + Math.random() * 5,
+                color: '#F1F5F9',
+                alpha: 0.78,
+                life: 0.5 + Math.random() * 0.25,
+                maxLife: 0.75,
+                type: 'SMOKE',
+              });
+            }
           }
         }
       }
 
-      soundEngine.playCannonFire(owner === 'PLAYER');
+      const nowMs = performance.now();
+      const isPlayerFlagship =
+        owner === 'PLAYER' &&
+        Math.abs(shipX - sim.boatX) < 1 &&
+        Math.abs(shipY - sim.boatY) < 1;
+      if (isPlayerFlagship || nowMs - sim.lastCannonSfxTime > 80) {
+        sim.lastCannonSfxTime = nowMs;
+        soundEngine.playCannonFire(owner === 'PLAYER');
+      }
     },
     []
   );
@@ -1664,7 +1924,8 @@ export default function App() {
 
     const step = (now: number) => {
       frameCounter++;
-      const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+      const rawDeltaMs = now - lastFrameTime;
+      const dt = Math.min(0.05, rawDeltaMs / 1000);
       lastFrameTime = now;
 
       const sim = simRef.current;
@@ -1672,6 +1933,13 @@ export default function App() {
       const currentSettings = settingsRef.current;
       const isPlaying = phaseRef.current === 'PLAYING' && modalRef.current === 'NONE';
       const maxBoatHp = getMaxBoatHp(currentSave.upgrades.boatLevel);
+      const activeUnitCount =
+        sim.allySoldiers.length +
+        sim.islandEnemies.length +
+        sim.allyShips.length +
+        sim.enemies.length +
+        Math.floor((sim.landProjectiles.length + sim.cannonballs.length) * 0.5);
+      const budget = perfGovRef.current.update(rawDeltaMs, activeUnitCount, now);
 
       sim.screenShake = Math.max(0, sim.screenShake - dt * 16);
 
@@ -1972,7 +2240,7 @@ export default function App() {
         }
       }
 
-      // Build O(1) visible island lookup map and SpatialGrids for fast combat & separation
+      // Build O(1) visible island lookup map and two-tier SpatialGrids for fast combat & separation
       const visibleIslandMap = new Map<string, Island>();
       for (let i = 0; i < visibleIslands.length; i++) {
         visibleIslandMap.set(visibleIslands[i].id, visibleIslands[i]);
@@ -1983,16 +2251,29 @@ export default function App() {
       const islandFirstFaction = new Map<string, FactionId>();
       const multiFactionIslands = new Set<string>();
 
-      const enemyGrid = enemyGridRef.current;
-      const allyGrid = allyGridRef.current;
+      const enemyCombatGrid = enemyCombatGridRef.current;
+      const allyCombatGrid = allyCombatGridRef.current;
+      const enemySepGrid = enemySepGridRef.current;
+      const allySepGrid = allySepGridRef.current;
+      const enemyShipGrid = enemyShipGridRef.current;
+      const allyShipGrid = allyShipGridRef.current;
       const enemyQueryBuf = enemyQueryBufRef.current;
       const allyQueryBuf = allyQueryBufRef.current;
-      enemyGrid.clear();
-      allyGrid.clear();
+      const enemyShipQueryBuf = enemyShipQueryBufRef.current;
+      const allyShipQueryBuf = allyShipQueryBufRef.current;
+
+      enemyCombatGrid.clear();
+      allyCombatGrid.clear();
+      enemySepGrid.clear();
+      allySepGrid.clear();
+      enemyShipGrid.clear();
+      allyShipGrid.clear();
+
       for (let i = 0; i < sim.islandEnemies.length; i++) {
         const ie = sim.islandEnemies[i];
         if (ie.hp > 0) {
-          enemyGrid.insert(ie);
+          enemyCombatGrid.insert(ie);
+          enemySepGrid.insert(ie);
           if (standingIsl && ie.islandId === standingIsl.id) {
             standingIslandEnemies.push(ie);
           }
@@ -2006,69 +2287,99 @@ export default function App() {
       }
       for (let i = 0; i < sim.allySoldiers.length; i++) {
         const sol = sim.allySoldiers[i];
-        if (sol.hp > 0) allyGrid.insert(sol);
+        if (sol.hp > 0) {
+          allyCombatGrid.insert(sol);
+          allySepGrid.insert(sol);
+        }
+      }
+      for (let i = 0; i < sim.enemies.length; i++) {
+        if (sim.enemies[i].hp > 0) enemyShipGrid.insert(sim.enemies[i]);
+      }
+      for (let i = 0; i < sim.allyShips.length; i++) {
+        if (sim.allyShips[i].hp > 0) allyShipGrid.insert(sim.allyShips[i]);
       }
 
-      // Coordinated Island Enemy & Massive Garrison AI (with SpatialGrid + multi-faction checks)
+      // Coordinated Island Enemy & Massive Garrison AI (Two-Tier SpatialGrid + Target Caching)
       if (isPlaying) {
         const squadLeaders = new Map<string, IslandEnemy>();
-        for (const ie of sim.islandEnemies) {
-          if (ie.squadId && ie.role === 'LEADER') {
+        for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
+          const ie = sim.islandEnemies[ei];
+          if (ie.hp > 0 && ie.squadId && ie.role === 'LEADER') {
             squadLeaders.set(ie.squadId, ie);
           }
         }
 
         if (!sim.isSailing) {
-          const alertedSquads = new Set<string>();
+          let alertedSquads: Set<string> | null = null;
+          const activeAlertSq = 1550 * 1550;
+          const spotPlayerSq = 255 * 255;
+          const spotAllySq = 250 * 250;
           for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
             const ie = sim.islandEnemies[ei];
-            if (ie.alerted) continue;
-            // In Online mode, neutral island villagers stay peaceful unless directly attacked
+            if (ie.alerted || ie.hp <= 0) continue;
             if (onlineActiveRef.current && ie.factionId === 'NEUTRAL') continue;
-            if ((ei + frameCounter) % 3 !== 0) continue;
-            if (dist(ie.x, ie.y, activeCenterX, activeCenterY) > 1550) continue;
-            const spotPlayer = dist(ie.x, ie.y, sim.playerX, sim.playerY) < 255;
+            if ((ei + frameCounter) % 4 !== 0) continue;
+            const adx = ie.x - activeCenterX;
+            const ady = ie.y - activeCenterY;
+            if (adx * adx + ady * ady > activeAlertSq) continue;
+
+            const pdx = ie.x - sim.playerX;
+            const pdy = ie.y - sim.playerY;
+            const spotPlayer = pdx * pdx + pdy * pdy < spotPlayerSq;
             let spotAlly = false;
             if (!spotPlayer && sim.allySoldiers.length > 0) {
-              allyGrid.queryRadius(ie.x, ie.y, 250, allyQueryBuf);
-              for (let a = 0; a < allyQueryBuf.length; a++) {
-                const sol = allyQueryBuf[a];
-                if (sol.hp > 0 && dist(ie.x, ie.y, sol.x, sol.y) < 250) {
-                  spotAlly = true;
-                  break;
-                }
-              }
+              const nearestSpot = allyCombatGrid.queryNearest(
+                ie.x,
+                ie.y,
+                250,
+                (sol) => sol.hp > 0
+              );
+              spotAlly = nearestSpot.item !== null && nearestSpot.distSq < spotAllySq;
             }
             if (spotPlayer || spotAlly) {
               if (ie.squadId && ie.role === 'LEADER') {
                 addFloatingText(ie.x, ie.y - 26, 'Takım Saldırısı!', '#FCA5A5', false);
               }
               ie.alerted = true;
-              if (ie.squadId) alertedSquads.add(ie.squadId);
+              if (ie.squadId) {
+                if (!alertedSquads) alertedSquads = new Set<string>();
+                alertedSquads.add(ie.squadId);
+              }
             }
           }
-          if (alertedSquads.size > 0) {
-            for (const ie of sim.islandEnemies) {
+          if (alertedSquads && alertedSquads.size > 0) {
+            for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
+              const ie = sim.islandEnemies[ei];
               if (ie.squadId && alertedSquads.has(ie.squadId)) {
                 ie.alerted = true;
               }
             }
           }
-        } else {
-          for (const ie of sim.islandEnemies) {
-            if (dist(ie.x, ie.y, sim.playerX, sim.playerY) > 520) {
+        } else if (frameCounter % 6 === 0) {
+          const deAlertSq = 520 * 520;
+          for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
+            const ie = sim.islandEnemies[ei];
+            if (!ie.alerted) continue;
+            const dx = ie.x - sim.playerX;
+            const dy = ie.y - sim.playerY;
+            if (dx * dx + dy * dy > deAlertSq) {
               ie.alerted = false;
             }
           }
         }
 
+        const activeEnemySq = 1600 * 1600;
+        const alertScanSq = 1100 * 1100;
         for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
           const ie = sim.islandEnemies[ei];
           if (ie.hp <= 0) continue;
+          const adx = ie.x - activeCenterX;
+          const ady = ie.y - activeCenterY;
+          const distActiveSq = adx * adx + ady * ady;
+          if (distActiveSq > activeEnemySq) continue;
+
           const island = visibleIslandMap.get(ie.islandId);
           if (!island) continue;
-          const distToActive = dist(ie.x, ie.y, activeCenterX, activeCenterY);
-          if (distToActive > 1600) continue;
 
           const stats = getIslandArmyStats(ie.tier);
           const hasRivalFactions = multiFactionIslands.has(ie.islandId);
@@ -2078,39 +2389,93 @@ export default function App() {
           let targetKind: 'PLAYER' | 'ALLY_SOLDIER' | 'RIVAL_ENEMY' = 'PLAYER';
           let targetAlly: AllySoldier | null = null;
           let targetRival: IslandEnemy | null = null;
-          let dToTarget = !sim.isSailing ? dist(ie.x, ie.y, sim.playerX, sim.playerY) : Infinity;
+          let dToTarget = !sim.isSailing
+            ? Math.hypot(ie.x - sim.playerX, ie.y - sim.playerY)
+            : Infinity;
 
-          if (!sim.isSailing && sim.allySoldiers.length > 0 && (ie.alerted || distToActive < 1100)) {
-            allyGrid.queryRadius(ie.x, ie.y, 400, allyQueryBuf);
-            for (let ai = 0; ai < allyQueryBuf.length; ai++) {
-              const sol = allyQueryBuf[ai];
-              if (sol.hp <= 0) continue;
-              const ds = dist(ie.x, ie.y, sol.x, sol.y);
-              if (ds < dToTarget) {
-                dToTarget = ds;
-                targetEntityX = sol.x;
-                targetEntityY = sol.y;
-                targetKind = 'ALLY_SOLDIER';
-                targetAlly = sol;
+          // Validate cached target or rescan periodically
+          let needsRescan = now >= (ie.aiNextScanTime ?? 0);
+          if (!needsRescan) {
+            if (ie.cachedTargetKind === 'ALLY_SOLDIER') {
+              if (!sim.isSailing && ie.cachedTargetAlly && ie.cachedTargetAlly.hp > 0) {
+                const ds = dist(ie.x, ie.y, ie.cachedTargetAlly.x, ie.cachedTargetAlly.y);
+                if (ds < 440 && ds < dToTarget) {
+                  dToTarget = ds;
+                  targetEntityX = ie.cachedTargetAlly.x;
+                  targetEntityY = ie.cachedTargetAlly.y;
+                  targetKind = 'ALLY_SOLDIER';
+                  targetAlly = ie.cachedTargetAlly;
+                } else {
+                  needsRescan = true;
+                }
+              } else {
+                needsRescan = true;
+              }
+            } else if (ie.cachedTargetKind === 'RIVAL_ENEMY') {
+              if (ie.cachedTargetRival && ie.cachedTargetRival.hp > 0) {
+                const dr = dist(ie.x, ie.y, ie.cachedTargetRival.x, ie.cachedTargetRival.y);
+                if (dr < 410 && dr < dToTarget) {
+                  dToTarget = dr;
+                  targetEntityX = ie.cachedTargetRival.x;
+                  targetEntityY = ie.cachedTargetRival.y;
+                  targetKind = 'RIVAL_ENEMY';
+                  targetRival = ie.cachedTargetRival;
+                } else {
+                  needsRescan = true;
+                }
+              } else {
+                needsRescan = true;
               }
             }
           }
 
-          if (hasRivalFactions) {
-            enemyGrid.queryRadius(ie.x, ie.y, 380, enemyQueryBuf);
-            for (let ri = 0; ri < enemyQueryBuf.length; ri++) {
-              const other = enemyQueryBuf[ri];
-              if (other === ie || other.hp <= 0 || other.islandId !== ie.islandId) continue;
-              if (other.factionId === ie.factionId) continue;
-              const dr = dist(ie.x, ie.y, other.x, other.y);
-              if (dr < 380 && dr < dToTarget) {
-                dToTarget = dr;
-                targetEntityX = other.x;
-                targetEntityY = other.y;
-                targetKind = 'RIVAL_ENEMY';
-                targetRival = other;
+          if (needsRescan) {
+            ie.aiNextScanTime = now + budget.aiScanIntervalMs + (ei % 7) * 20;
+            if (!sim.isSailing && sim.allySoldiers.length > 0 && (ie.alerted || distActiveSq < alertScanSq)) {
+              const nearestAlly = allyCombatGrid.queryNearest(
+                ie.x,
+                ie.y,
+                400,
+                (sol) => sol.hp > 0
+              );
+              if (nearestAlly.item) {
+                const ds = Math.sqrt(nearestAlly.distSq);
+                if (ds < dToTarget) {
+                  dToTarget = ds;
+                  targetEntityX = nearestAlly.item.x;
+                  targetEntityY = nearestAlly.item.y;
+                  targetKind = 'ALLY_SOLDIER';
+                  targetAlly = nearestAlly.item;
+                }
               }
             }
+
+            if (hasRivalFactions) {
+              const nearestRival = enemyCombatGrid.queryNearest(
+                ie.x,
+                ie.y,
+                380,
+                (other) =>
+                  other !== ie &&
+                  other.hp > 0 &&
+                  other.islandId === ie.islandId &&
+                  other.factionId !== ie.factionId
+              );
+              if (nearestRival.item) {
+                const dr = Math.sqrt(nearestRival.distSq);
+                if (dr < dToTarget) {
+                  dToTarget = dr;
+                  targetEntityX = nearestRival.item.x;
+                  targetEntityY = nearestRival.item.y;
+                  targetKind = 'RIVAL_ENEMY';
+                  targetRival = nearestRival.item;
+                }
+              }
+            }
+
+            ie.cachedTargetKind = targetKind;
+            ie.cachedTargetAlly = targetAlly;
+            ie.cachedTargetRival = targetRival;
           }
 
           const hasTarget =
@@ -2151,9 +2516,10 @@ export default function App() {
 
           const dx = targetX - ie.x;
           const dy = targetY - ie.y;
-          const distTarget = Math.hypot(dx, dy);
+          const distTargetSq = dx * dx + dy * dy;
 
-          if (distTarget > 6) {
+          if (distTargetSq > 36) {
+            const distTarget = Math.sqrt(distTargetSq);
             const desiredA = Math.atan2(dy, dx);
             ie.angle = lerpAngle(ie.angle, desiredA, Math.min(1, dt * 8));
             let nx = ie.x + (dx / distTarget) * moveSpeed * dt;
@@ -2161,11 +2527,15 @@ export default function App() {
 
             const idx = nx - island.centerX;
             const idy = ny - island.centerY;
-            const ia = Math.atan2(idy, idx);
-            const maxR = getIslandRadiusAtAngle(island, ia) - 12;
-            if (Math.hypot(idx, idy) > maxR) {
-              nx = island.centerX + Math.cos(ia) * maxR;
-              ny = island.centerY + Math.sin(ia) * maxR;
+            const innerSafe = island.baseRadius * 0.62;
+            const islDistSq = idx * idx + idy * idy;
+            if (islDistSq > innerSafe * innerSafe) {
+              const ia = Math.atan2(idy, idx);
+              const maxR = getIslandRadiusAtAngle(island, ia) - 12;
+              if (islDistSq > maxR * maxR) {
+                nx = island.centerX + Math.cos(ia) * maxR;
+                ny = island.centerY + Math.sin(ia) * maxR;
+              }
             }
             ie.x = nx;
             ie.y = ny;
@@ -2178,20 +2548,24 @@ export default function App() {
             );
           }
 
-          // O(1) neighborhood soft separation via SpatialGrid
-          if (hasTarget || (ei + frameCounter) % 2 === 0) {
-            enemyGrid.queryRadius(ie.x, ie.y, 22, enemyQueryBuf);
+          // Capped O(1) neighborhood soft separation via fine SpatialGrid (no atan2/cos/sin)
+          if ((ei + frameCounter) % budget.sepStride === 0) {
+            enemySepGrid.queryRadiusCapped(ie.x, ie.y, 22, enemyQueryBuf, budget.maxSepNeighbors);
             for (let ej = 0; ej < enemyQueryBuf.length; ej++) {
               const other = enemyQueryBuf[ej];
               if (other === ie || other.hp <= 0) continue;
-              const sd = dist(ie.x, ie.y, other.x, other.y);
-              if (sd > 0.1 && sd < 21) {
-                const push = (21 - sd) * 0.35;
-                const pa = Math.atan2(ie.y - other.y, ie.x - other.x);
-                ie.x += Math.cos(pa) * push;
-                ie.y += Math.sin(pa) * push;
-                other.x -= Math.cos(pa) * push;
-                other.y -= Math.sin(pa) * push;
+              const sdx = ie.x - other.x;
+              const sdy = ie.y - other.y;
+              const sdSq = sdx * sdx + sdy * sdy;
+              if (sdSq > 0.04 && sdSq < 441) {
+                const sd = Math.sqrt(sdSq);
+                const push = ((21 - sd) * 0.35) / sd;
+                const px = sdx * push;
+                const py = sdy * push;
+                ie.x += px;
+                ie.y += py;
+                other.x -= px;
+                other.y -= py;
               }
             }
           }
@@ -2222,20 +2596,8 @@ export default function App() {
                   targetAlly.hitFlashTime = now;
                   addFloatingText(targetAlly.x, targetAlly.y - 18, `-${dmg}`, '#FCA5A5', false);
                   if (targetAlly.hp <= 0) {
-                    const fallenId = targetAlly.id;
-                    const realAllyIdx = sim.allySoldiers.indexOf(targetAlly);
-                    if (realAllyIdx >= 0) sim.allySoldiers.splice(realAllyIdx, 1);
+                    pendingSyncRef.current.rosterDirty = true;
                     addFloatingText(targetAlly.x, targetAlly.y - 26, 'Asker Düştü!', '#F87171', false);
-                    commitSave(
-                      (prev) => ({
-                        ...prev,
-                        kingdom: {
-                          ...prev.kingdom,
-                          soldiers: prev.kingdom.soldiers.filter((s) => s.id !== fallenId),
-                        },
-                      }),
-                      true
-                    );
                   }
                 } else if (targetKind === 'PLAYER') {
                   sim.playerHp = Math.max(0, sim.playerHp - dmg);
@@ -2243,7 +2605,11 @@ export default function App() {
                   sim.screenShake = Math.max(sim.screenShake, 3);
                   addFloatingText(sim.playerX, sim.playerY - 22, `-${dmg}`, '#F87171', false);
                 }
-              } else if (ie.combatStyle === 'RANGED' && dToTarget < 270) {
+              } else if (
+                ie.combatStyle === 'RANGED' &&
+                dToTarget < 270 &&
+                sim.landProjectiles.length < budget.maxLandProjectiles
+              ) {
                 ie.lastAttackTime = now;
                 const shotA = Math.atan2(targetEntityY - ie.y, targetEntityX - ie.x);
                 sim.landProjectiles.push({
@@ -2265,26 +2631,9 @@ export default function App() {
             }
           }
         }
-
-        // Remove any island enemies defeated in faction-vs-faction skirmishes
-        for (let ei = sim.islandEnemies.length - 1; ei >= 0; ei--) {
-          if (sim.islandEnemies[ei].hp <= 0) {
-            spawnParticles(
-              sim.islandEnemies[ei].x,
-              sim.islandEnemies[ei].y,
-              10,
-              sim.islandEnemies[ei].squadColor,
-              'SPARK',
-              90,
-              3,
-              true
-            );
-            sim.islandEnemies.splice(ei, 1);
-          }
-        }
       }
 
-      // Autonomous & Organic Allied Soldiers AI (roam freely, scout, hunt, flank — never glued behind player!)
+      // Autonomous & Organic Allied Soldiers AI (Staggered SpatialGrid + Capped Separation)
       if (isPlaying && !sim.isSailing && sim.allySoldiers.length > 0) {
         const { dmgMult } = getSoldierPowerMultiplier(currentSave.kingdom.armyLevel);
 
@@ -2307,6 +2656,8 @@ export default function App() {
           return { x: isl.centerX + Math.cos(a) * r, y: isl.centerY + Math.sin(a) * r };
         };
 
+        const innerSafeIslandSq = standingIsl ? Math.pow(standingIsl.baseRadius * 0.62, 2) : 0;
+
         for (let ai = 0; ai < sim.allySoldiers.length; ai++) {
           const sol = sim.allySoldiers[ai];
           if (sol.hp <= 0) continue;
@@ -2320,24 +2671,87 @@ export default function App() {
           const spec = SOLDIER_SPECS[sol.type] ?? SOLDIER_SPECS.SWORDSMAN;
           const effectiveDmg = Math.round(spec.damage * dmgMult);
 
-          // 1. Scan nearby enemies via SpatialGrid (within 460px)
-          let nearestEnemy: IslandEnemy | null = null;
-          let nearestEnemyDist = 460;
-          enemyGrid.queryRadius(sol.x, sol.y, 460, enemyQueryBuf);
-          for (let ei = 0; ei < enemyQueryBuf.length; ei++) {
-            const ie = enemyQueryBuf[ei];
-            if (ie.hp <= 0) continue;
-            const d = dist(sol.x, sol.y, ie.x, ie.y);
-            if (d < nearestEnemyDist) {
-              nearestEnemyDist = d;
-              nearestEnemy = ie;
+          // 1. Staggered target acquisition via coarse combat SpatialGrid
+          let nearestEnemy: IslandEnemy | null =
+            sol.cachedTarget && sol.cachedTarget.hp > 0 ? sol.cachedTarget : null;
+          let nearestEnemyDist = Infinity;
+          if (nearestEnemy) {
+            const edx = nearestEnemy.x - sol.x;
+            const edy = nearestEnemy.y - sol.y;
+            const edSq = edx * edx + edy * edy;
+            if (edSq <= 480 * 480) {
+              nearestEnemyDist = Math.sqrt(edSq);
+            } else {
+              nearestEnemy = null;
+            }
+          }
+
+          if (!nearestEnemy || now >= (sol.aiNextScanTime ?? 0)) {
+            sol.aiNextScanTime = now + budget.aiScanIntervalMs + (ai % 9) * 18;
+            const res = enemyCombatGrid.queryNearest(
+              sol.x,
+              sol.y,
+              460,
+              (ie) => ie.hp > 0
+            );
+            if (res.item) {
+              nearestEnemy = res.item;
+              nearestEnemyDist = Math.sqrt(res.distSq);
+            } else {
+              nearestEnemy = null;
+            }
+            sol.cachedTarget = nearestEnemy;
+          }
+
+          // Online PvP enemy acquisition (only if mutual war is declared)
+          let onlineLandTarget: {
+            playerId: string;
+            unitKind: 'SOLDIER' | 'PLAYER';
+            unitId?: string;
+            x: number;
+            y: number;
+          } | null = null;
+          let onlineLandDist = Infinity;
+          if (!nearestEnemy && onlineActiveRef.current && onlineAtWarSetRef.current.size > 0) {
+            let bestOnlineSq = 520 * 520;
+            for (const rp of remotePlayersRef.current.values()) {
+              if (!rp.connected || rp.isSailing || !onlineAtWarSetRef.current.has(rp.id)) continue;
+              const pdx = rp.x - sol.x;
+              const pdy = rp.y - sol.y;
+              const pdSq = pdx * pdx + pdy * pdy;
+              if (pdSq < bestOnlineSq) {
+                bestOnlineSq = pdSq;
+                onlineLandTarget = { playerId: rp.id, unitKind: 'PLAYER', x: rp.x, y: rp.y };
+              }
+              if (rp.soldiers) {
+                for (let rsi = 0; rsi < rp.soldiers.length; rsi++) {
+                  const rsol = rp.soldiers[rsi];
+                  const sdx = rsol.x - sol.x;
+                  const sdy = rsol.y - sol.y;
+                  const sdSq = sdx * sdx + sdy * sdy;
+                  if (sdSq < bestOnlineSq) {
+                    bestOnlineSq = sdSq;
+                    onlineLandTarget = {
+                      playerId: rp.id,
+                      unitKind: 'SOLDIER',
+                      unitId: rsol.id,
+                      x: rsol.x,
+                      y: rsol.y,
+                    };
+                  }
+                }
+              }
+            }
+            if (onlineLandTarget) {
+              onlineLandDist = Math.sqrt(bestOnlineSq);
             }
           }
 
           // 2. If no nearby enemy, some independent raiders actively hunt distant enemies across huge islands
           let huntTarget: IslandEnemy | null = nearestEnemy;
-          if (!huntTarget && standingIslandEnemies.length > 0 && ai % 3 !== 0) {
-            huntTarget = standingIslandEnemies[(ai * 7) % standingIslandEnemies.length];
+          if (!huntTarget && !onlineLandTarget && standingIslandEnemies.length > 0 && ai % 3 !== 0) {
+            const cand = standingIslandEnemies[(ai * 7) % standingIslandEnemies.length];
+            if (cand && cand.hp > 0) huntTarget = cand;
           }
 
           let goalX = sol.x;
@@ -2346,27 +2760,31 @@ export default function App() {
           let isIdling = false;
 
           const isRangedSoldier = sol.type === 'MUSKETEER' || sol.type === 'GRENADIER';
+          const activeTargetPos: Vec2 | null = huntTarget
+            ? { x: huntTarget.x, y: huntTarget.y }
+            : onlineLandTarget
+            ? { x: onlineLandTarget.x, y: onlineLandTarget.y }
+            : null;
 
-          if (huntTarget) {
+          if (activeTargetPos) {
             sol.roamWaitUntil = 0;
             if (!isRangedSoldier) {
               const flankOffset = ((ai % 7) - 3) * 0.34;
               const approachA =
-                Math.atan2(sol.y - huntTarget.y, sol.x - huntTarget.x) + flankOffset;
-              goalX = huntTarget.x + Math.cos(approachA) * 24;
-              goalY = huntTarget.y + Math.sin(approachA) * 24;
+                Math.atan2(sol.y - activeTargetPos.y, sol.x - activeTargetPos.x) + flankOffset;
+              goalX = activeTargetPos.x + Math.cos(approachA) * 24;
+              goalY = activeTargetPos.y + Math.sin(approachA) * 24;
             } else {
               const spreadOffset = ((ai % 9) - 4) * 0.17;
-              const awayA = Math.atan2(sol.y - huntTarget.y, sol.x - huntTarget.x) + spreadOffset;
+              const awayA =
+                Math.atan2(sol.y - activeTargetPos.y, sol.x - activeTargetPos.x) + spreadOffset;
               const standDist = (sol.type === 'GRENADIER' ? 172 : 156) + (ai % 4) * 18;
-              goalX = huntTarget.x + Math.cos(awayA) * standDist;
-              goalY = huntTarget.y + Math.sin(awayA) * standDist;
+              goalX = activeTargetPos.x + Math.cos(awayA) * standDist;
+              goalY = activeTargetPos.y + Math.sin(awayA) * standDist;
             }
           } else if (standingIsl) {
-            // Free autonomous island wandering (no player-tail trailing!)
             if (sol.roamWaitUntil && now < sol.roamWaitUntil) {
               isIdling = true;
-              // Gently glance around while standing guard
               const glanceAngle = Math.sin(now * 0.0012 + sol.wanderSeed) * 1.4;
               sol.angle = lerpAngle(sol.angle, glanceAngle, Math.min(1, dt * 1.8));
             } else {
@@ -2378,16 +2796,17 @@ export default function App() {
               }
               goalX = sol.roamTarget.x;
               goalY = sol.roamTarget.y;
-              moveSpd = spec.speed * sol.personalSpeedMult * (0.58 + ((ai % 5) * 0.06));
-              if (dist(sol.x, sol.y, goalX, goalY) <= 22) {
+              moveSpd = spec.speed * sol.personalSpeedMult * (0.58 + (ai % 5) * 0.06);
+              const gdx = sol.x - goalX;
+              const gdy = sol.y - goalY;
+              if (gdx * gdx + gdy * gdy <= 484) {
                 sol.roamTarget = undefined;
                 sol.roamWaitUntil = now + 1200 + Math.random() * 2800;
                 isIdling = true;
               }
             }
           } else {
-            // Off-island fallback: drift loosely into wide perimeter around player
-            const wanderA = (ai * 2.39996) + Math.sin(now * 0.0005 + ai) * 0.5;
+            const wanderA = ai * 2.39996 + Math.sin(now * 0.0005 + ai) * 0.5;
             const wanderR = 90 + (ai % 6) * 28;
             goalX = sim.playerX + Math.cos(wanderA) * wanderR;
             goalY = sim.playerY + Math.sin(wanderA) * wanderR;
@@ -2397,53 +2816,69 @@ export default function App() {
           if (!isIdling) {
             const dx = goalX - sol.x;
             const dy = goalY - sol.y;
-            const dGoal = Math.hypot(dx, dy);
-            if (dGoal > 7) {
+            const dGoalSq = dx * dx + dy * dy;
+            if (dGoalSq > 49) {
+              const dGoal = Math.sqrt(dGoalSq);
               sol.angle = lerpAngle(sol.angle, Math.atan2(dy, dx), Math.min(1, dt * 10));
               let nx = sol.x + (dx / dGoal) * moveSpd * dt;
               let ny = sol.y + (dy / dGoal) * moveSpd * dt;
               if (standingIsl) {
                 const idx = nx - standingIsl.centerX;
                 const idy = ny - standingIsl.centerY;
-                const ia = Math.atan2(idy, idx);
-                const maxR = getIslandRadiusAtAngle(standingIsl, ia) - 12;
-                if (Math.hypot(idx, idy) > maxR) {
-                  nx = standingIsl.centerX + Math.cos(ia) * maxR;
-                  ny = standingIsl.centerY + Math.sin(ia) * maxR;
+                const islDistSq = idx * idx + idy * idy;
+                if (islDistSq > innerSafeIslandSq) {
+                  const ia = Math.atan2(idy, idx);
+                  const maxR = getIslandRadiusAtAngle(standingIsl, ia) - 12;
+                  if (islDistSq > maxR * maxR) {
+                    nx = standingIsl.centerX + Math.cos(ia) * maxR;
+                    ny = standingIsl.centerY + Math.sin(ia) * maxR;
+                  }
                 }
               }
               sol.x = nx;
               sol.y = ny;
-              sol.walkPhase += dt * (huntTarget ? 11 : 7.5);
+              sol.walkPhase += dt * (activeTargetPos ? 11 : 7.5);
             } else if (nearestEnemy) {
               sol.angle = lerpAngle(
                 sol.angle,
                 Math.atan2(nearestEnemy.y - sol.y, nearestEnemy.x - sol.x),
                 Math.min(1, dt * 12)
               );
+            } else if (onlineLandTarget) {
+              sol.angle = lerpAngle(
+                sol.angle,
+                Math.atan2(onlineLandTarget.y - sol.y, onlineLandTarget.x - sol.x),
+                Math.min(1, dt * 12)
+              );
             }
           }
 
-          // O(1) neighborhood separation between allied soldiers via SpatialGrid
-          allyGrid.queryRadius(sol.x, sol.y, 20, allyQueryBuf);
-          for (let aj = 0; aj < allyQueryBuf.length; aj++) {
-            const other = allyQueryBuf[aj];
-            if (other === sol || other.hp <= 0) continue;
-            const sd = dist(sol.x, sol.y, other.x, other.y);
-            if (sd > 0.1 && sd < 19) {
-              const push = (19 - sd) * 0.34;
-              const pa = Math.atan2(sol.y - other.y, sol.x - other.x);
-              sol.x += Math.cos(pa) * push;
-              sol.y += Math.sin(pa) * push;
-              other.x -= Math.cos(pa) * push;
-              other.y -= Math.sin(pa) * push;
+          // Capped O(1) neighborhood separation via fine SpatialGrid (no atan2/cos/sin)
+          if ((ai + frameCounter) % budget.sepStride === 0) {
+            allySepGrid.queryRadiusCapped(sol.x, sol.y, 20, allyQueryBuf, budget.maxSepNeighbors);
+            for (let aj = 0; aj < allyQueryBuf.length; aj++) {
+              const other = allyQueryBuf[aj];
+              if (other === sol || other.hp <= 0) continue;
+              const sdx = sol.x - other.x;
+              const sdy = sol.y - other.y;
+              const sdSq = sdx * sdx + sdy * sdy;
+              if (sdSq > 0.04 && sdSq < 361) {
+                const sd = Math.sqrt(sdSq);
+                const push = ((19 - sd) * 0.34) / sd;
+                const px = sdx * push;
+                const py = sdy * push;
+                sol.x += px;
+                sol.y += py;
+                other.x -= px;
+                other.y -= py;
+              }
             }
           }
 
           // Soldier Attack Execution
-          if (nearestEnemy && now - sol.lastAttackTime >= spec.cooldownMs) {
+          if (nearestEnemy && nearestEnemy.hp > 0 && now - sol.lastAttackTime >= spec.cooldownMs) {
             const targetE = nearestEnemy;
-            const dE = dist(sol.x, sol.y, targetE.x, targetE.y);
+            const dE = nearestEnemyDist;
             if (!isRangedSoldier && dE <= spec.range + 6) {
               sol.lastAttackTime = now;
               sol.attackSwingTime = now;
@@ -2455,13 +2890,17 @@ export default function App() {
                 sim.lastSoldierSfxTime = now;
                 soundEngine.playSwordSlash();
               }
-              spawnParticles(targetE.x, targetE.y, 5, '#F8FAFC', 'SPARK', 80, 2.5, true);
+              spawnParticles(targetE.x, targetE.y, 4, '#F8FAFC', 'SPARK', 80, 2.5, true);
               addFloatingText(targetE.x, targetE.y - 18, `-${effectiveDmg}`, '#6EE7B7', false);
               if (targetE.hp <= 0) {
-                const realIdx = sim.islandEnemies.indexOf(targetE);
-                if (realIdx >= 0) defeatIslandEnemy(targetE, realIdx);
+                recordEnemyDefeat(targetE, now);
+                sol.cachedTarget = null;
               }
-            } else if (isRangedSoldier && dE <= spec.range) {
+            } else if (
+              isRangedSoldier &&
+              dE <= spec.range &&
+              sim.landProjectiles.length < budget.maxLandProjectiles
+            ) {
               sol.lastAttackTime = now;
               const shotA = Math.atan2(targetE.y - sol.y, targetE.x - sol.x);
               const isGrenadier = sol.type === 'GRENADIER';
@@ -2483,11 +2922,53 @@ export default function App() {
                 soundEngine.playPistolShot();
               }
             }
+          } else if (
+            onlineLandTarget &&
+            now - sol.lastAttackTime >= spec.cooldownMs
+          ) {
+            if (!isRangedSoldier && onlineLandDist <= spec.range + 10) {
+              sol.lastAttackTime = now;
+              sol.attackSwingTime = now;
+              if (now - sim.lastSoldierSfxTime > 95) {
+                sim.lastSoldierSfxTime = now;
+                soundEngine.playSwordSlash();
+              }
+              spawnParticles(onlineLandTarget.x, onlineLandTarget.y, 4, '#F8FAFC', 'SPARK', 80, 2.5, true);
+              onlineManagerRef.current?.submitLocalCommand({
+                type: 'cmd:pvp_army_hit',
+                targetPlayerId: onlineLandTarget.playerId,
+                targetUnitKind: onlineLandTarget.unitKind,
+                targetUnitId: onlineLandTarget.unitId,
+                damage: effectiveDmg,
+                x: onlineLandTarget.x,
+                y: onlineLandTarget.y,
+              });
+            } else if (isRangedSoldier && onlineLandDist <= spec.range) {
+              sol.lastAttackTime = now;
+              const shotA = Math.atan2(onlineLandTarget.y - sol.y, onlineLandTarget.x - sol.x);
+              const isGrenadier = sol.type === 'GRENADIER';
+              onlineManagerRef.current?.submitLocalCommand({
+                type: 'cmd:land_attack',
+                x: sol.x,
+                y: sol.y,
+                angle: shotA,
+                weaponId: null,
+                damage: effectiveDmg,
+                range: spec.range,
+                isRanged: true,
+                splashRadius: isGrenadier ? 54 : undefined,
+                projColor: isGrenadier ? '#FB923C' : currentSave.kingdom.bannerColor || '#10B981',
+              });
+              if (now - sim.lastSoldierSfxTime > 95) {
+                sim.lastSoldierSfxTime = now;
+                soundEngine.playPistolShot();
+              }
+            }
           }
         }
       }
 
-      // Land Projectiles Update (SpatialGrid accelerated collisions)
+      // Land Projectiles Update (SpatialGrid accelerated + swap-and-pop removal)
       if (isPlaying) {
         for (let i = sim.landProjectiles.length - 1; i >= 0; i--) {
           const lp = sim.landProjectiles[i];
@@ -2497,27 +2978,33 @@ export default function App() {
 
           let hit = false;
           if (lp.owner === 'PLAYER') {
-            enemyGrid.queryRadius(lp.x, lp.y, 24, enemyQueryBuf);
+            enemyCombatGrid.queryRadius(lp.x, lp.y, 24, enemyQueryBuf);
+            const hitR = lp.splashRadius ? 20 : 16;
+            const hitRSq = hitR * hitR;
             for (let ei = 0; ei < enemyQueryBuf.length; ei++) {
               const ie = enemyQueryBuf[ei];
               if (ie.hp <= 0) continue;
-              if (dist(lp.x, lp.y, ie.x, ie.y) <= (lp.splashRadius ? 20 : 16)) {
+              const hdx = lp.x - ie.x;
+              const hdy = lp.y - ie.y;
+              if (hdx * hdx + hdy * hdy <= hitRSq) {
                 if (lp.splashRadius) {
                   const blastR = lp.splashRadius;
+                  const blastRSq = blastR * blastR;
                   const splashDmg = Math.round(lp.damage * 0.78);
                   if (now - sim.lastSoldierSfxTime > 95) {
                     sim.lastSoldierSfxTime = now;
                     soundEngine.playCannonHit();
                   }
                   sim.screenShake = Math.max(sim.screenShake, 2.2);
-                  spawnParticles(lp.x, lp.y, 12, '#FB923C', 'MUZZLE', 120, 4.4, true);
-                  spawnParticles(lp.x, lp.y, 7, '#475569', 'SMOKE', 65, 5.2, true);
-                  enemyGrid.queryRadius(lp.x, lp.y, blastR, enemyQueryBuf);
+                  spawnParticles(lp.x, lp.y, 9, '#FB923C', 'MUZZLE', 120, 4.4, true);
+                  spawnParticles(lp.x, lp.y, 5, '#475569', 'SMOKE', 65, 5.2, true);
+                  enemyCombatGrid.queryRadius(lp.x, lp.y, blastR, enemyQueryBuf);
                   for (let si = 0; si < enemyQueryBuf.length; si++) {
                     const target = enemyQueryBuf[si];
                     if (target.hp <= 0) continue;
-                    const sd = dist(lp.x, lp.y, target.x, target.y);
-                    if (sd <= blastR) {
+                    const sdx = lp.x - target.x;
+                    const sdy = lp.y - target.y;
+                    if (sdx * sdx + sdy * sdy <= blastRSq) {
                       const dealt = target === ie ? lp.damage : splashDmg;
                       target.hp -= dealt;
                       target.hitFlashTime = now;
@@ -2525,8 +3012,7 @@ export default function App() {
                       ensureWarWithFaction(target.factionId);
                       addFloatingText(target.x, target.y - 20, `-${dealt}`, '#FB923C', false);
                       if (target.hp <= 0) {
-                        const realIdx = sim.islandEnemies.indexOf(target);
-                        if (realIdx >= 0) defeatIslandEnemy(target, realIdx);
+                        recordEnemyDefeat(target, now);
                       }
                     }
                   }
@@ -2539,11 +3025,10 @@ export default function App() {
                     sim.lastSoldierSfxTime = now;
                     soundEngine.playCannonHit();
                   }
-                  spawnParticles(ie.x, ie.y, 6, '#FDE047', 'SPARK', 90, 2.8, true);
+                  spawnParticles(ie.x, ie.y, 5, '#FDE047', 'SPARK', 90, 2.8, true);
                   addFloatingText(ie.x, ie.y - 20, `-${lp.damage}`, '#FDE047', false);
                   if (ie.hp <= 0) {
-                    const realIdx = sim.islandEnemies.indexOf(ie);
-                    if (realIdx >= 0) defeatIslandEnemy(ie, realIdx);
+                    recordEnemyDefeat(ie, now);
                   }
                 }
                 hit = true;
@@ -2551,7 +3036,9 @@ export default function App() {
               }
             }
           } else if (!sim.isSailing) {
-            if (dist(lp.x, lp.y, sim.playerX, sim.playerY) <= 14) {
+            const pdx = lp.x - sim.playerX;
+            const pdy = lp.y - sim.playerY;
+            if (pdx * pdx + pdy * pdy <= 196) {
               sim.playerHp = Math.max(0, sim.playerHp - lp.damage);
               sim.playerHitFlashUntil = now + 150;
               sim.screenShake = Math.max(sim.screenShake, 2.8);
@@ -2562,11 +3049,13 @@ export default function App() {
               addFloatingText(sim.playerX, sim.playerY - 22, `-${lp.damage}`, '#F87171', false);
               hit = true;
             } else {
-              allyGrid.queryRadius(lp.x, lp.y, 20, allyQueryBuf);
+              allyCombatGrid.queryRadius(lp.x, lp.y, 20, allyQueryBuf);
               for (let ai = 0; ai < allyQueryBuf.length; ai++) {
                 const ally = allyQueryBuf[ai];
                 if (ally.hp <= 0) continue;
-                if (dist(lp.x, lp.y, ally.x, ally.y) <= 13) {
+                const adx = lp.x - ally.x;
+                const ady = lp.y - ally.y;
+                if (adx * adx + ady * ady <= 169) {
                   ally.hp -= lp.damage;
                   ally.hitFlashTime = now;
                   if (now - sim.lastSoldierSfxTime > 95) {
@@ -2575,17 +3064,8 @@ export default function App() {
                   }
                   addFloatingText(ally.x, ally.y - 18, `-${lp.damage}`, '#FCA5A5', false);
                   if (ally.hp <= 0) {
-                    const fallenId = ally.id;
-                    const realAllyIdx = sim.allySoldiers.indexOf(ally);
-                    if (realAllyIdx >= 0) sim.allySoldiers.splice(realAllyIdx, 1);
+                    pendingSyncRef.current.rosterDirty = true;
                     addFloatingText(ally.x, ally.y - 24, 'Asker Düştü!', '#F87171', false);
-                    commitSave((prev) => ({
-                      ...prev,
-                      kingdom: {
-                        ...prev.kingdom,
-                        soldiers: prev.kingdom.soldiers.filter((s) => s.id !== fallenId),
-                      },
-                    }));
                   }
                   hit = true;
                   break;
@@ -2596,29 +3076,51 @@ export default function App() {
 
           if (!hit && lp.life <= 0 && lp.splashRadius && lp.owner === 'PLAYER') {
             const blastR = lp.splashRadius;
+            const blastRSq = blastR * blastR;
             const splashDmg = Math.round(lp.damage * 0.78);
-            spawnParticles(lp.x, lp.y, 10, '#FB923C', 'MUZZLE', 110, 4.0, true);
-            enemyGrid.queryRadius(lp.x, lp.y, blastR, enemyQueryBuf);
+            spawnParticles(lp.x, lp.y, 8, '#FB923C', 'MUZZLE', 110, 4.0, true);
+            enemyCombatGrid.queryRadius(lp.x, lp.y, blastR, enemyQueryBuf);
             for (let si = 0; si < enemyQueryBuf.length; si++) {
               const target = enemyQueryBuf[si];
               if (target.hp <= 0) continue;
-              if (dist(lp.x, lp.y, target.x, target.y) <= blastR) {
+              const sdx = lp.x - target.x;
+              const sdy = lp.y - target.y;
+              if (sdx * sdx + sdy * sdy <= blastRSq) {
                 target.hp -= splashDmg;
                 target.hitFlashTime = now;
                 target.alerted = true;
                 ensureWarWithFaction(target.factionId);
                 addFloatingText(target.x, target.y - 20, `-${splashDmg}`, '#FB923C', false);
                 if (target.hp <= 0) {
-                  const realIdx = sim.islandEnemies.indexOf(target);
-                  if (realIdx >= 0) defeatIslandEnemy(target, realIdx);
+                  recordEnemyDefeat(target, now);
                 }
               }
             }
           }
 
           if (hit || lp.life <= 0) {
-            sim.landProjectiles.splice(i, 1);
+            sim.landProjectiles[i] = sim.landProjectiles[sim.landProjectiles.length - 1];
+            sim.landProjectiles.pop();
           }
+        }
+      }
+
+      // Single O(N) swap-and-pop compaction pass for defeated land enemies & fallen soldiers
+      for (let ei = sim.islandEnemies.length - 1; ei >= 0; ei--) {
+        if (sim.islandEnemies[ei].hp <= 0) {
+          const dead = sim.islandEnemies[ei];
+          if (sim.particles.length < budget.maxParticles) {
+            spawnParticles(dead.x, dead.y, 6, dead.squadColor, 'SPARK', 90, 3, true);
+          }
+          sim.islandEnemies[ei] = sim.islandEnemies[sim.islandEnemies.length - 1];
+          sim.islandEnemies.pop();
+        }
+      }
+      for (let ai = sim.allySoldiers.length - 1; ai >= 0; ai--) {
+        if (sim.allySoldiers[ai].hp <= 0) {
+          sim.allySoldiers[ai] = sim.allySoldiers[sim.allySoldiers.length - 1];
+          sim.allySoldiers.pop();
+          pendingSyncRef.current.rosterDirty = true;
         }
       }
 
@@ -2768,7 +3270,7 @@ export default function App() {
         }
       }
 
-      // Autonomous & Independent Allied Escort Warships AI (free patrolling & hunting, never a stiff V-tail!)
+      // Autonomous & Independent Allied Escort Warships AI (SpatialGrid accelerated, zero O(N^2))
       if (isPlaying && sim.allyShips.length > 0) {
         const pickOpenSeaPatrolPoint = (): Vec2 => {
           for (let attempt = 0; attempt < 8; attempt++) {
@@ -2784,7 +3286,9 @@ export default function App() {
           return { x: sim.boatX + Math.cos(fa) * 380, y: sim.boatY + Math.sin(fa) * 380 };
         };
 
-        for (const allyShip of sim.allyShips) {
+        for (let asi = 0; asi < sim.allyShips.length; asi++) {
+          const allyShip = sim.allyShips[asi];
+          if (allyShip.hp <= 0) continue;
           if (allyShip.cruiseSpeedMult === undefined) {
             allyShip.cruiseSpeedMult = 0.85 + Math.random() * 0.28;
           }
@@ -2792,17 +3296,74 @@ export default function App() {
             allyShip.orbitSign = allyShip.slotIndex % 2 === 0 ? 1 : -1;
           }
 
-          let targetEnemy: EnemyShip | null = null;
-          let targetEnemyDist = 940;
-          for (const enemy of sim.enemies) {
-            const hostile =
-              currentSave.kingdom.atWarWith.includes(enemy.factionId) ||
-              enemy.factionId === 'CORSAIR';
-            if (!hostile) continue;
-            const d = dist(allyShip.x, allyShip.y, enemy.x, enemy.y);
-            if (d < targetEnemyDist) {
-              targetEnemyDist = d;
-              targetEnemy = enemy;
+          let targetEnemy: EnemyShip | null =
+            allyShip.cachedTarget && allyShip.cachedTarget.hp > 0 ? allyShip.cachedTarget : null;
+          let targetEnemyDist = Infinity;
+          if (targetEnemy) {
+            const edx = targetEnemy.x - allyShip.x;
+            const edy = targetEnemy.y - allyShip.y;
+            const dSq = edx * edx + edy * edy;
+            if (dSq <= 960 * 960) {
+              targetEnemyDist = Math.sqrt(dSq);
+            } else {
+              targetEnemy = null;
+            }
+          }
+
+          if (!targetEnemy || now >= (allyShip.aiNextScanTime ?? 0)) {
+            allyShip.aiNextScanTime = now + budget.aiScanIntervalMs + (asi % 5) * 25;
+            if (sim.enemies.length > 0) {
+              const res = enemyShipGrid.queryNearest(
+                allyShip.x,
+                allyShip.y,
+                940,
+                (enemy) =>
+                  enemy.hp > 0 &&
+                  (currentSave.kingdom.atWarWith.includes(enemy.factionId) ||
+                    enemy.factionId === 'CORSAIR')
+              );
+              if (res.item) {
+                targetEnemy = res.item;
+                targetEnemyDist = Math.sqrt(res.distSq);
+              } else {
+                targetEnemy = null;
+              }
+            } else {
+              targetEnemy = null;
+            }
+            allyShip.cachedTarget = targetEnemy;
+          }
+
+          let onlineSeaTarget: { x: number; y: number } | null = null;
+          let onlineSeaDist = Infinity;
+          if (!targetEnemy && onlineActiveRef.current && onlineAtWarSetRef.current.size > 0) {
+            let bestShipSq = 940 * 940;
+            for (const rp of remotePlayersRef.current.values()) {
+              if (!rp.connected || !onlineAtWarSetRef.current.has(rp.id)) continue;
+              if (rp.isSailing) {
+                const bdx = rp.boatX - allyShip.x;
+                const bdy = rp.boatY - allyShip.y;
+                const bdSq = bdx * bdx + bdy * bdy;
+                if (bdSq < bestShipSq) {
+                  bestShipSq = bdSq;
+                  onlineSeaTarget = { x: rp.boatX, y: rp.boatY };
+                }
+              }
+              if (rp.ships) {
+                for (let shi = 0; shi < rp.ships.length; shi++) {
+                  const sh = rp.ships[shi];
+                  const sdx = sh.x - allyShip.x;
+                  const sdy = sh.y - allyShip.y;
+                  const sdSq = sdx * sdx + sdy * sdy;
+                  if (sdSq < bestShipSq) {
+                    bestShipSq = sdSq;
+                    onlineSeaTarget = { x: sh.x, y: sh.y };
+                  }
+                }
+              }
+            }
+            if (onlineSeaTarget) {
+              onlineSeaDist = Math.sqrt(bestShipSq);
             }
           }
 
@@ -2810,27 +3371,29 @@ export default function App() {
           let desiredAngle = allyShip.angle;
           let moveSpd = ESCORT_SHIP_STATS.speed * allyShip.cruiseSpeedMult;
 
-          if (targetEnemy) {
-            // Engage hostile ship independently with individualized broadside orbit
-            const aToEnemy = Math.atan2(targetEnemy.y - allyShip.y, targetEnemy.x - allyShip.x);
+          const activeSeaTarget: Vec2 | null = targetEnemy
+            ? { x: targetEnemy.x, y: targetEnemy.y }
+            : onlineSeaTarget;
+          const activeSeaDist = targetEnemy ? targetEnemyDist : onlineSeaDist;
+
+          if (activeSeaTarget) {
+            const aToEnemy = Math.atan2(activeSeaTarget.y - allyShip.y, activeSeaTarget.x - allyShip.x);
             const idealRange = 185 + (allyShip.slotIndex % 3) * 36;
             const radial =
-              targetEnemyDist > idealRange + 45
+              activeSeaDist > idealRange + 45
                 ? -0.48
-                : targetEnemyDist < idealRange - 45
+                : activeSeaDist < idealRange - 45
                 ? 0.48
                 : 0;
             desiredAngle = aToEnemy + allyShip.orbitSign * (Math.PI / 2 + radial);
             moveSpd = ESCORT_SHIP_STATS.speed * (0.94 + (allyShip.slotIndex % 3) * 0.05);
           } else if (dToPlayerBoat > 1350) {
-            // Catch up loosely to the general sea theater around the player (not behind the stern)
             const scatterA =
               Math.atan2(sim.boatY - allyShip.y, sim.boatX - allyShip.x) +
               allyShip.orbitSign * 0.35;
             desiredAngle = scatterA;
             moveSpd = ESCORT_SHIP_STATS.speed * 1.1;
           } else {
-            // Independent free-roaming patrol across surrounding waters
             if (
               !allyShip.patrolTarget ||
               !allyShip.nextDecisionTime ||
@@ -2847,23 +3410,34 @@ export default function App() {
             moveSpd = ESCORT_SHIP_STATS.speed * 0.68 * allyShip.cruiseSpeedMult;
           }
 
-          // Smooth ship-to-ship & player-boat collision avoidance steering
+          // SpatialGrid-bounded ship-to-ship & player-boat collision avoidance
           let repelX = 0;
           let repelY = 0;
           if (sim.isSailing && dToPlayerBoat < 115 && dToPlayerBoat > 1) {
-            const awayA = Math.atan2(allyShip.y - sim.boatY, allyShip.x - sim.boatX);
-            const w = (115 - dToPlayerBoat) / 115;
-            repelX += Math.cos(awayA) * w;
-            repelY += Math.sin(awayA) * w;
+            const w = (115 - dToPlayerBoat) / (115 * dToPlayerBoat);
+            repelX += (allyShip.x - sim.boatX) * w;
+            repelY += (allyShip.y - sim.boatY) * w;
           }
-          for (const otherAlly of sim.allyShips) {
-            if (otherAlly === allyShip) continue;
-            const dOther = dist(allyShip.x, allyShip.y, otherAlly.x, otherAlly.y);
-            if (dOther < 95 && dOther > 1) {
-              const awayA = Math.atan2(allyShip.y - otherAlly.y, allyShip.x - otherAlly.x);
-              const w = (95 - dOther) / 95;
-              repelX += Math.cos(awayA) * w;
-              repelY += Math.sin(awayA) * w;
+          if ((asi + frameCounter) % budget.sepStride === 0) {
+            allyShipGrid.queryRadiusCapped(
+              allyShip.x,
+              allyShip.y,
+              95,
+              allyShipQueryBuf,
+              budget.maxSepNeighbors + 2
+            );
+            for (let oj = 0; oj < allyShipQueryBuf.length; oj++) {
+              const otherAlly = allyShipQueryBuf[oj];
+              if (otherAlly === allyShip) continue;
+              const sdx = allyShip.x - otherAlly.x;
+              const sdy = allyShip.y - otherAlly.y;
+              const dSq = sdx * sdx + sdy * sdy;
+              if (dSq > 1 && dSq < 9025) {
+                const dOther = Math.sqrt(dSq);
+                const w = (95 - dOther) / (95 * dOther);
+                repelX += sdx * w;
+                repelY += sdy * w;
+              }
             }
           }
           if (repelX !== 0 || repelY !== 0) {
@@ -2876,16 +3450,18 @@ export default function App() {
           let nx = allyShip.x + Math.cos(allyShip.angle) * moveSpd * dt;
           let ny = allyShip.y + Math.sin(allyShip.angle) * moveSpd * dt;
 
-          for (const isl of visibleIslands) {
+          for (let ii = 0; ii < visibleIslands.length; ii++) {
+            const isl = visibleIslands[ii];
             const dx = nx - isl.centerX;
             const dy = ny - isl.centerY;
+            const boundR = isl.maxRadius + 38;
+            if (dx * dx + dy * dy >= boundR * boundR) continue;
             const d = Math.hypot(dx, dy);
             const coastAngle = Math.atan2(dy, dx);
             const minR = getIslandRadiusAtAngle(isl, coastAngle) + 36;
             if (d < minR && d > 0.01) {
               nx = isl.centerX + Math.cos(coastAngle) * minR;
               ny = isl.centerY + Math.sin(coastAngle) * minR;
-              // Steer tangentially around the island coast instead of getting stuck
               allyShip.angle = lerpAngle(
                 allyShip.angle,
                 coastAngle + allyShip.orbitSign * (Math.PI / 2),
@@ -2897,7 +3473,10 @@ export default function App() {
           allyShip.x = nx;
           allyShip.y = ny;
 
-          if (Math.random() < dt * 9) {
+          if (
+            sim.particles.length < budget.maxParticles &&
+            Math.random() < dt * 9 * budget.wakeSpawnScale
+          ) {
             sim.particles.push({
               x: allyShip.x - Math.cos(allyShip.angle) * 20,
               y: allyShip.y - Math.sin(allyShip.angle) * 20,
@@ -2913,35 +3492,52 @@ export default function App() {
           }
 
           if (
-            targetEnemy &&
-            targetEnemyDist < 400 &&
+            activeSeaTarget &&
+            activeSeaDist < 400 &&
             now - allyShip.lastFireTime >= ESCORT_SHIP_STATS.cooldownMs
           ) {
             const fX = Math.cos(allyShip.angle);
             const fY = Math.sin(allyShip.angle);
-            const toEX = (targetEnemy.x - allyShip.x) / Math.max(1, targetEnemyDist);
-            const toEY = (targetEnemy.y - allyShip.y) / Math.max(1, targetEnemyDist);
+            const toEX = (activeSeaTarget.x - allyShip.x) / Math.max(1, activeSeaDist);
+            const toEY = (activeSeaTarget.y - allyShip.y) / Math.max(1, activeSeaDist);
             if (Math.abs(fX * toEX + fY * toEY) < 0.64) {
               allyShip.lastFireTime = now;
-              const side: 1 | -1 = fX * toEY - fY * toEX >= 0 ? 1 : -1;
-              fireBroadside(
-                'PLAYER',
-                allyShip.x,
-                allyShip.y,
-                allyShip.angle,
-                2,
-                ESCORT_SHIP_STATS.damage,
-                [side],
-                1.05
-              );
+              if (onlineActiveRef.current) {
+                if (now - sim.lastCannonSfxTime > 95) {
+                  sim.lastCannonSfxTime = now;
+                  soundEngine.playCannonFire(true);
+                }
+                onlineManagerRef.current?.submitLocalCommand({
+                  type: 'cmd:fire_cannon',
+                  x: allyShip.x,
+                  y: allyShip.y,
+                  angle: allyShip.angle,
+                  cannonCount: 2,
+                  damage: ESCORT_SHIP_STATS.damage,
+                });
+              } else {
+                const side: 1 | -1 = fX * toEY - fY * toEX >= 0 ? 1 : -1;
+                fireBroadside(
+                  'PLAYER',
+                  allyShip.x,
+                  allyShip.y,
+                  allyShip.angle,
+                  2,
+                  ESCORT_SHIP_STATS.damage,
+                  [side],
+                  1.05
+                );
+              }
             }
           }
         }
       }
 
-      // Enemy Ship Broadside AI (fights BOTH rival nations at sea and hostile player fleets!)
+      // Enemy Ship Broadside AI (SpatialGrid accelerated targeting + fast island bounds)
       if (isPlaying) {
-        for (const enemy of sim.enemies) {
+        for (let ei = 0; ei < sim.enemies.length; ei++) {
+          const enemy = sim.enemies[ei];
+          if (enemy.hp <= 0) continue;
           const shipSpec = getEnemyShipSpec(enemy.tier);
           const atWarWithPlayer =
             currentSave.kingdom.atWarWith.includes(enemy.factionId) ||
@@ -2958,24 +3554,36 @@ export default function App() {
               targetX = sim.boatX;
               targetY = sim.boatY;
             }
-            for (const allyShip of sim.allyShips) {
-              const dAlly = dist(enemy.x, enemy.y, allyShip.x, allyShip.y);
-              if (dAlly < 640 && dAlly < targetDist) {
-                targetDist = dAlly;
-                targetX = allyShip.x;
-                targetY = allyShip.y;
+            if (sim.allyShips.length > 0) {
+              const nearestAlly = allyShipGrid.queryNearest(
+                enemy.x,
+                enemy.y,
+                640,
+                (a) => a.hp > 0
+              );
+              if (nearestAlly.item) {
+                const dAlly = Math.sqrt(nearestAlly.distSq);
+                if (dAlly < targetDist) {
+                  targetDist = dAlly;
+                  targetX = nearestAlly.item.x;
+                  targetY = nearestAlly.item.y;
+                }
               }
             }
           }
 
-          // Check rival enemy nation warships on the ocean!
-          for (const other of sim.enemies) {
-            if (other.id === enemy.id || other.factionId === enemy.factionId) continue;
-            const dOther = dist(enemy.x, enemy.y, other.x, other.y);
-            if (dOther < 700 && dOther < targetDist) {
+          const nearestRivalShip = enemyShipGrid.queryNearest(
+            enemy.x,
+            enemy.y,
+            700,
+            (other) => other !== enemy && other.hp > 0 && other.factionId !== enemy.factionId
+          );
+          if (nearestRivalShip.item) {
+            const dOther = Math.sqrt(nearestRivalShip.distSq);
+            if (dOther < targetDist) {
               targetDist = dOther;
-              targetX = other.x;
-              targetY = other.y;
+              targetX = nearestRivalShip.item.x;
+              targetY = nearestRivalShip.item.y;
             }
           }
 
@@ -2992,11 +3600,15 @@ export default function App() {
           let nx = enemy.x + Math.cos(enemy.angle) * enemy.speed * dt;
           let ny = enemy.y + Math.sin(enemy.angle) * enemy.speed * dt;
 
-          for (const isl of visibleIslands) {
+          const extraR = 34 * shipSpec.scale;
+          for (let ii = 0; ii < visibleIslands.length; ii++) {
+            const isl = visibleIslands[ii];
             const dx = nx - isl.centerX;
             const dy = ny - isl.centerY;
+            const boundR = isl.maxRadius + extraR + 4;
+            if (dx * dx + dy * dy >= boundR * boundR) continue;
             const d = Math.hypot(dx, dy);
-            const minR = getIslandRadiusAtAngle(isl, Math.atan2(dy, dx)) + 34 * shipSpec.scale;
+            const minR = getIslandRadiusAtAngle(isl, Math.atan2(dy, dx)) + extraR;
             if (d < minR) {
               const pushA = Math.atan2(dy, dx);
               nx = isl.centerX + Math.cos(pushA) * minR;
@@ -3007,7 +3619,10 @@ export default function App() {
           enemy.x = nx;
           enemy.y = ny;
 
-          if (Math.random() < dt * 10) {
+          if (
+            sim.particles.length < budget.maxParticles &&
+            Math.random() < dt * 10 * budget.wakeSpawnScale
+          ) {
             sim.particles.push({
               x: enemy.x - Math.cos(enemy.angle) * 24 * shipSpec.scale,
               y: enemy.y - Math.sin(enemy.angle) * 24 * shipSpec.scale,
@@ -3048,8 +3663,9 @@ export default function App() {
         }
       }
 
-      // Cannonballs Ballistics
+      // Cannonballs Ballistics (SpatialGrid + swap-and-pop)
       if (isPlaying) {
+        let playerPulledToDock = false;
         for (let i = sim.cannonballs.length - 1; i >= 0; i--) {
           const cb = sim.cannonballs[i];
           cb.x += cb.vx * dt;
@@ -3058,7 +3674,10 @@ export default function App() {
           cb.vz -= 135 * dt;
           cb.life -= dt;
 
-          if (Math.random() < dt * 22) {
+          if (
+            sim.particles.length < budget.maxParticles &&
+            Math.random() < dt * 22 * budget.wakeSpawnScale
+          ) {
             sim.particles.push({
               x: cb.x,
               y: cb.y,
@@ -3078,71 +3697,78 @@ export default function App() {
           let removed = false;
 
           if (cb.owner === 'PLAYER') {
-            for (let ei = sim.enemies.length - 1; ei >= 0; ei--) {
-              const enemy = sim.enemies[ei];
+            enemyShipGrid.queryRadius(cb.x, cb.y, 42, enemyShipQueryBuf);
+            for (let ei = 0; ei < enemyShipQueryBuf.length; ei++) {
+              const enemy = enemyShipQueryBuf[ei];
+              if (enemy.hp <= 0) continue;
               const hitR = enemy.tier === 3 ? 36 : enemy.tier === 2 ? 30 : 25;
-              if (dist(cb.x, cb.y, enemy.x, enemy.y) <= hitR) {
+              const dx = cb.x - enemy.x;
+              const dy = cb.y - enemy.y;
+              if (dx * dx + dy * dy <= hitR * hitR) {
                 ensureWarWithFaction(enemy.factionId);
                 enemy.hp -= cb.damage;
                 enemy.hitFlashTime = now;
                 sim.screenShake = Math.max(sim.screenShake, 3);
                 soundEngine.playCannonHit();
-                spawnParticles(cb.x, cb.y, 10, '#92400E', 'SPLINTER', 120, 3.6, true);
-                spawnParticles(cb.x, cb.y, 6, '#F97316', 'MUZZLE', 90, 4.2, true);
-                addFloatingText(enemy.x, enemy.y - 26, `-${cb.damage}`, '#FCA5A5');
+                spawnParticles(cb.x, cb.y, 8, '#92400E', 'SPLINTER', 120, 3.6, true);
+                spawnParticles(cb.x, cb.y, 5, '#F97316', 'MUZZLE', 90, 4.2, true);
+                addFloatingText(enemy.x, enemy.y - 26, `-${cb.damage}`, '#FCA5A5', false);
 
                 if (enemy.hp <= 0) {
                   soundEngine.playEnemySunk();
-                  spawnParticles(enemy.x, enemy.y, 24, '#78350F', 'SPLINTER', 150, 4.5, true);
-                  spawnParticles(enemy.x, enemy.y, 16, '#FBBF24', 'GOLD', 130, 4.0, true);
-                  sim.floatingLoot.push({
-                    id: `loot_${Date.now()}_${Math.random()}`,
-                    x: enemy.x,
-                    y: enemy.y,
-                    goldValue: enemy.goldBounty,
-                    bobOffset: Math.random() * Math.PI * 2,
-                    life: 45,
-                  });
+                  spawnParticles(enemy.x, enemy.y, 18, '#78350F', 'SPLINTER', 150, 4.5, true);
+                  spawnParticles(enemy.x, enemy.y, 12, '#FBBF24', 'GOLD', 130, 4.0, true);
+                  if (sim.floatingLoot.length < 75) {
+                    sim.floatingLoot.push({
+                      id: `loot_${Date.now()}_${Math.random()}`,
+                      x: enemy.x,
+                      y: enemy.y,
+                      goldValue: enemy.goldBounty,
+                      bobOffset: Math.random() * Math.PI * 2,
+                      life: 45,
+                    });
+                  }
                   addFloatingText(enemy.x, enemy.y - 36, `${enemy.name} Batırıldı!`, '#FDE047');
-                  sim.enemies.splice(ei, 1);
-                  commitSave((prev) => ({
-                    ...prev,
-                    enemiesSunkCount: prev.enemiesSunkCount + 1,
-                  }));
+                  pendingSyncRef.current.seaKills += 1;
                 }
 
-                sim.cannonballs.splice(i, 1);
+                sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+                sim.cannonballs.pop();
                 removed = true;
                 break;
               }
             }
           } else {
-            // Rival-nation cannonball: first check if it hits a competing nation's ship!
             let hitOtherShip = false;
-            for (let ei = sim.enemies.length - 1; ei >= 0; ei--) {
-              const otherShip = sim.enemies[ei];
-              if (otherShip.factionId === cb.owner) continue;
+            enemyShipGrid.queryRadius(cb.x, cb.y, 42, enemyShipQueryBuf);
+            for (let ei = 0; ei < enemyShipQueryBuf.length; ei++) {
+              const otherShip = enemyShipQueryBuf[ei];
+              if (otherShip.hp <= 0 || otherShip.factionId === cb.owner) continue;
               const hitR = otherShip.tier === 3 ? 35 : otherShip.tier === 2 ? 29 : 24;
-              if (dist(cb.x, cb.y, otherShip.x, otherShip.y) <= hitR) {
+              const dx = cb.x - otherShip.x;
+              const dy = cb.y - otherShip.y;
+              if (dx * dx + dy * dy <= hitR * hitR) {
                 otherShip.hp -= cb.damage;
                 otherShip.hitFlashTime = now;
                 soundEngine.playCannonHit();
-                spawnParticles(cb.x, cb.y, 8, '#92400E', 'SPLINTER', 110, 3.3, true);
+                spawnParticles(cb.x, cb.y, 6, '#92400E', 'SPLINTER', 110, 3.3, true);
                 if (otherShip.hp <= 0) {
                   soundEngine.playEnemySunk();
-                  spawnParticles(otherShip.x, otherShip.y, 20, '#78350F', 'SPLINTER', 140, 4.2, true);
-                  sim.floatingLoot.push({
-                    id: `loot_${Date.now()}_${Math.random()}`,
-                    x: otherShip.x,
-                    y: otherShip.y,
-                    goldValue: Math.round(otherShip.goldBounty * 0.75),
-                    bobOffset: Math.random() * Math.PI * 2,
-                    life: 45,
-                  });
+                  spawnParticles(otherShip.x, otherShip.y, 14, '#78350F', 'SPLINTER', 140, 4.2, true);
+                  if (sim.floatingLoot.length < 75) {
+                    sim.floatingLoot.push({
+                      id: `loot_${Date.now()}_${Math.random()}`,
+                      x: otherShip.x,
+                      y: otherShip.y,
+                      goldValue: Math.round(otherShip.goldBounty * 0.75),
+                      bobOffset: Math.random() * Math.PI * 2,
+                      life: 45,
+                    });
+                  }
                   addFloatingText(otherShip.x, otherShip.y - 30, `${otherShip.name} Batırıldı!`, '#FDE047');
-                  sim.enemies.splice(ei, 1);
                 }
-                sim.cannonballs.splice(i, 1);
+                sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+                sim.cannonballs.pop();
                 removed = true;
                 hitOtherShip = true;
                 break;
@@ -3150,29 +3776,27 @@ export default function App() {
             }
 
             let hitEscort = false;
-            if (!hitOtherShip) {
-              for (let ai = sim.allyShips.length - 1; ai >= 0; ai--) {
-                const allyShip = sim.allyShips[ai];
-                if (dist(cb.x, cb.y, allyShip.x, allyShip.y) <= 23) {
+            if (!hitOtherShip && sim.allyShips.length > 0) {
+              allyShipGrid.queryRadius(cb.x, cb.y, 32, allyShipQueryBuf);
+              for (let ai = 0; ai < allyShipQueryBuf.length; ai++) {
+                const allyShip = allyShipQueryBuf[ai];
+                if (allyShip.hp <= 0) continue;
+                const dx = cb.x - allyShip.x;
+                const dy = cb.y - allyShip.y;
+                if (dx * dx + dy * dy <= 529) {
                   allyShip.hp -= cb.damage;
                   allyShip.hitFlashTime = now;
                   soundEngine.playCannonHit();
-                  spawnParticles(cb.x, cb.y, 8, '#B45309', 'SPLINTER', 100, 3.2, true);
-                  addFloatingText(allyShip.x, allyShip.y - 22, `-${cb.damage}`, '#FCA5A5');
+                  spawnParticles(cb.x, cb.y, 6, '#B45309', 'SPLINTER', 100, 3.2, true);
+                  addFloatingText(allyShip.x, allyShip.y - 22, `-${cb.damage}`, '#FCA5A5', false);
                   if (allyShip.hp <= 0) {
                     soundEngine.playEnemySunk();
-                    spawnParticles(allyShip.x, allyShip.y, 18, '#78350F', 'SPLINTER', 140, 4.0, true);
+                    spawnParticles(allyShip.x, allyShip.y, 14, '#78350F', 'SPLINTER', 140, 4.0, true);
                     addFloatingText(allyShip.x, allyShip.y - 30, 'Refakat Gemisi Battı!', '#EF4444');
-                    sim.allyShips.splice(ai, 1);
-                    commitSave((prev) => ({
-                      ...prev,
-                      kingdom: {
-                        ...prev.kingdom,
-                        escortShipCount: sim.allyShips.length,
-                      },
-                    }));
+                    pendingSyncRef.current.shipCountDirty = true;
                   }
-                  sim.cannonballs.splice(i, 1);
+                  sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+                  sim.cannonballs.pop();
                   removed = true;
                   hitEscort = true;
                   break;
@@ -3190,7 +3814,7 @@ export default function App() {
               sim.boatHitFlashUntil = now + 150;
               sim.screenShake = Math.max(sim.screenShake, 4.5);
               soundEngine.playCannonHit();
-              spawnParticles(cb.x, cb.y, 10, '#B45309', 'SPLINTER', 110, 3.4, true);
+              spawnParticles(cb.x, cb.y, 8, '#B45309', 'SPLINTER', 110, 3.4, true);
               addFloatingText(sim.boatX, sim.boatY - 26, `-${cb.damage} Gövde`, '#F87171');
 
               if (sim.boatHp <= 0) {
@@ -3216,20 +3840,32 @@ export default function App() {
                   player: { ...prev.player, x: safeX, y: safeY },
                   boat: { ...prev.boat, x: safeX, y: safeY },
                 }));
+                playerPulledToDock = true;
                 break;
               }
 
-              sim.cannonballs.splice(i, 1);
+              sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+              sim.cannonballs.pop();
               removed = true;
             }
           }
 
           if (removed) continue;
 
-          const hitLand = visibleIslands.some((isl) => isPointOnIsland(isl, cb.x, cb.y, 0));
+          let hitLand = false;
+          for (let ii = 0; ii < visibleIslands.length; ii++) {
+            const isl = visibleIslands[ii];
+            const dx = cb.x - isl.centerX;
+            const dy = cb.y - isl.centerY;
+            if (dx * dx + dy * dy <= isl.maxRadius * isl.maxRadius && isPointOnIsland(isl, cb.x, cb.y, 0)) {
+              hitLand = true;
+              break;
+            }
+          }
           if (hitLand) {
-            spawnParticles(cb.x, cb.y, 8, '#D9B26F', 'SAND', 80, 3.2, true);
-            sim.cannonballs.splice(i, 1);
+            spawnParticles(cb.x, cb.y, 6, '#D9B26F', 'SAND', 80, 3.2, true);
+            sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+            sim.cannonballs.pop();
             continue;
           }
 
@@ -3241,9 +3877,27 @@ export default function App() {
               maxRadius: 28,
               alpha: 0.85,
             });
-            spawnParticles(cb.x, cb.y, 6, '#E0F7FA', 'WATER', 65, 3, true);
+            spawnParticles(cb.x, cb.y, 4, '#E0F7FA', 'WATER', 65, 3, true);
             soundEngine.playWaterSplash();
-            sim.cannonballs.splice(i, 1);
+            sim.cannonballs[i] = sim.cannonballs[sim.cannonballs.length - 1];
+            sim.cannonballs.pop();
+          }
+        }
+
+        // Single swap-and-pop compaction for sunk enemy & escort ships
+        if (!playerPulledToDock) {
+          for (let ei = sim.enemies.length - 1; ei >= 0; ei--) {
+            if (sim.enemies[ei].hp <= 0) {
+              sim.enemies[ei] = sim.enemies[sim.enemies.length - 1];
+              sim.enemies.pop();
+            }
+          }
+          for (let ai = sim.allyShips.length - 1; ai >= 0; ai--) {
+            if (sim.allyShips[ai].hp <= 0) {
+              sim.allyShips[ai] = sim.allyShips[sim.allyShips.length - 1];
+              sim.allyShips.pop();
+              pendingSyncRef.current.shipCountDirty = true;
+            }
           }
         }
       }
@@ -3342,7 +3996,8 @@ export default function App() {
             onlineActiveRef.current &&
             !standing.isStarter &&
             onlineOwnerId !== identityRef.current.playerId &&
-            (!onlineOwnerId || onlineRule === 'PVP');
+            (!onlineOwnerId ||
+              (onlineRule === 'PVP' && onlineAtWarSetRef.current.has(onlineOwnerId)));
 
           const effFaction = getEffectiveIslandFaction(
             standing.factionId,
@@ -3351,16 +4006,14 @@ export default function App() {
             currentSave.kingdom
           );
           if ((!onlineActiveRef.current && effFaction !== 'NEUTRAL' && effFaction !== 'PLAYER') || canOnlineCapture) {
-            const defendersLeft = sim.islandEnemies.filter((ie) => ie.islandId === standing.id).length;
+            const defendersLeft = standingIslandEnemies.length;
             const prevProg =
               sim.fortCapture && sim.fortCapture.islandId === standing.id
                 ? sim.fortCapture.progress
                 : 0;
             const inFortZone =
               dist(sim.playerX, sim.playerY, standing.fortPos.x, standing.fortPos.y) <= 78 ||
-              sim.allySoldiers.some(
-                (sol) => dist(sol.x, sol.y, standing.fortPos!.x, standing.fortPos!.y) <= 78
-              );
+              allyCombatGrid.queryNearest(standing.fortPos.x, standing.fortPos.y, 78).item !== null;
 
             let nextProg = prevProg;
             if (defendersLeft === 0 && inFortZone) {
@@ -3699,6 +4352,29 @@ export default function App() {
           rp.boatX = lerp(rp.boatX, rp.targetBoatX, interp);
           rp.boatY = lerp(rp.boatY, rp.targetBoatY, interp);
           rp.boatAngle = lerpAngle(rp.boatAngle, rp.targetBoatAngle, interp);
+
+          if (rp.soldiers && rp.soldierTargets) {
+            for (let si = 0; si < rp.soldiers.length; si++) {
+              const rs = rp.soldiers[si];
+              const tgt = rp.soldierTargets.get(rs.id);
+              if (tgt) {
+                rs.x = lerp(rs.x, tgt.x, interp);
+                rs.y = lerp(rs.y, tgt.y, interp);
+                rs.angle = lerpAngle(rs.angle, tgt.angle, interp);
+              }
+            }
+          }
+          if (rp.ships && rp.shipTargets) {
+            for (let shi = 0; shi < rp.ships.length; shi++) {
+              const sh = rp.ships[shi];
+              const tgt = rp.shipTargets.get(sh.id);
+              if (tgt) {
+                sh.x = lerp(sh.x, tgt.x, interp);
+                sh.y = lerp(sh.y, tgt.y, interp);
+                sh.angle = lerpAngle(sh.angle, tgt.angle, interp);
+              }
+            }
+          }
         }
         for (const op of onlineProjectilesRef.current) {
           op.x += op.vx * dt;
@@ -3711,6 +4387,8 @@ export default function App() {
 
         if (isPlaying && now - lastPoseSendRef.current >= 50) {
           lastPoseSendRef.current = now;
+          const sendArmy = now - lastArmyPoseSendRef.current >= 100;
+          if (sendArmy) lastArmyPoseSendRef.current = now;
           onlineManagerRef.current?.submitLocalPose({
             x: sim.playerX,
             y: sim.playerY,
@@ -3723,8 +4401,69 @@ export default function App() {
             walkPhase: sim.walkPhase,
             digAnimProgress: digProgress,
             attackAnimProgress: attackProgress,
+            soldiers:
+              sendArmy && !sim.isSailing && sim.allySoldiers.length > 0
+                ? sim.allySoldiers.slice(0, 160).map((s) => ({
+                    id: s.id,
+                    x: Math.round(s.x),
+                    y: Math.round(s.y),
+                    angle: Math.round(s.angle * 100) / 100,
+                    swinging: now - s.attackSwingTime < 220 ? true : undefined,
+                  }))
+                : undefined,
+            ships:
+              sendArmy && sim.allyShips.length > 0
+                ? sim.allyShips.slice(0, 60).map((sh) => ({
+                    id: sh.id,
+                    x: Math.round(sh.x),
+                    y: Math.round(sh.y),
+                    angle: Math.round(sh.angle * 100) / 100,
+                  }))
+                : undefined,
           });
         }
+      }
+
+      // Flush batched combat losses & kill counts at most every ~380ms to avoid per-death React re-renders
+      const pendingSync = pendingSyncRef.current;
+      if (
+        !onlineActiveRef.current &&
+        (pendingSync.rosterDirty ||
+          pendingSync.shipCountDirty ||
+          pendingSync.landKills > 0 ||
+          pendingSync.seaKills > 0) &&
+        (modalRef.current === 'KINGDOM' || now - pendingSync.lastSyncAt >= 380)
+      ) {
+        pendingSync.lastSyncAt = now;
+        const addLandKills = pendingSync.landKills;
+        const addSeaKills = pendingSync.seaKills;
+        const syncRoster = pendingSync.rosterDirty;
+        const syncShips = pendingSync.shipCountDirty;
+        pendingSync.landKills = 0;
+        pendingSync.seaKills = 0;
+        pendingSync.rosterDirty = false;
+        pendingSync.shipCountDirty = false;
+
+        commitSave(
+          (prev) => ({
+            ...prev,
+            landEnemiesDefeated: prev.landEnemiesDefeated + addLandKills,
+            enemiesSunkCount: prev.enemiesSunkCount + addSeaKills,
+            kingdom: {
+              ...prev.kingdom,
+              soldiers: syncRoster
+                ? sim.allySoldiers.map((sol) => ({
+                    id: sol.id,
+                    type: sol.type,
+                    hp: Math.max(1, Math.round(sol.hp)),
+                    maxHp: sol.maxHp,
+                  }))
+                : prev.kingdom.soldiers,
+              escortShipCount: syncShips ? sim.allyShips.length : prev.kingdom.escortShipCount,
+            },
+          }),
+          true
+        );
       }
 
       if (isPlaying && !onlineActiveRef.current && now - sim.lastAutoSaveTime > 2000) {
@@ -3782,10 +4521,10 @@ export default function App() {
         const ctx = canvas.getContext('2d', { alpha: false });
         if (ctx) {
           const rect = canvas.getBoundingClientRect();
-          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const dpr = Math.min(window.devicePixelRatio || 1, budget.dprCap);
           const targetW = Math.max(1, Math.floor(rect.width * dpr));
           const targetH = Math.max(1, Math.floor(rect.height * dpr));
-          if (canvas.width !== targetW || canvas.height !== targetH) {
+          if (Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2) {
             canvas.width = targetW;
             canvas.height = targetH;
           }
@@ -3797,6 +4536,19 @@ export default function App() {
                 (op) => !(op.kind === 'LAND' && op.ownerId === selfId)
               )
             : undefined;
+
+          const homeIsl = isPlaying
+            ? onlineActiveRef.current
+              ? worldManagerRef.current.getIslandById(`starter_${selfId}`) ??
+                worldManagerRef.current.getStarterIslands()[0] ??
+                null
+              : worldManagerRef.current.getIslandAtSector(0, 0)
+            : null;
+          const homeAccent = onlineActiveRef.current
+            ? identityRef.current.bannerColor
+            : currentSave.kingdom.founded
+            ? currentSave.kingdom.bannerColor
+            : '#FBBF24';
 
           renderGameFrame(ctx, rect.width, rect.height, {
             timeSec: now / 1000,
@@ -3850,6 +4602,18 @@ export default function App() {
               : undefined,
             onlineProjectiles: visibleOnlineProjectiles,
             onlineIslandOwners: onlineOwnersForRenderRef.current,
+            onlineAtWarPlayerIds: onlineAtWarSetRef.current,
+            renderLod: budget.renderLod,
+            homeIsland: homeIsl
+              ? {
+                  x: homeIsl.centerX,
+                  y: homeIsl.centerY,
+                  radius: homeIsl.baseRadius,
+                  name: homeIsl.name,
+                  accentColor: homeAccent,
+                }
+              : null,
+            hasTouchControls: hasTouchControlsRef.current,
           });
         }
       }
@@ -3863,12 +4627,21 @@ export default function App() {
           ? WEAPONS[currentSave.equippedWeapon].cooldownMs
           : 400;
 
-        const nearbySeaEnemies = sim.enemies.filter(
-          (e) => dist(e.x, e.y, activeCenterX, activeCenterY) < 620
-        ).length;
-        const nearbyLandEnemies = sim.islandEnemies.filter(
-          (ie) => ie.alerted && dist(ie.x, ie.y, activeCenterX, activeCenterY) < 420
-        ).length;
+        let nearbySeaEnemies = 0;
+        for (let i = 0; i < sim.enemies.length; i++) {
+          const e = sim.enemies[i];
+          const dx = e.x - activeCenterX;
+          const dy = e.y - activeCenterY;
+          if (dx * dx + dy * dy < 620 * 620) nearbySeaEnemies++;
+        }
+        let nearbyLandEnemies = 0;
+        for (let i = 0; i < sim.islandEnemies.length; i++) {
+          const ie = sim.islandEnemies[i];
+          if (!ie.alerted) continue;
+          const dx = ie.x - activeCenterX;
+          const dy = ie.y - activeCenterY;
+          if (dx * dx + dy * dy < 420 * 420) nearbyLandEnemies++;
+        }
 
         setHudState({
           canBoard: nearBoat,
@@ -3902,11 +4675,11 @@ export default function App() {
   }, [
     addFloatingText,
     commitSave,
-    defeatIslandEnemy,
     ensureWarWithFaction,
     findNearestShoreIsland,
     findStandingIsland,
     fireBroadside,
+    recordEnemyDefeat,
     spawnParticles,
   ]);
 
@@ -4197,6 +4970,19 @@ export default function App() {
     [addFloatingText, commitSave]
   );
 
+  const handleDeclareOnlineWar = useCallback(
+    (targetPlayerId: string, cancel = false) => {
+      if (!onlineActiveRef.current) return;
+      if (!cancel) soundEngine.playWarHorn();
+      onlineManagerRef.current?.submitLocalCommand({
+        type: 'cmd:declare_war',
+        targetPlayerId,
+        cancel,
+      });
+    },
+    []
+  );
+
   const handleResetSave = useCallback(() => {
     clearSaveData();
     const fresh = createInitialSave();
@@ -4239,6 +5025,12 @@ export default function App() {
     simRef.current.particles = [];
     simRef.current.floatingTexts = [];
     simRef.current.radarPulses = [];
+    pendingSyncRef.current.rosterDirty = false;
+    pendingSyncRef.current.shipCountDirty = false;
+    pendingSyncRef.current.landKills = 0;
+    pendingSyncRef.current.seaKills = 0;
+    pendingSyncRef.current.lastSyncAt = 0;
+    perfGovRef.current.reset();
 
     persistSaveData(fresh);
     setSave(fresh);
@@ -4331,6 +5123,7 @@ export default function App() {
       : 'DESKTOP';
 
   useEffect(() => {
+    hasTouchControlsRef.current = controlsDisplayMode === 'TOUCH';
     if (controlsDisplayMode !== 'TOUCH') {
       simRef.current.joystickVec = { x: 0, y: 0 };
     }
@@ -4581,13 +5374,16 @@ export default function App() {
           nationIslandCounts={nationIslandCounts}
           onlineMode={onlineActive}
           onlineRule={onlineRoomInfo?.rule}
+          onlineSelfId={identity.playerId}
           onlinePlayers={onlineLobbyPlayers}
+          onlineWarDeclarations={onlineWarDeclarations}
           onFoundKingdom={handleFoundKingdom}
           onRecruitSoldier={handleRecruitSoldier}
           onUpgradeArmy={handleUpgradeArmy}
           onRecruitShip={handleRecruitShip}
           onHealArmy={handleHealArmy}
           onDeclareWar={handleDeclareWar}
+          onDeclareOnlineWar={handleDeclareOnlineWar}
           onClose={() => setActiveModal('NONE')}
         />
       )}

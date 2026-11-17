@@ -20,6 +20,7 @@ import {
   WeaponPickup,
 } from '../types/game';
 import { OnlineProjectileSnapshot, RemotePlayerView } from '../types/online';
+import { RenderLod } from './perfGovernor';
 import { WEAPONS } from './weapons';
 import { getShipClass } from './upgrades';
 import { ENEMY_FACTIONS, getEffectiveIslandFaction, getFactionDisplay } from './factions';
@@ -75,6 +76,16 @@ export interface RenderState {
   remotePlayers?: RemotePlayerView[];
   onlineProjectiles?: OnlineProjectileSnapshot[];
   onlineIslandOwners?: Record<string, { shortName: string; color: string; isCapturable?: boolean }>;
+  onlineAtWarPlayerIds?: Set<string>;
+  renderLod?: RenderLod;
+  homeIsland?: {
+    x: number;
+    y: number;
+    radius: number;
+    name: string;
+    accentColor: string;
+  } | null;
+  hasTouchControls?: boolean;
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -110,6 +121,310 @@ interface CachedIslandCanvas {
 
 const islandTerrainCache = new Map<string, CachedIslandCanvas>();
 const MAX_CACHED_ISLANDS = 8;
+
+// Offscreen sprite caches for 10x faster large-army & fleet rendering
+const UNIT_SPRITE_HALF = 32;
+const UNIT_SPRITE_SCALE = 2; // 2x supersampled crispness inside 128x128 backing canvas
+const allySoldierSpriteCache = new Map<string, HTMLCanvasElement>();
+const islandEnemySpriteCache = new Map<string, HTMLCanvasElement>();
+const allyShipSpriteCache = new Map<string, HTMLCanvasElement>();
+
+function getAllySoldierSprite(
+  type: AllySoldier['type'],
+  bannerColor: string,
+  isFlashing: boolean
+): HTMLCanvasElement {
+  const key = `${type}_${bannerColor}_${isFlashing ? 1 : 0}`;
+  const existing = allySoldierSpriteCache.get(key);
+  if (existing) return existing;
+  if (allySoldierSpriteCache.size > 48) allySoldierSpriteCache.clear();
+
+  const size = UNIT_SPRITE_HALF * 2;
+  const c = document.createElement('canvas');
+  c.width = size * UNIT_SPRITE_SCALE;
+  c.height = size * UNIT_SPRITE_SCALE;
+  const octx = c.getContext('2d');
+  if (octx) {
+    octx.scale(UNIT_SPRITE_SCALE, UNIT_SPRITE_SCALE);
+    octx.translate(UNIT_SPRITE_HALF, UNIT_SPRITE_HALF);
+
+    const isHeavy = type === 'HEAVY_GUARD';
+    const isGrenadier = type === 'GRENADIER';
+
+    // Shadow
+    octx.fillStyle = 'rgba(15, 23, 42, 0.24)';
+    octx.beginPath();
+    octx.ellipse(2, 3, 10, 9, 0, 0, Math.PI * 2);
+    octx.fill();
+
+    // Boots
+    octx.fillStyle = '#3E2723';
+    octx.beginPath();
+    octx.ellipse(1.5, -5, 3.8, 2.5, 0, 0, Math.PI * 2);
+    octx.ellipse(-1.5, 5, 3.8, 2.5, 0, 0, Math.PI * 2);
+    octx.fill();
+
+    // Uniform coat
+    octx.fillStyle = isFlashing ? '#FCA5A5' : bannerColor;
+    octx.strokeStyle = isHeavy ? '#FBBF24' : isGrenadier ? '#FB923C' : '#0F172A';
+    octx.lineWidth = isHeavy || isGrenadier ? 2.0 : 1.2;
+    octx.beginPath();
+    octx.ellipse(0, 0, isHeavy ? 9.5 : 8.4, isHeavy ? 11 : 10, 0, 0, Math.PI * 2);
+    octx.fill();
+    octx.stroke();
+
+    if (isGrenadier) {
+      octx.fillStyle = '#7C2D12';
+      octx.strokeStyle = '#F59E0B';
+      octx.lineWidth = 1.2;
+      octx.beginPath();
+      octx.roundRect(-10, -6.5, 5.5, 13, 2);
+      octx.fill();
+      octx.stroke();
+    }
+
+    if (type === 'SWORDSMAN') {
+      octx.strokeStyle = '#F8FAFC';
+      octx.lineWidth = 2.6;
+      octx.beginPath();
+      octx.moveTo(6, 5);
+      octx.lineTo(20, 2);
+      octx.stroke();
+    } else if (isHeavy) {
+      octx.fillStyle = '#334155';
+      octx.strokeStyle = '#FBBF24';
+      octx.lineWidth = 1.6;
+      octx.beginPath();
+      octx.ellipse(7, -8, 3.2, 7.5, 0.25, 0, Math.PI * 2);
+      octx.fill();
+      octx.stroke();
+
+      octx.strokeStyle = '#78350F';
+      octx.lineWidth = 2.6;
+      octx.beginPath();
+      octx.moveTo(5, 6);
+      octx.lineTo(21, 3);
+      octx.stroke();
+      octx.fillStyle = '#E2E8F0';
+      octx.beginPath();
+      octx.arc(19, 1, 5.2, -Math.PI * 0.45, Math.PI * 0.45);
+      octx.fill();
+    } else if (isGrenadier) {
+      octx.strokeStyle = '#D97706';
+      octx.lineWidth = 4.2;
+      octx.lineCap = 'round';
+      octx.beginPath();
+      octx.moveTo(4, 5);
+      octx.lineTo(18, 4);
+      octx.stroke();
+      octx.fillStyle = '#FDE047';
+      octx.beginPath();
+      octx.arc(19, 4, 2.5, 0, Math.PI * 2);
+      octx.fill();
+    } else {
+      octx.strokeStyle = '#1E293B';
+      octx.lineWidth = 3;
+      octx.beginPath();
+      octx.moveTo(4, 5);
+      octx.lineTo(20, 4);
+      octx.stroke();
+    }
+
+    // Head + Helmet
+    octx.fillStyle = isFlashing ? '#FECACA' : '#FDE68A';
+    octx.beginPath();
+    octx.arc(1, 0, isHeavy ? 7 : 6.4, 0, Math.PI * 2);
+    octx.fill();
+
+    octx.fillStyle = isHeavy
+      ? '#F59E0B'
+      : type === 'SWORDSMAN'
+      ? '#CBD5E1'
+      : isGrenadier
+      ? '#7F1D1D'
+      : '#1E293B';
+    octx.beginPath();
+    octx.arc(0, 0, isHeavy ? 7 : 6.4, Math.PI * 0.45, Math.PI * 1.55);
+    octx.fill();
+
+    if (isGrenadier) {
+      octx.fillStyle = '#FB923C';
+      octx.beginPath();
+      octx.arc(-1, 0, 2.4, 0, Math.PI * 2);
+      octx.fill();
+    }
+  }
+
+  allySoldierSpriteCache.set(key, c);
+  return c;
+}
+
+function getIslandEnemySprite(
+  tier: 1 | 2 | 3,
+  combatStyle: 'MELEE' | 'RANGED',
+  squadColor: string,
+  isLeader: boolean,
+  isFlashing: boolean
+): HTMLCanvasElement {
+  const key = `${tier}_${combatStyle}_${squadColor}_${isLeader ? 1 : 0}_${isFlashing ? 1 : 0}`;
+  const existing = islandEnemySpriteCache.get(key);
+  if (existing) return existing;
+  if (islandEnemySpriteCache.size > 96) islandEnemySpriteCache.clear();
+
+  const size = UNIT_SPRITE_HALF * 2;
+  const c = document.createElement('canvas');
+  c.width = size * UNIT_SPRITE_SCALE;
+  c.height = size * UNIT_SPRITE_SCALE;
+  const octx = c.getContext('2d');
+  if (octx) {
+    octx.scale(UNIT_SPRITE_SCALE, UNIT_SPRITE_SCALE);
+    octx.translate(UNIT_SPRITE_HALF, UNIT_SPRITE_HALF);
+    const tierScale = tier === 3 ? 1.16 : tier === 2 ? 1.06 : 0.96;
+    octx.scale(tierScale, tierScale);
+
+    octx.fillStyle = 'rgba(15, 23, 42, 0.26)';
+    octx.beginPath();
+    octx.ellipse(2, 3, 11, 10, 0, 0, Math.PI * 2);
+    octx.fill();
+
+    octx.fillStyle = '#291206';
+    octx.beginPath();
+    octx.ellipse(1.5, -5.5, 4, 2.6, 0, 0, Math.PI * 2);
+    octx.ellipse(-1.5, 5.5, 4, 2.6, 0, 0, Math.PI * 2);
+    octx.fill();
+
+    octx.fillStyle = isFlashing
+      ? '#FCA5A5'
+      : tier === 3
+      ? '#1E293B'
+      : tier === 2
+      ? '#334155'
+      : '#475569';
+    octx.strokeStyle = tier === 3 ? '#FBBF24' : tier === 2 ? '#94A3B8' : '#0F172A';
+    octx.lineWidth = tier === 3 ? 2 : 1.2;
+    octx.beginPath();
+    octx.ellipse(0, 0, 8.5, 10, 0, 0, Math.PI * 2);
+    octx.fill();
+    octx.stroke();
+
+    if (tier === 3 && combatStyle === 'MELEE') {
+      octx.fillStyle = squadColor;
+      octx.strokeStyle = '#FBBF24';
+      octx.lineWidth = 1.5;
+      octx.beginPath();
+      octx.ellipse(6, -8, 3, 6.8, 0.2, 0, Math.PI * 2);
+      octx.fill();
+      octx.stroke();
+    }
+
+    if (combatStyle === 'MELEE') {
+      octx.strokeStyle = tier === 3 ? '#FDE68A' : '#E2E8F0';
+      octx.lineWidth = tier === 3 ? 3.2 : 2.6;
+      octx.beginPath();
+      octx.moveTo(6, 5);
+      octx.lineTo(tier === 3 ? 21 : 19, 2);
+      octx.stroke();
+    } else {
+      octx.strokeStyle = '#78350F';
+      octx.lineWidth = 3;
+      octx.beginPath();
+      octx.moveTo(4, 5);
+      octx.lineTo(tier >= 2 ? 20 : 18, 4);
+      octx.stroke();
+    }
+
+    octx.fillStyle = isFlashing ? '#FECACA' : '#FDBA74';
+    octx.beginPath();
+    octx.arc(1, 0, 6.8, 0, Math.PI * 2);
+    octx.fill();
+
+    octx.fillStyle = squadColor;
+    octx.beginPath();
+    octx.arc(0, 0, 6.8, Math.PI * 0.45, Math.PI * 1.55);
+    octx.fill();
+
+    if (isLeader || tier === 3) {
+      octx.fillStyle = '#FBBF24';
+      octx.beginPath();
+      octx.arc(-1, 0, tier === 3 ? 3.2 : 2.6, 0, Math.PI * 2);
+      octx.fill();
+    }
+  }
+
+  islandEnemySpriteCache.set(key, c);
+  return c;
+}
+
+const SHIP_SPRITE_HALF = 44;
+function getAllyShipSprite(
+  bannerColor: string,
+  sailColor: string,
+  isFlashing: boolean
+): HTMLCanvasElement {
+  const key = `${bannerColor}_${sailColor}_${isFlashing ? 1 : 0}`;
+  const existing = allyShipSpriteCache.get(key);
+  if (existing) return existing;
+  if (allyShipSpriteCache.size > 24) allyShipSpriteCache.clear();
+
+  const size = SHIP_SPRITE_HALF * 2;
+  const c = document.createElement('canvas');
+  c.width = size * UNIT_SPRITE_SCALE;
+  c.height = size * UNIT_SPRITE_SCALE;
+  const octx = c.getContext('2d');
+  if (octx) {
+    octx.scale(UNIT_SPRITE_SCALE, UNIT_SPRITE_SCALE);
+    octx.translate(SHIP_SPRITE_HALF, SHIP_SPRITE_HALF);
+    octx.scale(1.06, 1.06);
+
+    octx.fillStyle = 'rgba(5, 20, 32, 0.3)';
+    octx.beginPath();
+    octx.moveTo(30, 4);
+    octx.quadraticCurveTo(8, -16, -22, -10);
+    octx.lineTo(-22, 18);
+    octx.quadraticCurveTo(8, 22, 30, 4);
+    octx.fill();
+
+    drawSideCannons(octx, 2, 14, '#334155', '#78350F');
+
+    octx.fillStyle = isFlashing ? '#FCA5A5' : '#7C4821';
+    octx.strokeStyle = bannerColor;
+    octx.lineWidth = 2.2;
+    octx.beginPath();
+    octx.moveTo(28, 0);
+    octx.quadraticCurveTo(8, -18, -22, -13);
+    octx.lineTo(-22, 13);
+    octx.quadraticCurveTo(8, 18, 28, 0);
+    octx.closePath();
+    octx.fill();
+    octx.stroke();
+
+    octx.fillStyle = isFlashing ? '#FECACA' : '#C48A52';
+    octx.beginPath();
+    octx.moveTo(22, 0);
+    octx.quadraticCurveTo(6, -13, -18, -9);
+    octx.lineTo(-18, 9);
+    octx.quadraticCurveTo(6, 13, 22, 0);
+    octx.closePath();
+    octx.fill();
+
+    const billow = 9.5;
+    octx.fillStyle = '#FFFDF7';
+    octx.strokeStyle = bannerColor;
+    octx.lineWidth = 1.8;
+    octx.beginPath();
+    octx.moveTo(2, -16);
+    octx.quadraticCurveTo(2 + billow, 0, 2, 16);
+    octx.quadraticCurveTo(2 + billow * 0.4, 0, 2, -16);
+    octx.fill();
+    octx.stroke();
+
+    octx.fillStyle = sailColor;
+    octx.fillRect(2 + billow * 0.25, -4, 4, 8);
+  }
+
+  allyShipSpriteCache.set(key, c);
+  return c;
+}
 
 const BIOME_PALETTES = {
   TROPICAL: {
@@ -2153,25 +2468,131 @@ export function renderGameFrame(
     ctx.restore();
   }
 
-  // Island Enemies & Coordinated Squads (viewport culled)
-  for (const ie of state.islandEnemies) {
+  // Count visible land units first so we can auto-switch to fast sprite-swarm rendering
+  const visibleIslandEnemies: IslandEnemy[] = [];
+  for (let i = 0; i < state.islandEnemies.length; i++) {
+    const ie = state.islandEnemies[i];
     if (ie.x < viewLeft || ie.x > viewRight || ie.y < viewTop || ie.y > viewBottom) continue;
-    drawIslandEnemy(ctx, ie, timeSec);
+    visibleIslandEnemies.push(ie);
   }
 
-  // Allied Recruited Soldiers (when on land, viewport culled)
-  const playerFactionDisplay = getFactionDisplay('PLAYER', state.kingdom);
+  const visibleAllySoldiers: AllySoldier[] = [];
   if (!player.isSailing) {
-    for (const soldier of state.allySoldiers) {
-      if (
-        soldier.x < viewLeft ||
-        soldier.x > viewRight ||
-        soldier.y < viewTop ||
-        soldier.y > viewBottom
-      ) {
-        continue;
+    for (let i = 0; i < state.allySoldiers.length; i++) {
+      const sol = state.allySoldiers[i];
+      if (sol.x < viewLeft || sol.x > viewRight || sol.y < viewTop || sol.y > viewBottom) continue;
+      visibleAllySoldiers.push(sol);
+    }
+  }
+
+  let remoteVisibleSoldiersCount = 0;
+  if (state.remotePlayers && state.remotePlayers.length > 0) {
+    for (let rpi = 0; rpi < state.remotePlayers.length; rpi++) {
+      const rp = state.remotePlayers[rpi];
+      if (!rp.connected || rp.isSailing || !rp.soldiers) continue;
+      remoteVisibleSoldiersCount += rp.soldiers.length;
+    }
+  }
+
+  const totalVisibleSoldiers =
+    visibleIslandEnemies.length + visibleAllySoldiers.length + remoteVisibleSoldiersCount;
+  const effectiveLod: RenderLod =
+    state.renderLod === 'ULTRA_SWARM' || totalVisibleSoldiers > 180
+      ? 'ULTRA_SWARM'
+      : state.renderLod === 'SPRITE_SWARM' || totalVisibleSoldiers > 50
+      ? 'SPRITE_SWARM'
+      : 'FULL';
+
+  const nowMsCached = timeSec * 1000;
+  const drawSize = UNIT_SPRITE_HALF * 2;
+
+  // Island Enemies & Coordinated Squads (viewport culled + Sprite-Atlas Swarm LOD)
+  if (effectiveLod === 'FULL') {
+    for (let i = 0; i < visibleIslandEnemies.length; i++) {
+      drawIslandEnemy(ctx, visibleIslandEnemies[i], timeSec);
+    }
+  } else {
+    const showHalos = effectiveLod === 'SPRITE_SWARM';
+    for (let i = 0; i < visibleIslandEnemies.length; i++) {
+      const ie = visibleIslandEnemies[i];
+      const isFlashing = nowMsCached - ie.hitFlashTime < 120;
+      const sprite = getIslandEnemySprite(
+        ie.tier,
+        ie.combatStyle,
+        ie.squadColor,
+        ie.role === 'LEADER',
+        isFlashing
+      );
+
+      ctx.save();
+      ctx.translate(ie.x, ie.y);
+      if (showHalos && ie.squadId) {
+        ctx.strokeStyle = ie.squadColor;
+        ctx.globalAlpha = ie.alerted ? 0.55 : 0.25;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
-      drawAllySoldier(ctx, soldier, playerFactionDisplay.color, timeSec);
+      ctx.rotate(ie.angle);
+      ctx.drawImage(sprite, -UNIT_SPRITE_HALF, -UNIT_SPRITE_HALF, drawSize, drawSize);
+      ctx.restore();
+
+      const showHp = effectiveLod === 'ULTRA_SWARM' ? ie.hp < ie.maxHp : ie.alerted || ie.hp < ie.maxHp;
+      if (showHp) {
+        const bw = 28;
+        const bh = 4;
+        const bx = ie.x - 14;
+        const by = ie.y - 21;
+        ctx.fillStyle = 'rgba(7, 25, 36, 0.85)';
+        ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+        ctx.fillStyle = ie.squadId ? ie.squadColor : '#EF4444';
+        ctx.fillRect(bx, by, bw * clamp(ie.hp / ie.maxHp, 0, 1), bh);
+      }
+    }
+  }
+
+  // Allied Recruited Soldiers (when on land, viewport culled + Sprite-Atlas Swarm LOD)
+  const playerFactionDisplay = getFactionDisplay('PLAYER', state.kingdom);
+  if (!player.isSailing && visibleAllySoldiers.length > 0) {
+    if (effectiveLod === 'FULL') {
+      for (let i = 0; i < visibleAllySoldiers.length; i++) {
+        drawAllySoldier(ctx, visibleAllySoldiers[i], playerFactionDisplay.color, timeSec);
+      }
+    } else {
+      const showHalos = effectiveLod === 'SPRITE_SWARM';
+      for (let i = 0; i < visibleAllySoldiers.length; i++) {
+        const sol = visibleAllySoldiers[i];
+        const isFlashing = nowMsCached - sol.hitFlashTime < 120;
+        const sprite = getAllySoldierSprite(sol.type, playerFactionDisplay.color, isFlashing);
+
+        ctx.save();
+        ctx.translate(sol.x, sol.y);
+        if (showHalos) {
+          ctx.strokeStyle = playerFactionDisplay.color;
+          ctx.globalAlpha = 0.45;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(0, 0, 12.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        ctx.rotate(sol.angle);
+        ctx.drawImage(sprite, -UNIT_SPRITE_HALF, -UNIT_SPRITE_HALF, drawSize, drawSize);
+        ctx.restore();
+
+        if (sol.hp < sol.maxHp) {
+          const bw = 24;
+          const bh = 3.5;
+          const bx = sol.x - 12;
+          const by = sol.y - 19;
+          ctx.fillStyle = 'rgba(7, 25, 36, 0.85)';
+          ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+          ctx.fillStyle = playerFactionDisplay.color;
+          ctx.fillRect(bx, by, bw * clamp(sol.hp / sol.maxHp, 0, 1), bh);
+        }
+      }
     }
   }
 
@@ -2183,7 +2604,9 @@ export function renderGameFrame(
     drawEnemyShip(ctx, enemy, timeSec);
   }
 
-  // Allied Escort Warships
+  // Allied Escort Warships (use sprite atlas when fleet >= 14 or Swarm LOD)
+  const useShipSprites = effectiveLod !== 'FULL' || state.allyShips.length >= 14;
+  const shipDrawSize = SHIP_SPRITE_HALF * 2;
   for (const allyShip of state.allyShips) {
     if (
       allyShip.x < viewLeft ||
@@ -2193,19 +2616,151 @@ export function renderGameFrame(
     ) {
       continue;
     }
-    drawAllyShip(
-      ctx,
-      allyShip,
-      playerFactionDisplay.color,
-      playerFactionDisplay.sailColor,
-      timeSec
-    );
+    if (!useShipSprites) {
+      drawAllyShip(
+        ctx,
+        allyShip,
+        playerFactionDisplay.color,
+        playerFactionDisplay.sailColor,
+        timeSec
+      );
+    } else {
+      const isFlashing = nowMsCached - allyShip.hitFlashTime < 120;
+      const sprite = getAllyShipSprite(
+        playerFactionDisplay.color,
+        playerFactionDisplay.sailColor,
+        isFlashing
+      );
+      ctx.save();
+      ctx.translate(allyShip.x, allyShip.y);
+      ctx.rotate(allyShip.angle);
+      ctx.drawImage(sprite, -SHIP_SPRITE_HALF, -SHIP_SPRITE_HALF, shipDrawSize, shipDrawSize);
+      ctx.restore();
+
+      if (allyShip.hp < allyShip.maxHp) {
+        const barW = 40;
+        const barH = 4;
+        const bx = allyShip.x - 20;
+        const by = allyShip.y - 32;
+        ctx.fillStyle = 'rgba(7, 25, 36, 0.8)';
+        ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+        ctx.fillStyle = playerFactionDisplay.color;
+        ctx.fillRect(bx, by, barW * clamp(allyShip.hp / allyShip.maxHp, 0, 1), barH);
+      }
+    }
   }
 
-  // Remote Online Players (Boats + On-Foot Characters + Nameplates)
+  // Remote Online Players (Escort Warships + Land Armies + Boats + On-Foot Characters + Nameplates)
   if (state.remotePlayers && state.remotePlayers.length > 0) {
     for (const rp of state.remotePlayers) {
       if (!rp.connected) continue;
+      const rpColor = rp.bannerColor || '#38BDF8';
+      const isAtWarWithRp = Boolean(state.onlineAtWarPlayerIds?.has(rp.id));
+
+      // Draw remote player's escort warships
+      if (rp.ships && rp.ships.length > 0) {
+        const useRemoteShipSprites = effectiveLod !== 'FULL' || rp.ships.length >= 10;
+        for (let shi = 0; shi < rp.ships.length; shi++) {
+          const sh = rp.ships[shi];
+          if (sh.x < viewLeft || sh.x > viewRight || sh.y < viewTop || sh.y > viewBottom) continue;
+          if (!useRemoteShipSprites) {
+            drawAllyShip(
+              ctx,
+              {
+                id: sh.id,
+                name: rp.name,
+                x: sh.x,
+                y: sh.y,
+                angle: sh.angle,
+                hp: sh.hp,
+                maxHp: sh.maxHp,
+                lastFireTime: 0,
+                hitFlashTime: -1000,
+                slotIndex: shi,
+              },
+              rpColor,
+              rpColor,
+              timeSec
+            );
+          } else {
+            const shipSprite = getAllyShipSprite(rpColor, rpColor, false);
+            ctx.save();
+            ctx.translate(sh.x, sh.y);
+            ctx.rotate(sh.angle);
+            ctx.drawImage(shipSprite, -SHIP_SPRITE_HALF, -SHIP_SPRITE_HALF, shipDrawSize, shipDrawSize);
+            ctx.restore();
+            if (sh.hp < sh.maxHp) {
+              const barW = 40;
+              const barH = 4;
+              const bx = sh.x - 20;
+              const by = sh.y - 32;
+              ctx.fillStyle = 'rgba(7, 25, 36, 0.8)';
+              ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+              ctx.fillStyle = rpColor;
+              ctx.fillRect(bx, by, barW * clamp(sh.hp / Math.max(1, sh.maxHp), 0, 1), barH);
+            }
+          }
+        }
+      }
+
+      // Draw remote player's land army when disembarked
+      if (!rp.isSailing && rp.soldiers && rp.soldiers.length > 0) {
+        const showHalos = effectiveLod !== 'ULTRA_SWARM';
+        for (let si = 0; si < rp.soldiers.length; si++) {
+          const rsol = rp.soldiers[si];
+          if (rsol.x < viewLeft || rsol.x > viewRight || rsol.y < viewTop || rsol.y > viewBottom) {
+            continue;
+          }
+          if (effectiveLod === 'FULL') {
+            drawAllySoldier(
+              ctx,
+              {
+                id: rsol.id,
+                type: rsol.type,
+                x: rsol.x,
+                y: rsol.y,
+                angle: rsol.angle,
+                hp: rsol.hp,
+                maxHp: rsol.maxHp,
+                lastAttackTime: 0,
+                hitFlashTime: -1000,
+                walkPhase: timeSec * 4 + si * 0.5,
+                attackSwingTime: rsol.swinging ? nowMsCached - 60 : 0,
+              },
+              rpColor,
+              timeSec
+            );
+          } else {
+            const solSprite = getAllySoldierSprite(rsol.type, rpColor, false);
+            ctx.save();
+            ctx.translate(rsol.x, rsol.y);
+            if (showHalos) {
+              ctx.strokeStyle = rpColor;
+              ctx.globalAlpha = 0.45;
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              ctx.arc(0, 0, 12.5, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+            }
+            ctx.rotate(rsol.angle);
+            ctx.drawImage(solSprite, -UNIT_SPRITE_HALF, -UNIT_SPRITE_HALF, drawSize, drawSize);
+            ctx.restore();
+
+            if (rsol.hp < rsol.maxHp) {
+              const bw = 24;
+              const bh = 3.5;
+              const bx = rsol.x - 12;
+              const by = rsol.y - 19;
+              ctx.fillStyle = 'rgba(7, 25, 36, 0.85)';
+              ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+              ctx.fillStyle = rpColor;
+              ctx.fillRect(bx, by, bw * clamp(rsol.hp / Math.max(1, rsol.maxHp), 0, 1), bh);
+            }
+          }
+        }
+      }
+
       const rx = rp.isSailing ? rp.boatX : rp.x;
       const ry = rp.isSailing ? rp.boatY : rp.y;
       if (rx < viewLeft - 120 || rx > viewRight + 120 || ry < viewTop - 120 || ry > viewBottom + 120) {
@@ -2243,7 +2798,7 @@ export function renderGameFrame(
       } else {
         ctx.save();
         ctx.translate(rp.boatX - Math.cos(rp.boatAngle) * 8, rp.boatY - Math.sin(rp.boatAngle) * 8);
-        ctx.fillStyle = rp.bannerColor;
+        ctx.fillStyle = rpColor;
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 1.6;
         ctx.beginPath();
@@ -2260,10 +2815,11 @@ export function renderGameFrame(
       ctx.font = '700 12px "Outfit", system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.lineWidth = 3.2;
-      ctx.strokeStyle = 'rgba(7, 25, 36, 0.9)';
-      const tag = rp.kingdomFounded ? `${rp.name} · ${rp.kingdomName}` : rp.name;
+      ctx.strokeStyle = isAtWarWithRp ? 'rgba(127, 29, 29, 0.95)' : 'rgba(7, 25, 36, 0.9)';
+      const baseTag = rp.kingdomFounded ? `${rp.name} · ${rp.kingdomName}` : rp.name;
+      const tag = isAtWarWithRp ? `⚔ ${baseTag}` : baseTag;
       ctx.strokeText(tag, labelX, labelY);
-      ctx.fillStyle = rp.bannerColor || '#FDE68A';
+      ctx.fillStyle = isAtWarWithRp ? '#FCA5A5' : rpColor || '#FDE68A';
       ctx.fillText(tag, labelX, labelY);
 
       // Remote HP bar if damaged
@@ -2274,7 +2830,7 @@ export function renderGameFrame(
         const bh = 4;
         ctx.fillStyle = 'rgba(7, 25, 36, 0.85)';
         ctx.fillRect(labelX - bw / 2 - 1, labelY + 5, bw + 2, bh + 2);
-        ctx.fillStyle = rp.bannerColor || '#34D399';
+        ctx.fillStyle = isAtWarWithRp ? '#EF4444' : rpColor || '#34D399';
         ctx.fillRect(labelX - bw / 2, labelY + 6, bw * clamp(curHp / Math.max(1, maxHp), 0, 1), bh);
       }
       ctx.restore();
@@ -2346,12 +2902,14 @@ export function renderGameFrame(
     }
   }
 
-  // 2.5D Particles
-  for (const p of state.particles) {
+  // 2.5D Particles (fast rect batching in Swarm LOD)
+  const skipParticleShadow = effectiveLod !== 'FULL';
+  for (let i = 0; i < state.particles.length; i++) {
+    const p = state.particles[i];
     if (p.type === 'WAKE') continue;
     if (p.x < viewLeft || p.x > viewRight || p.y < viewTop || p.y > viewBottom) continue;
     const z = p.z ?? 0;
-    if (z > 1) {
+    if (!skipParticleShadow && z > 1) {
       ctx.fillStyle = 'rgba(15, 23, 42, 0.2)';
       ctx.globalAlpha = clamp(p.alpha * 0.6, 0, 1);
       ctx.beginPath();
@@ -2361,9 +2919,14 @@ export function renderGameFrame(
 
     ctx.fillStyle = p.color;
     ctx.globalAlpha = clamp(p.alpha, 0, 1);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - z, p.size, 0, Math.PI * 2);
-    ctx.fill();
+    if (effectiveLod !== 'FULL' && p.size <= 4.2) {
+      const s = p.size * 1.7;
+      ctx.fillRect(p.x - p.size * 0.85, p.y - z - p.size * 0.85, s, s);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - z, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -2468,20 +3031,280 @@ export function renderGameFrame(
     ctx.restore();
   }
 
-  // Floating Texts
+  // Floating Texts (skip heavy strokeText pass under Swarm LOD)
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '700 15px "Outfit", system-ui, sans-serif';
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = 'rgba(7, 30, 42, 0.85)';
-  for (const ft of state.floatingTexts) {
-    if (ft.x < viewLeft || ft.x > viewRight || ft.y < viewTop || ft.y > viewBottom) continue;
-    ctx.globalAlpha = clamp(ft.life / ft.maxLife, 0, 1);
-    ctx.strokeText(ft.text, ft.x, ft.y);
-    ctx.fillStyle = ft.color;
-    ctx.fillText(ft.text, ft.x, ft.y);
+  if (effectiveLod === 'FULL') {
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(7, 30, 42, 0.85)';
+    for (const ft of state.floatingTexts) {
+      if (ft.x < viewLeft || ft.x > viewRight || ft.y < viewTop || ft.y > viewBottom) continue;
+      ctx.globalAlpha = clamp(ft.life / ft.maxLife, 0, 1);
+      ctx.strokeText(ft.text, ft.x, ft.y);
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
+  } else {
+    for (const ft of state.floatingTexts) {
+      if (ft.x < viewLeft || ft.x > viewRight || ft.y < viewTop || ft.y > viewBottom) continue;
+      ctx.globalAlpha = clamp(ft.life / ft.maxLife, 0, 1);
+      ctx.fillStyle = 'rgba(7, 25, 36, 0.88)';
+      ctx.fillText(ft.text, ft.x + 1, ft.y + 1.2);
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
   }
   ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  if (state.homeIsland) {
+    drawHomeIslandCompass(ctx, width, height, state);
+  }
+}
+
+function drawRoundedPill(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawHomeIslandCompass(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  state: RenderState
+) {
+  const home = state.homeIsland;
+  if (!home || width <= 0 || height <= 0) return;
+
+  const { camera, zoom, timeSec } = state;
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  const sx = cx + (home.x - camera.x) * zoom;
+  const sy = cy + (home.y - camera.y) * zoom;
+
+  // Hide while the home island is still visibly on-screen; fade in smoothly as it exits view
+  const onScreenMargin = home.radius * zoom * 0.35;
+  const overLeft = Math.max(0, -onScreenMargin - sx);
+  const overRight = Math.max(0, sx - (width + onScreenMargin));
+  const overTop = Math.max(0, -onScreenMargin - sy);
+  const overBottom = Math.max(0, sy - (height + onScreenMargin));
+  const maxOver = Math.max(overLeft, overRight, overTop, overBottom);
+  if (maxOver <= 0) return;
+
+  const fadeAlpha = clamp(maxOver / 80, 0.25, 1);
+
+  const dx = sx - cx;
+  const dy = sy - cy;
+  const screenDist = Math.hypot(dx, dy);
+  if (screenDist < 1) return;
+  const ux = dx / screenDist;
+  const uy = dy / screenDist;
+
+  const isCompact = width < 640 || height < 500;
+  const padX = isCompact ? 38 : 54;
+  const padY = isCompact ? 42 : 56;
+  const rx = Math.max(48, cx - padX);
+  const ry = Math.max(40, cy - padY);
+
+  // Project onto a rounded squircle perimeter (p = 3.2) so corners curve naturally
+  const denom = Math.pow(
+    Math.pow(Math.abs(ux) / rx, 3.2) + Math.pow(Math.abs(uy) / ry, 3.2),
+    1 / 3.2
+  );
+  const t = denom > 0 ? 1 / denom : 0;
+  let px = cx + ux * t;
+  let py = cy + uy * t;
+
+  // Keep clear of the 4 corner HUD zones
+  const tlRight = isCompact ? 185 : 230;
+  const tlBottom = isCompact ? 115 : 140;
+  if (px < tlRight && py < tlBottom) {
+    if (Math.abs(uy) > Math.abs(ux)) px = tlRight;
+    else py = tlBottom;
+  }
+
+  const trLeft = width - (isCompact ? 205 : 370);
+  const trBottom = isCompact ? 68 : 82;
+  if (px > trLeft && py < trBottom) {
+    if (Math.abs(uy) > Math.abs(ux)) px = trLeft;
+    else py = trBottom;
+  }
+
+  if (state.hasTouchControls || isCompact) {
+    const blRight = isCompact ? 148 : 165;
+    const blTop = height - (isCompact ? 148 : 165);
+    if (px < blRight && py > blTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = blRight;
+      else py = blTop;
+    }
+    const brLeft = width - (isCompact ? 185 : 210);
+    const brTop = height - (isCompact ? 155 : 175);
+    if (px > brLeft && py > brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = brLeft;
+      else py = brTop;
+    }
+  } else {
+    const brLeft = width - 255;
+    const brTop = height - 92;
+    if (px > brLeft && py > brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = brLeft;
+      else py = brTop;
+    }
+  }
+
+  px = clamp(px, 32, width - 32);
+  py = clamp(py, 32, height - 32);
+
+  const pointerAngle = Math.atan2(sy - py, sx - px);
+  const r = isCompact ? 17 : 20;
+  const pulse = 0.5 + 0.5 * Math.sin(timeSec * 4.2);
+
+  // World distance in meters (matching radar scale: 10px = 1m)
+  const worldDistPx = Math.hypot(home.x - camera.x, home.y - camera.y);
+  const meters = Math.max(0, Math.round((worldDistPx - home.radius * 0.72) / 10));
+  const distText =
+    meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${meters} m`;
+  const labelText = `Ana Ada · ${distText}`;
+
+  ctx.save();
+  ctx.globalAlpha = fadeAlpha;
+
+  // Soft shadow behind medallion
+  ctx.fillStyle = 'rgba(4, 15, 22, 0.45)';
+  ctx.beginPath();
+  ctx.arc(px, py + 2.5, r + 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Orbiting directional compass arrow pointing straight at the home island
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(pointerAngle);
+
+  const tipDist = r + (isCompact ? 11.5 : 13.5) + pulse * 1.5;
+  const baseDist = r + 1.5;
+  const halfSpread = isCompact ? 7 : 8;
+
+  ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
+  ctx.beginPath();
+  ctx.moveTo(tipDist + 3, 0);
+  ctx.lineTo(baseDist - 1, -halfSpread - 2);
+  ctx.lineTo(baseDist + 2, 0);
+  ctx.lineTo(baseDist - 1, halfSpread + 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#FBBF24';
+  ctx.strokeStyle = '#071E2A';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tipDist, 0);
+  ctx.lineTo(baseDist, -halfSpread);
+  ctx.lineTo(baseDist + 3, 0);
+  ctx.lineTo(baseDist, halfSpread);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Compass medallion body
+  ctx.fillStyle = 'rgba(11, 32, 44, 0.94)';
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#FBBF24';
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  ctx.strokeStyle = home.accentColor || '#34D399';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(px, py, r - 3.2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inside medallion: Mini Home Island + Banner Flag silhouette
+  ctx.save();
+  ctx.translate(px, py + 2);
+  const iconScale = isCompact ? 0.86 : 1;
+  ctx.scale(iconScale, iconScale);
+
+  // Island shore base
+  ctx.fillStyle = '#F3D295';
+  ctx.beginPath();
+  ctx.ellipse(0, 5.5, 9.5, 3.6, 0, Math.PI, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Green island hill
+  ctx.fillStyle = '#2E8B57';
+  ctx.beginPath();
+  ctx.arc(0, 5, 6.2, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Flagpole & fluttering banner
+  ctx.strokeStyle = '#F8FAFC';
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 2);
+  ctx.lineTo(0, -10.5);
+  ctx.stroke();
+
+  const wave = Math.sin(timeSec * 5) * 1.1;
+  ctx.fillStyle = home.accentColor || '#FBBF24';
+  ctx.beginPath();
+  ctx.moveTo(0.5, -10.5);
+  ctx.lineTo(8.5, -8 + wave);
+  ctx.lineTo(0.5, -5.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Distance pill (placed below medallion, or above if near bottom edge)
+  ctx.font = isCompact
+    ? '600 10px "Outfit", system-ui, sans-serif'
+    : '600 11px "Outfit", system-ui, sans-serif';
+  const textW = ctx.measureText(labelText).width;
+  const pillW = textW + 14;
+  const pillH = isCompact ? 18 : 20;
+  const placeAbove = py > height - (isCompact ? 76 : 88);
+  const pillY = placeAbove ? py - r - 17 : py + r + 17;
+  const pillX = clamp(px, pillW * 0.5 + 8, width - pillW * 0.5 - 8);
+
+  drawRoundedPill(ctx, pillX, pillY, pillW, pillH, 9);
+  ctx.fillStyle = 'rgba(11, 32, 44, 0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#FEF3C7';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(labelText, pillX, pillY + 0.5);
 
   ctx.restore();
 }

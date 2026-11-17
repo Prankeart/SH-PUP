@@ -264,6 +264,7 @@ export function parseImportedRoomLedger(jsonText: string): RoomLedger | null {
       openedTreasureIds: Array.isArray(parsed.openedTreasureIds) ? parsed.openedTreasureIds : [],
       dugCraters: Array.isArray(parsed.dugCraters) ? parsed.dugCraters : [],
       islandOwners: parsed.islandOwners ?? {},
+      warDeclarations: parsed.warDeclarations ?? {},
       playersById: parsed.playersById,
     };
   } catch {

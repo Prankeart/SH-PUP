@@ -75,6 +75,26 @@ export interface PlayerProfileLedger {
   lastSeenAt: number;
 }
 
+export interface RemoteSoldierSnapshot {
+  id: string;
+  type: SoldierType;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+  swinging?: boolean;
+}
+
+export interface RemoteEscortShipSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+}
+
 export interface RemotePlayerSnapshot {
   id: string;
   name: string;
@@ -102,6 +122,8 @@ export interface RemotePlayerSnapshot {
   isHost: boolean;
   starterSlotIndex: number;
   conqueredCount: number;
+  soldiers?: RemoteSoldierSnapshot[];
+  ships?: RemoteEscortShipSnapshot[];
 }
 
 export interface RemotePlayerView extends RemotePlayerSnapshot {
@@ -112,6 +134,8 @@ export interface RemotePlayerView extends RemotePlayerSnapshot {
   targetBoatY: number;
   targetBoatAngle: number;
   lastSnapshotTime: number;
+  soldierTargets?: Map<string, RemoteSoldierSnapshot>;
+  shipTargets?: Map<string, RemoteEscortShipSnapshot>;
 }
 
 export interface OnlineProjectileSnapshot {
@@ -147,6 +171,7 @@ export interface RoomLedger {
   openedTreasureIds: string[];
   dugCraters: DigCrater[];
   islandOwners: Record<string, string>; // islandId -> playerId
+  warDeclarations?: Record<string, string[]>; // declarerPlayerId -> targetPlayerIds
   playersById: Record<string, PlayerProfileLedger>;
 }
 
@@ -167,6 +192,8 @@ export interface OnlineWorldEvent {
     | 'island:claimed'
     | 'player:hit'
     | 'player:respawn'
+    | 'war:status'
+    | 'army:hit'
     | 'chat:msg'
     | 'fx:toast';
   payload: Record<string, unknown>;
@@ -193,6 +220,8 @@ export type ClientToHostMessage =
       walkPhase: number;
       digAnimProgress: number;
       attackAnimProgress: number;
+      soldiers?: Array<{ id: string; x: number; y: number; angle: number; swinging?: boolean }>;
+      ships?: Array<{ id: string; x: number; y: number; angle: number }>;
     }
   | {
       type: 'cmd:dig';
@@ -224,6 +253,8 @@ export type ClientToHostMessage =
       damage: number;
       range: number;
       isRanged: boolean;
+      splashRadius?: number;
+      projColor?: string;
     }
   | {
       type: 'cmd:pickup_weapon';
@@ -270,6 +301,20 @@ export type ClientToHostMessage =
       islandIds: string[];
     }
   | {
+      type: 'cmd:declare_war';
+      targetPlayerId: string;
+      cancel?: boolean;
+    }
+  | {
+      type: 'cmd:pvp_army_hit';
+      targetPlayerId: string;
+      targetUnitKind: 'SOLDIER' | 'SHIP' | 'PLAYER';
+      targetUnitId?: string;
+      damage: number;
+      x: number;
+      y: number;
+    }
+  | {
       type: 'cmd:chat';
       text: string;
     }
@@ -287,6 +332,7 @@ export type HostToClientMessage =
       openedTreasureIds: string[];
       dugCraters: DigCrater[];
       islandOwners: Record<string, string>;
+      warDeclarations: Record<string, string[]>;
       players: RemotePlayerSnapshot[];
     }
   | {
@@ -294,6 +340,7 @@ export type HostToClientMessage =
       roomInfo: OnlineRoomInfo;
       players: RemotePlayerSnapshot[];
       starterSlots: StarterSlot[];
+      warDeclarations?: Record<string, string[]>;
     }
   | {
       type: 'game:started';
@@ -303,6 +350,10 @@ export type HostToClientMessage =
   | {
       type: 'world:starter_added';
       slot: StarterSlot;
+    }
+  | {
+      type: 'war:sync';
+      warDeclarations: Record<string, string[]>;
     }
   | {
       type: 'world:snapshot';

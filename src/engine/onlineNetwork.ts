@@ -10,7 +10,9 @@ import {
   OnlineWorldEvent,
   PlayerIdentity,
   PlayerProfileLedger,
+  RemoteEscortShipSnapshot,
   RemotePlayerSnapshot,
+  RemoteSoldierSnapshot,
   RoomLedger,
   StarterSlot,
 } from '../types/online';
@@ -34,6 +36,7 @@ import {
   UpgradeKey,
 } from './upgrades';
 import {
+  ESCORT_SHIP_STATS,
   getArmyUpgradeCost,
   getSoldierPowerMultiplier,
   KINGDOM_COSTS,
@@ -41,7 +44,7 @@ import {
   SOLDIER_SPECS,
 } from './factions';
 import { pickStrongerWeapon } from './weapons';
-import { dist } from '../utils/prng';
+import { clamp, dist } from '../utils/prng';
 
 const PEER_PREFIX = 'shpup-tropikada-v1-';
 const INTEREST_RADIUS = 3400;
@@ -70,6 +73,7 @@ export interface OnlineCallbacks {
     projectiles: OnlineProjectileSnapshot[]
   ) => void;
   onWorldEvent: (event: OnlineWorldEvent) => void;
+  onWarSync: (warDeclarations: Record<string, string[]>) => void;
   onChat: (msg: OnlineChatMessage) => void;
   onPingUpdate: (rttMs: number) => void;
 }
@@ -88,6 +92,11 @@ export class OnlineSessionManager {
   private peerToPlayerId = new Map<string, string>();
   private playerToConn = new Map<string, DataConnection>();
   private playerPoses = new Map<string, RemotePlayerSnapshot>();
+  private playerSoldierPoses = new Map<
+    string,
+    Map<string, { x: number; y: number; angle: number; swinging?: boolean }>
+  >();
+  private playerEscortShips = new Map<string, RemoteEscortShipSnapshot[]>();
   private projectiles: OnlineProjectileSnapshot[] = [];
   private hitFlashUntilByPlayer = new Map<string, number>();
   private hostTickTimer: number | null = null;
@@ -146,6 +155,7 @@ export class OnlineSessionManager {
     if (existingLedger) {
       existingLedger = {
         ...existingLedger,
+        warDeclarations: existingLedger.warDeclarations ?? {},
         roomInfo: {
           ...existingLedger.roomInfo,
           hostPlayerId: identity.playerId,
@@ -181,6 +191,7 @@ export class OnlineSessionManager {
         openedTreasureIds: [],
         dugCraters: [],
         islandOwners: {},
+        warDeclarations: {},
         playersById: {
           [identity.playerId]: hostProfile,
         },
@@ -228,6 +239,7 @@ export class OnlineSessionManager {
           openedTreasureIds: existingLedger!.openedTreasureIds,
           dugCraters: existingLedger!.dugCraters,
           islandOwners: existingLedger!.islandOwners,
+          warDeclarations: existingLedger!.warDeclarations ?? {},
           players: Array.from(this.playerPoses.values()),
         });
         this.startHostLoops();
@@ -452,6 +464,7 @@ export class OnlineSessionManager {
           openedTreasureIds: this.ledger.openedTreasureIds,
           dugCraters: this.ledger.dugCraters,
           islandOwners: this.ledger.islandOwners,
+          warDeclarations: this.ledger.warDeclarations ?? {},
           players: Array.from(this.playerPoses.values()),
         } satisfies HostToClientMessage);
       }
@@ -509,6 +522,19 @@ export class OnlineSessionManager {
     void saveRoomLedger(this.ledger);
   }
 
+  public arePlayersAtWar(pidA: string, pidB: string): boolean {
+    if (!this.ledger || this.ledger.roomInfo.rule !== 'PVP' || pidA === pidB) return false;
+    const decl = this.ledger.warDeclarations ?? {};
+    return Boolean(decl[pidA]?.includes(pidB) && decl[pidB]?.includes(pidA));
+  }
+
+  private broadcastWarSync() {
+    if (!this.ledger) return;
+    const decl = this.ledger.warDeclarations ?? {};
+    this.callbacks.onWarSync({ ...decl });
+    this.broadcastToClients({ type: 'war:sync', warDeclarations: decl });
+  }
+
   private applyPose(pid: string, msg: Extract<ClientToHostMessage, { type: 'state:pose' }>) {
     if (!this.ledger) return;
     const prof = this.ledger.playersById[pid];
@@ -531,6 +557,52 @@ export class OnlineSessionManager {
     pose.digAnimProgress = msg.digAnimProgress;
     pose.attackAnimProgress = msg.attackAnimProgress;
     pose.connected = true;
+
+    if (msg.soldiers) {
+      let smap = this.playerSoldierPoses.get(pid);
+      if (!smap) {
+        smap = new Map();
+        this.playerSoldierPoses.set(pid, smap);
+      }
+      smap.clear();
+      for (let i = 0; i < msg.soldiers.length; i++) {
+        const s = msg.soldiers[i];
+        smap.set(s.id, { x: s.x, y: s.y, angle: s.angle, swinging: s.swinging });
+      }
+    }
+
+    if (msg.ships || prof.escortShipCount > 0) {
+      let existingShips = this.playerEscortShips.get(pid) ?? [];
+      if (existingShips.length !== prof.escortShipCount) {
+        const nextShips: RemoteEscortShipSnapshot[] = [];
+        for (let i = 0; i < prof.escortShipCount; i++) {
+          const prev = existingShips[i];
+          const incoming = msg.ships?.[i];
+          const formA = msg.boatAngle + (i % 2 === 0 ? 2.1 : -2.1);
+          const ringD = 120 + Math.floor(i / 2) * 36;
+          nextShips.push({
+            id: incoming?.id ?? prev?.id ?? `oship_${pid}_${i}`,
+            x: incoming?.x ?? prev?.x ?? msg.boatX + Math.cos(formA) * ringD,
+            y: incoming?.y ?? prev?.y ?? msg.boatY + Math.sin(formA) * ringD,
+            angle: incoming?.angle ?? prev?.angle ?? msg.boatAngle,
+            hp: prev?.hp ?? ESCORT_SHIP_STATS.maxHp,
+            maxHp: prev?.maxHp ?? ESCORT_SHIP_STATS.maxHp,
+          });
+        }
+        existingShips = nextShips;
+        this.playerEscortShips.set(pid, existingShips);
+      } else if (msg.ships) {
+        for (let i = 0; i < existingShips.length; i++) {
+          const inc = msg.ships[i];
+          if (inc) {
+            existingShips[i].id = inc.id;
+            existingShips[i].x = inc.x;
+            existingShips[i].y = inc.y;
+            existingShips[i].angle = inc.angle;
+          }
+        }
+      }
+    }
   }
 
   private processAuthoritativeCommand(pid: string, msg: ClientToHostMessage) {
@@ -797,8 +869,13 @@ export class OnlineSessionManager {
     if (msg.type === 'cmd:claim_island') {
       const prevOwner = this.ledger.islandOwners[msg.islandId];
       if (prevOwner === pid) return;
-      if (this.ledger.roomInfo.rule === 'COOP' && prevOwner && prevOwner !== pid) {
-        return; // In Co-op mode players don't steal each other's islands
+      if (prevOwner && prevOwner !== pid) {
+        if (this.ledger.roomInfo.rule === 'COOP') {
+          return; // In Co-op mode players don't steal each other's islands
+        }
+        if (!this.arePlayersAtWar(pid, prevOwner)) {
+          return; // Mutual war declaration required before conquering another player's island
+        }
       }
       if (prevOwner && this.ledger.playersById[prevOwner]) {
         this.ledger.playersById[prevOwner].conqueredIslandIds = this.ledger.playersById[
@@ -838,6 +915,143 @@ export class OnlineSessionManager {
       return;
     }
 
+    if (msg.type === 'cmd:declare_war') {
+      if (this.ledger.roomInfo.rule !== 'PVP') return;
+      const targetId = msg.targetPlayerId;
+      if (!targetId || targetId === pid) return;
+      const targetProf = this.ledger.playersById[targetId];
+      if (!targetProf) return;
+
+      if (!this.ledger.warDeclarations) this.ledger.warDeclarations = {};
+      const list = this.ledger.warDeclarations[pid] ?? [];
+      this.ledger.warDeclarations[pid] = list;
+
+      if (msg.cancel) {
+        // Can cancel a pending declaration if mutual war has not started yet
+        if (!this.arePlayersAtWar(pid, targetId) && list.includes(targetId)) {
+          this.ledger.warDeclarations[pid] = list.filter((id) => id !== targetId);
+          this.broadcastWarSync();
+          this.emitAndBroadcastEvent({
+            eventId: `war_${pid}_${targetId}_${Date.now()}`,
+            type: 'war:status',
+            payload: {
+              fromId: pid,
+              fromName: prof.name,
+              targetId,
+              targetName: targetProf.name,
+              mutual: false,
+              cancelled: true,
+            },
+          });
+          void saveRoomLedger(this.ledger);
+        }
+        return;
+      }
+
+      if (!list.includes(targetId)) {
+        list.push(targetId);
+      }
+      const mutual = this.arePlayersAtWar(pid, targetId);
+      this.broadcastWarSync();
+      this.emitAndBroadcastEvent({
+        eventId: `war_${pid}_${targetId}_${Date.now()}`,
+        type: 'war:status',
+        payload: {
+          fromId: pid,
+          fromName: prof.name,
+          targetId,
+          targetName: targetProf.name,
+          mutual,
+          cancelled: false,
+        },
+      });
+      void saveRoomLedger(this.ledger);
+      return;
+    }
+
+    if (msg.type === 'cmd:pvp_army_hit') {
+      if (!this.arePlayersAtWar(pid, msg.targetPlayerId)) return;
+      const targetProf = this.ledger.playersById[msg.targetPlayerId];
+      const targetPose = this.playerPoses.get(msg.targetPlayerId);
+      if (!targetProf || !targetPose || !targetPose.connected) return;
+      const safeDmg = clamp(Math.round(msg.damage), 1, 140);
+
+      if (msg.targetUnitKind === 'PLAYER') {
+        const isNaval = targetPose.isSailing;
+        const tx = isNaval ? targetPose.boatX : targetPose.x;
+        const ty = isNaval ? targetPose.boatY : targetPose.y;
+        if (dist(msg.x, msg.y, tx, ty) <= 220) {
+          this.damagePlayerOnHost(msg.targetPlayerId, safeDmg, pid, isNaval);
+        }
+        return;
+      }
+
+      if (msg.targetUnitKind === 'SOLDIER' && msg.targetUnitId && !targetPose.isSailing) {
+        const sIdx = targetProf.soldiers.findIndex((s) => s.id === msg.targetUnitId);
+        if (sIdx === -1) return;
+        const sol = targetProf.soldiers[sIdx];
+        sol.hp = Math.max(0, sol.hp - safeDmg);
+        const killed = sol.hp <= 0;
+        if (killed) {
+          targetProf.soldiers.splice(sIdx, 1);
+          prof.landEnemiesDefeated += 1;
+          prof.gold += 8;
+          prof.totalGoldEarned += 8;
+          this.syncProfileToPlayer(pid, prof);
+        }
+        this.emitAndBroadcastEvent({
+          eventId: `ahit_${msg.targetUnitId}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          type: 'army:hit',
+          payload: {
+            targetPlayerId: msg.targetPlayerId,
+            unitKind: 'SOLDIER',
+            unitId: msg.targetUnitId,
+            x: msg.x,
+            y: msg.y,
+            damage: safeDmg,
+            killed,
+            bannerColor: targetProf.bannerColor,
+          },
+        });
+        this.syncProfileToPlayer(msg.targetPlayerId, targetProf);
+        return;
+      }
+
+      if (msg.targetUnitKind === 'SHIP' && msg.targetUnitId) {
+        const ships = this.playerEscortShips.get(msg.targetPlayerId);
+        if (!ships) return;
+        const shIdx = ships.findIndex((s) => s.id === msg.targetUnitId);
+        if (shIdx === -1) return;
+        const ship = ships[shIdx];
+        ship.hp = Math.max(0, ship.hp - safeDmg);
+        const killed = ship.hp <= 0;
+        if (killed) {
+          ships.splice(shIdx, 1);
+          targetProf.escortShipCount = Math.max(0, targetProf.escortShipCount - 1);
+          prof.enemiesSunkCount += 1;
+          prof.gold += 30;
+          prof.totalGoldEarned += 30;
+          this.syncProfileToPlayer(pid, prof);
+          this.syncProfileToPlayer(msg.targetPlayerId, targetProf);
+        }
+        this.emitAndBroadcastEvent({
+          eventId: `ahit_${msg.targetUnitId}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          type: 'army:hit',
+          payload: {
+            targetPlayerId: msg.targetPlayerId,
+            unitKind: 'SHIP',
+            unitId: msg.targetUnitId,
+            x: ship.x,
+            y: ship.y,
+            damage: safeDmg,
+            killed,
+            bannerColor: targetProf.bannerColor,
+          },
+        });
+      }
+      return;
+    }
+
     if (msg.type === 'cmd:fire_cannon') {
       const sideX = -Math.sin(msg.angle);
       const sideY = Math.cos(msg.angle);
@@ -869,6 +1083,7 @@ export class OnlineSessionManager {
 
     if (msg.type === 'cmd:land_attack') {
       if (msg.isRanged) {
+        const speed = msg.splashRadius ? 345 : 440;
         this.projectiles.push({
           id: `olp_${pid}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
           ownerId: pid,
@@ -876,20 +1091,62 @@ export class OnlineSessionManager {
           x: msg.x + Math.cos(msg.angle) * 16,
           y: msg.y + Math.sin(msg.angle) * 16,
           z: 0,
-          vx: Math.cos(msg.angle) * 440,
-          vy: Math.sin(msg.angle) * 440,
+          vx: Math.cos(msg.angle) * speed,
+          vy: Math.sin(msg.angle) * speed,
           vz: 0,
           damage: msg.damage,
-          color: prof.bannerColor,
-          life: 0.9,
+          color: msg.projColor || prof.bannerColor,
+          life: msg.range ? Math.min(1.2, msg.range / speed + 0.15) : 0.9,
+          splashRadius: msg.splashRadius,
         });
       } else if (this.ledger.roomInfo.rule === 'PVP') {
-        // Authoritative melee PvP hit check
+        // Authoritative melee PvP hit check (only against players at war with attacker)
         for (const [targetId, targetPose] of this.playerPoses.entries()) {
           if (targetId === pid || !targetPose.connected || targetPose.isSailing) continue;
+          if (!this.arePlayersAtWar(pid, targetId)) continue;
           const d = dist(msg.x, msg.y, targetPose.x, targetPose.y);
           if (d <= msg.range + 16) {
             this.damagePlayerOnHost(targetId, msg.damage, pid, false);
+          }
+          // Also check melee hit against enemy player's soldiers
+          const targetProf = this.ledger.playersById[targetId];
+          const smap = this.playerSoldierPoses.get(targetId);
+          if (targetProf && smap && targetProf.soldiers.length > 0) {
+            let anySoldierDamaged = false;
+            for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
+              const sol = targetProf.soldiers[si];
+              const spos = smap.get(sol.id);
+              if (!spos) continue;
+              if (dist(msg.x, msg.y, spos.x, spos.y) <= msg.range + 16) {
+                sol.hp = Math.max(0, sol.hp - msg.damage);
+                anySoldierDamaged = true;
+                const killed = sol.hp <= 0;
+                if (killed) {
+                  targetProf.soldiers.splice(si, 1);
+                  prof.landEnemiesDefeated += 1;
+                  prof.gold += 8;
+                  prof.totalGoldEarned += 8;
+                }
+                this.emitAndBroadcastEvent({
+                  eventId: `ahit_${sol.id}_${Date.now()}_${si}`,
+                  type: 'army:hit',
+                  payload: {
+                    targetPlayerId: targetId,
+                    unitKind: 'SOLDIER',
+                    unitId: sol.id,
+                    x: spos.x,
+                    y: spos.y,
+                    damage: msg.damage,
+                    killed,
+                    bannerColor: targetProf.bannerColor,
+                  },
+                });
+              }
+            }
+            if (anySoldierDamaged) {
+              this.syncProfileToPlayer(targetId, targetProf);
+              this.syncProfileToPlayer(pid, prof);
+            }
           }
         }
       }
@@ -1061,18 +1318,117 @@ export class OnlineSessionManager {
       if (isPvp) {
         for (const [targetId, targetPose] of this.playerPoses.entries()) {
           if (targetId === p.ownerId || !targetPose.connected) continue;
-          if (p.kind === 'CANNON' && targetPose.isSailing) {
-            if (dist(p.x, p.y, targetPose.boatX, targetPose.boatY) <= 28) {
+          if (!this.arePlayersAtWar(p.ownerId, targetId)) continue;
+
+          if (p.kind === 'CANNON') {
+            if (targetPose.isSailing && dist(p.x, p.y, targetPose.boatX, targetPose.boatY) <= 28) {
               this.damagePlayerOnHost(targetId, p.damage, p.ownerId, true);
               hit = true;
               break;
+            }
+            const ships = this.playerEscortShips.get(targetId);
+            const targetProf = this.ledger.playersById[targetId];
+            if (ships && targetProf) {
+              for (let si = ships.length - 1; si >= 0; si--) {
+                const ship = ships[si];
+                if (dist(p.x, p.y, ship.x, ship.y) <= 26) {
+                  ship.hp = Math.max(0, ship.hp - p.damage);
+                  const killed = ship.hp <= 0;
+                  if (killed) {
+                    ships.splice(si, 1);
+                    targetProf.escortShipCount = Math.max(0, targetProf.escortShipCount - 1);
+                    const atkProf = this.ledger.playersById[p.ownerId];
+                    if (atkProf) {
+                      atkProf.enemiesSunkCount += 1;
+                      atkProf.gold += 30;
+                      atkProf.totalGoldEarned += 30;
+                      this.syncProfileToPlayer(p.ownerId, atkProf);
+                    }
+                    this.syncProfileToPlayer(targetId, targetProf);
+                  }
+                  this.emitAndBroadcastEvent({
+                    eventId: `ahit_${ship.id}_${Date.now()}_${si}`,
+                    type: 'army:hit',
+                    payload: {
+                      targetPlayerId: targetId,
+                      unitKind: 'SHIP',
+                      unitId: ship.id,
+                      x: ship.x,
+                      y: ship.y,
+                      damage: p.damage,
+                      killed,
+                      bannerColor: targetProf.bannerColor,
+                    },
+                  });
+                  hit = true;
+                  break;
+                }
+              }
+              if (hit) break;
             }
           } else if (p.kind === 'LAND' && !targetPose.isSailing) {
             if (dist(p.x, p.y, targetPose.x, targetPose.y) <= 18) {
               this.damagePlayerOnHost(targetId, p.damage, p.ownerId, false);
               hit = true;
+            }
+            const targetProf = this.ledger.playersById[targetId];
+            const smap = this.playerSoldierPoses.get(targetId);
+            if (!hit && targetProf && smap && targetProf.soldiers.length > 0) {
+              const hitR = p.splashRadius ? 20 : 16;
+              for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
+                const sol = targetProf.soldiers[si];
+                const spos = smap.get(sol.id);
+                if (!spos) continue;
+                if (dist(p.x, p.y, spos.x, spos.y) <= hitR) {
+                  hit = true;
+                  break;
+                }
+              }
+            }
+            if (hit && targetProf && smap) {
+              const blastR = p.splashRadius ?? 20;
+              let anySoldierDamaged = false;
+              for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
+                const sol = targetProf.soldiers[si];
+                const spos = smap.get(sol.id);
+                if (!spos) continue;
+                if (dist(p.x, p.y, spos.x, spos.y) <= blastR) {
+                  const dealt = p.splashRadius ? Math.round(p.damage * 0.85) : p.damage;
+                  sol.hp = Math.max(0, sol.hp - dealt);
+                  anySoldierDamaged = true;
+                  const killed = sol.hp <= 0;
+                  if (killed) {
+                    targetProf.soldiers.splice(si, 1);
+                    const atkProf = this.ledger.playersById[p.ownerId];
+                    if (atkProf) {
+                      atkProf.landEnemiesDefeated += 1;
+                      atkProf.gold += 8;
+                      atkProf.totalGoldEarned += 8;
+                      this.syncProfileToPlayer(p.ownerId, atkProf);
+                    }
+                  }
+                  this.emitAndBroadcastEvent({
+                    eventId: `ahit_${sol.id}_${Date.now()}_${si}`,
+                    type: 'army:hit',
+                    payload: {
+                      targetPlayerId: targetId,
+                      unitKind: 'SOLDIER',
+                      unitId: sol.id,
+                      x: spos.x,
+                      y: spos.y,
+                      damage: dealt,
+                      killed,
+                      bannerColor: targetProf.bannerColor,
+                    },
+                  });
+                }
+              }
+              if (anySoldierDamaged) {
+                this.syncProfileToPlayer(targetId, targetProf);
+              }
               break;
             }
+            if (hit) break;
           }
         }
       }
@@ -1094,13 +1450,69 @@ export class OnlineSessionManager {
     }
   }
 
+  private buildReplicatedPose(
+    pose: RemotePlayerSnapshot,
+    includeArmies: boolean
+  ): RemotePlayerSnapshot {
+    if (!includeArmies || !this.ledger) {
+      return { ...pose, soldiers: undefined, ships: undefined };
+    }
+    const prof = this.ledger.playersById[pose.id];
+    const smap = this.playerSoldierPoses.get(pose.id);
+    const soldiers: RemoteSoldierSnapshot[] = [];
+    if (prof && !pose.isSailing && prof.soldiers.length > 0) {
+      const limit = Math.min(prof.soldiers.length, 160);
+      for (let i = 0; i < limit; i++) {
+        const rs = prof.soldiers[i];
+        const spos = smap?.get(rs.id);
+        const fallbackA = (i / Math.max(1, limit)) * Math.PI * 2;
+        soldiers.push({
+          id: rs.id,
+          type: rs.type,
+          x: Math.round(spos ? spos.x : pose.x + Math.cos(fallbackA) * 36),
+          y: Math.round(spos ? spos.y : pose.y + Math.sin(fallbackA) * 36),
+          angle: Math.round((spos ? spos.angle : pose.angle) * 100) / 100,
+          hp: rs.hp,
+          maxHp: rs.maxHp,
+          swinging: spos?.swinging || undefined,
+        });
+      }
+    }
+    const rawShips = this.playerEscortShips.get(pose.id);
+    const ships: RemoteEscortShipSnapshot[] = rawShips
+      ? rawShips.slice(0, 60).map((sh) => ({
+          id: sh.id,
+          x: Math.round(sh.x),
+          y: Math.round(sh.y),
+          angle: Math.round(sh.angle * 100) / 100,
+          hp: sh.hp,
+          maxHp: sh.maxHp,
+        }))
+      : [];
+    return {
+      ...pose,
+      soldiers,
+      ships,
+    };
+  }
+
   private broadcastSnapshots(now: number) {
     if (!this.ledger || !this.identity) return;
     const allPoses = Array.from(this.playerPoses.values());
+    const hostId = this.identity.playerId;
+    const hostPose = this.playerPoses.get(hostId);
+    const hx = hostPose ? (hostPose.isSailing ? hostPose.boatX : hostPose.x) : 0;
+    const hy = hostPose ? (hostPose.isSailing ? hostPose.boatY : hostPose.y) : 0;
 
-    // Deliver local host view (all other players)
+    // Deliver local host view (all other players, with armies when within interest radius)
     this.callbacks.onSnapshot(
-      allPoses.filter((p) => p.id !== this.identity!.playerId),
+      allPoses
+        .filter((p) => p.id !== hostId)
+        .map((p) => {
+          const px = p.isSailing ? p.boatX : p.x;
+          const py = p.isSailing ? p.boatY : p.y;
+          return this.buildReplicatedPose(p, dist(hx, hy, px, py) <= INTEREST_RADIUS);
+        }),
       this.projectiles
     );
 
@@ -1112,14 +1524,21 @@ export class OnlineSessionManager {
       const vy = viewer ? (viewer.isSailing ? viewer.boatY : viewer.y) : 0;
 
       // Always send compact poses for active players so World Map works,
-      // and cull projectiles strictly within INTEREST_RADIUS to save bandwidth
+      // and include armies/projectiles within INTEREST_RADIUS to save bandwidth
       const culledProjectiles = this.projectiles.filter(
         (pr) => dist(vx, vy, pr.x, pr.y) <= INTEREST_RADIUS
       );
+      const viewerPlayers = allPoses
+        .filter((p) => p.id !== pid)
+        .map((p) => {
+          const px = p.isSailing ? p.boatX : p.x;
+          const py = p.isSailing ? p.boatY : p.y;
+          return this.buildReplicatedPose(p, dist(vx, vy, px, py) <= INTEREST_RADIUS);
+        });
       conn.send({
         type: 'world:snapshot',
         t: now,
-        players: allPoses.filter((p) => p.id !== pid),
+        players: viewerPlayers,
         projectiles: culledProjectiles,
       } satisfies HostToClientMessage);
     }
@@ -1139,12 +1558,15 @@ export class OnlineSessionManager {
   private broadcastLobbyState() {
     if (!this.ledger) return;
     const allPoses = Array.from(this.playerPoses.values());
+    const warDecl = this.ledger.warDeclarations ?? {};
     this.callbacks.onLobbyUpdate(this.ledger.roomInfo, allPoses, this.ledger.starterSlots);
+    this.callbacks.onWarSync({ ...warDecl });
     this.broadcastToClients({
       type: 'lobby:state',
       roomInfo: this.ledger.roomInfo,
       players: allPoses,
       starterSlots: this.ledger.starterSlots,
+      warDeclarations: warDecl,
     });
   }
 
@@ -1181,6 +1603,9 @@ export class OnlineSessionManager {
     }
     if (msg.type === 'lobby:state') {
       this.callbacks.onLobbyUpdate(msg.roomInfo, msg.players, msg.starterSlots);
+      if (msg.warDeclarations) {
+        this.callbacks.onWarSync(msg.warDeclarations);
+      }
       return;
     }
     if (msg.type === 'game:started') {
@@ -1190,6 +1615,10 @@ export class OnlineSessionManager {
     }
     if (msg.type === 'world:starter_added') {
       this.callbacks.onStarterAdded(msg.slot);
+      return;
+    }
+    if (msg.type === 'war:sync') {
+      this.callbacks.onWarSync(msg.warDeclarations);
       return;
     }
     if (msg.type === 'player:profile_sync') {
@@ -1244,6 +1673,8 @@ export class OnlineSessionManager {
     this.peerToPlayerId.clear();
     this.playerToConn.clear();
     this.playerPoses.clear();
+    this.playerSoldierPoses.clear();
+    this.playerEscortShips.clear();
     this.projectiles = [];
     if (this.hostConn) {
       try {
