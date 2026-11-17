@@ -71,15 +71,31 @@ import { pickStrongerWeapon, WEAPONS } from './engine/weapons';
 import { renderGameFrame } from './engine/renderer';
 import { SpatialGrid } from './engine/spatialGrid';
 import { soundEngine } from './engine/audio';
-import { clamp, dist, lerpAngle } from './utils/prng';
+import { clamp, dist, lerp, lerpAngle } from './utils/prng';
+import {
+  OnlineChatMessage,
+  OnlineConnectionStatus,
+  OnlineModeRule,
+  OnlineProjectileSnapshot,
+  OnlineRoomInfo,
+  OnlineWorldEvent,
+  PlayerIdentity,
+  PlayerProfileLedger,
+  RemotePlayerSnapshot,
+  RemotePlayerView,
+  StarterSlot,
+} from './types/online';
+import { loadPlayerIdentity, savePlayerIdentity } from './engine/onlineStorage';
+import { OnlineSessionManager } from './engine/onlineNetwork';
 import { VirtualJoystick } from './components/VirtualJoystick';
-import { ActionControls } from './components/ActionControls';
+import { ActionControls, ActionControlsDisplayMode } from './components/ActionControls';
 import { TopRightHud } from './components/TopRightHud';
 import { MapModal } from './components/MapModal';
 import { ShopModal } from './components/ShopModal';
 import { KingdomModal } from './components/KingdomModal';
 import { SettingsModal } from './components/SettingsModal';
 import { TitleOverlay } from './components/TitleOverlay';
+import { OnlineLobbyModal } from './components/OnlineLobbyModal';
 
 const PLAYER_SPEED = 175;
 const MAX_PLAYER_HP = 100;
@@ -131,6 +147,11 @@ function buildInitialEscortShips(save: SaveData): AllyShip[] {
 }
 
 export default function App() {
+  const inviteRoomCode = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('room')?.trim().toUpperCase() || '';
+  }, []);
+
   const initialSave = useMemo(() => loadSaveData(), []);
   const [hasSavedProgress, setHasSavedProgress] = useState<boolean>(Boolean(initialSave));
   const [save, setSave] = useState<SaveData>(() => initialSave ?? createInitialSave());
@@ -139,6 +160,31 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModal>('NONE');
   const [isPortrait, setIsPortrait] = useState<boolean>(false);
   const [dismissPortraitHint, setDismissPortraitHint] = useState<boolean>(false);
+
+  // Online P2P Multiplayer State
+  const [identity, setIdentity] = useState<PlayerIdentity>(() => loadPlayerIdentity());
+  const [showOnlineLobby, setShowOnlineLobby] = useState<boolean>(() => Boolean(inviteRoomCode));
+  const [onlineActive, setOnlineActive] = useState<boolean>(false);
+  const [onlineStatus, setOnlineStatus] = useState<OnlineConnectionStatus>('IDLE');
+  const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [onlineRole, setOnlineRole] = useState<'HOST' | 'CLIENT' | null>(null);
+  const [onlineRoomInfo, setOnlineRoomInfo] = useState<OnlineRoomInfo | null>(null);
+  const [onlineLobbyPlayers, setOnlineLobbyPlayers] = useState<RemotePlayerSnapshot[]>([]);
+  const [onlineStarterSlots, setOnlineStarterSlots] = useState<StarterSlot[]>([]);
+  const [onlineIslandOwners, setOnlineIslandOwners] = useState<Record<string, string>>({});
+  const [onlinePing, setOnlinePing] = useState<number | null>(null);
+  const [, setOnlineChat] = useState<OnlineChatMessage[]>([]);
+  const [isCoarseDevice, setIsCoarseDevice] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.matchMedia('(pointer: coarse)').matches ||
+      (navigator.maxTouchPoints > 0 && (window.innerWidth < 768 || window.innerHeight <= 600))
+    );
+  });
+  const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 640 || window.innerHeight < 500;
+  });
 
   const [hudState, setHudState] = useState({
     canBoard: false,
@@ -165,6 +211,19 @@ export default function App() {
   const settingsRef = useRef<GameSettings>(settings);
   const phaseRef = useRef<GamePhase>(phase);
   const modalRef = useRef<ActiveModal>(activeModal);
+  const identityRef = useRef<PlayerIdentity>(identity);
+  const onlineActiveRef = useRef<boolean>(false);
+  const onlineManagerRef = useRef<OnlineSessionManager | null>(null);
+  const onlineRoomInfoRef = useRef<OnlineRoomInfo | null>(null);
+  const onlineIslandOwnersRef = useRef<Record<string, string>>({});
+  const onlineOwnersForRenderRef = useRef<
+    Record<string, { shortName: string; color: string; isCapturable?: boolean }> | undefined
+  >(undefined);
+  const remotePlayersRef = useRef<Map<string, RemotePlayerView>>(new Map());
+  const onlineProjectilesRef = useRef<OnlineProjectileSnapshot[]>([]);
+  const lastPoseSendRef = useRef<number>(0);
+  const lastRosterUiSyncRef = useRef<number>(0);
+  const lastClaimSentRef = useRef<{ islandId: string; at: number }>({ islandId: '', at: 0 });
 
   const worldManagerRef = useRef<WorldManager>(
     new WorldManager(save.worldSeed, save.upgrades.luckLevel)
@@ -235,6 +294,19 @@ export default function App() {
   }, [save]);
 
   useEffect(() => {
+    identityRef.current = identity;
+    savePlayerIdentity(identity);
+  }, [identity]);
+
+  useEffect(() => {
+    onlineRoomInfoRef.current = onlineRoomInfo;
+  }, [onlineRoomInfo]);
+
+  useEffect(() => {
+    onlineIslandOwnersRef.current = onlineIslandOwners;
+  }, [onlineIslandOwners]);
+
+  useEffect(() => {
     settingsRef.current = settings;
     soundEngine.setEnabled(settings.soundEnabled);
     persistSettings(settings);
@@ -275,13 +347,45 @@ export default function App() {
   }, [initialSave]);
 
   useEffect(() => {
-    const checkOrientation = () => {
+    const checkViewport = () => {
       const portrait = window.innerWidth < 720 && window.innerHeight > window.innerWidth;
       setIsPortrait(portrait);
+      setIsNarrowViewport(window.innerWidth < 640 || window.innerHeight < 500);
     };
-    checkOrientation();
-    window.addEventListener('resize', checkOrientation);
-    return () => window.removeEventListener('resize', checkOrientation);
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+    return () => window.removeEventListener('resize', checkViewport);
+  }, []);
+
+  useEffect(() => {
+    const coarseMql = window.matchMedia('(pointer: coarse)');
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      setIsCoarseDevice(e.matches);
+    };
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        setIsCoarseDevice(true);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        !coarseMql.matches &&
+        ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(
+          e.code
+        )
+      ) {
+        setIsCoarseDevice(false);
+      }
+    };
+
+    coarseMql.addEventListener('change', handleMediaChange);
+    window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      coarseMql.removeEventListener('change', handleMediaChange);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const addFloatingText = useCallback(
@@ -340,12 +444,488 @@ export default function App() {
     setSave((prev) => {
       const next = updater(prev);
       saveRef.current = next;
-      if (!skipDiskFlush) {
+      if (!skipDiskFlush && !onlineActiveRef.current) {
         persistSaveData(next);
       }
       return next;
     });
   }, []);
+
+  const profileToSaveData = useCallback(
+    (
+      prof: PlayerProfileLedger,
+      worldSeed: number,
+      openedTreasureIds: string[],
+      dugCraters: DigCrater[]
+    ): SaveData => ({
+      version: 1,
+      worldSeed,
+      gold: prof.gold,
+      totalGoldEarned: prof.totalGoldEarned,
+      treasuresFoundCount: prof.treasuresFoundCount,
+      enemiesSunkCount: prof.enemiesSunkCount,
+      landEnemiesDefeated: prof.landEnemiesDefeated,
+      boatHp: prof.boatHp,
+      playerHp: prof.playerHp,
+      equippedWeapon: prof.equippedWeapon,
+      unlockedWeapons: prof.unlockedWeapons,
+      collectedPickupIds: prof.collectedPickupIds,
+      bag: prof.bag,
+      upgrades: prof.upgrades,
+      kingdom: {
+        founded: prof.kingdomFounded,
+        name: prof.kingdomName,
+        bannerColor: prof.bannerColor,
+        armyLevel: prof.armyLevel,
+        conqueredIslandIds: prof.conqueredIslandIds,
+        escortShipCount: prof.escortShipCount,
+        soldiers: prof.soldiers,
+        atWarWith: [],
+        islandOwners: {},
+      },
+      openedTreasureIds,
+      discoveredIslandIds: prof.discoveredIslandIds,
+      dugCraters,
+      player: prof.player,
+      boat: prof.boat,
+    }),
+    []
+  );
+
+  const applySaveSnapshotToSim = useCallback((nextSave: SaveData, resetWorldEntities: boolean) => {
+    const sim = simRef.current;
+    sim.playerX = nextSave.player.x;
+    sim.playerY = nextSave.player.y;
+    sim.playerAngle = nextSave.player.angle;
+    sim.playerHp = nextSave.playerHp;
+    sim.isSailing = nextSave.player.isSailing;
+    sim.boatX = nextSave.boat.x;
+    sim.boatY = nextSave.boat.y;
+    sim.boatAngle = nextSave.boat.angle;
+    sim.boatHp = nextSave.boatHp;
+    sim.boatVx = 0;
+    sim.boatVy = 0;
+    sim.boatSpeedRatio = 0;
+    sim.cameraX = nextSave.player.isSailing ? nextSave.boat.x : nextSave.player.x;
+    sim.cameraY = nextSave.player.isSailing ? nextSave.boat.y : nextSave.player.y;
+    sim.allyShips = buildInitialEscortShips(nextSave);
+    sim.allySoldiers = buildInitialSoldiers(nextSave);
+    if (resetWorldEntities) {
+      sim.enemies = [];
+      sim.islandEnemies = [];
+      sim.landProjectiles = [];
+      sim.cannonballs = [];
+      sim.floatingLoot = [];
+      sim.waterRipples = [];
+      sim.particles = [];
+      sim.floatingTexts = [];
+      sim.radarPulses = [];
+      sim.fortCapture = null;
+      sim.spawnedIslandIds.clear();
+      sim.spawnedFactionByIsland.clear();
+    }
+  }, []);
+
+  const ensureOnlineManager = useCallback((): OnlineSessionManager => {
+    if (onlineManagerRef.current) return onlineManagerRef.current;
+
+    const mgr = new OnlineSessionManager({
+      onStatusChange: (status, errMsg) => {
+        setOnlineStatus(status);
+        setOnlineError(errMsg ?? null);
+        setOnlineRole(mgr.getRole());
+      },
+      onLobbyUpdate: (roomInfo, players, slots) => {
+        setOnlineRoomInfo(roomInfo);
+        setOnlineLobbyPlayers(players);
+        setOnlineStarterSlots(slots);
+        worldManagerRef.current.setOnlineMode(true);
+        worldManagerRef.current.setSeed(roomInfo.worldSeed);
+        worldManagerRef.current.setStarterSlots(slots);
+      },
+      onWelcome: (msg) => {
+        setOnlineRoomInfo(msg.roomInfo);
+        setOnlineStarterSlots(msg.starterSlots);
+        setOnlineIslandOwners(msg.islandOwners);
+        setOnlineLobbyPlayers(msg.players);
+        setOnlineRole(mgr.getRole());
+
+        worldManagerRef.current.setOnlineMode(true);
+        worldManagerRef.current.setSeed(msg.roomInfo.worldSeed);
+        worldManagerRef.current.setLuckLevel(msg.yourProfile.upgrades.luckLevel);
+        worldManagerRef.current.setStarterSlots(msg.starterSlots);
+
+        const nextSave = profileToSaveData(
+          msg.yourProfile,
+          msg.roomInfo.worldSeed,
+          msg.openedTreasureIds,
+          msg.dugCraters
+        );
+        saveRef.current = nextSave;
+        setSave(nextSave);
+        applySaveSnapshotToSim(nextSave, true);
+
+        const selfId = identityRef.current.playerId;
+        remotePlayersRef.current.clear();
+        const now = performance.now();
+        for (const p of msg.players) {
+          if (p.id === selfId) continue;
+          remotePlayersRef.current.set(p.id, {
+            ...p,
+            targetX: p.x,
+            targetY: p.y,
+            targetAngle: p.angle,
+            targetBoatX: p.boatX,
+            targetBoatY: p.boatY,
+            targetBoatAngle: p.boatAngle,
+            lastSnapshotTime: now,
+          });
+        }
+
+        if (msg.roomInfo.started) {
+          onlineActiveRef.current = true;
+          setOnlineActive(true);
+          setShowOnlineLobby(false);
+          setPhase('PLAYING');
+        }
+      },
+      onGameStarted: (roomInfo, slots) => {
+        setOnlineRoomInfo(roomInfo);
+        setOnlineStarterSlots(slots);
+        worldManagerRef.current.setOnlineMode(true);
+        worldManagerRef.current.setSeed(roomInfo.worldSeed);
+        worldManagerRef.current.setStarterSlots(slots);
+        onlineActiveRef.current = true;
+        setOnlineActive(true);
+        setShowOnlineLobby(false);
+        setPhase('PLAYING');
+      },
+      onStarterAdded: (slot) => {
+        setOnlineStarterSlots((prev) =>
+          prev.some((s) => s.playerId === slot.playerId)
+            ? prev.map((s) => (s.playerId === slot.playerId ? slot : s))
+            : [...prev, slot]
+        );
+        worldManagerRef.current.addStarterSlot(slot);
+        if (slot.playerId !== identityRef.current.playerId) {
+          const sim = simRef.current;
+          addFloatingText(
+            sim.isSailing ? sim.boatX : sim.playerX,
+            (sim.isSailing ? sim.boatY : sim.playerY) - 42,
+            `${slot.ownerName} Adaya Katıldı!`,
+            slot.bannerColor
+          );
+        }
+      },
+      onProfileSync: (prof) => {
+        const sim = simRef.current;
+        const prevSave = saveRef.current;
+        const boatLevelUp = prof.upgrades.boatLevel > prevSave.upgrades.boatLevel;
+        if (prof.boatHp < sim.boatHp || boatLevelUp) {
+          sim.boatHp = prof.boatHp;
+        }
+        if (prof.playerHp < sim.playerHp) {
+          sim.playerHp = prof.playerHp;
+        }
+
+        const nextSave: SaveData = {
+          ...prevSave,
+          gold: prof.gold,
+          totalGoldEarned: prof.totalGoldEarned,
+          treasuresFoundCount: prof.treasuresFoundCount,
+          enemiesSunkCount: prof.enemiesSunkCount,
+          landEnemiesDefeated: prof.landEnemiesDefeated,
+          boatHp: Math.round(sim.boatHp),
+          playerHp: Math.round(sim.playerHp),
+          equippedWeapon: prof.equippedWeapon,
+          unlockedWeapons: prof.unlockedWeapons,
+          collectedPickupIds: Array.from(
+            new Set([...prevSave.collectedPickupIds, ...prof.collectedPickupIds])
+          ),
+          bag: prof.bag,
+          upgrades: prof.upgrades,
+          discoveredIslandIds: Array.from(
+            new Set([...prevSave.discoveredIslandIds, ...prof.discoveredIslandIds])
+          ),
+          kingdom: {
+            ...prevSave.kingdom,
+            founded: prof.kingdomFounded,
+            name: prof.kingdomName,
+            bannerColor: prof.bannerColor,
+            armyLevel: prof.armyLevel,
+            conqueredIslandIds: prof.conqueredIslandIds,
+            escortShipCount: prof.escortShipCount,
+            soldiers: prof.soldiers,
+          },
+        };
+
+        if (sim.allyShips.length !== prof.escortShipCount) {
+          const diff = prof.escortShipCount - sim.allyShips.length;
+          if (diff > 0) {
+            for (let i = 0; i < diff; i++) {
+              const slot = sim.allyShips.length;
+              const formA = sim.boatAngle + (slot % 2 === 0 ? 2.1 : -2.1) + i * 0.25;
+              const ringDist = 95 + Math.floor(slot / 2) * 32;
+              sim.allyShips.push({
+                id: `oally_${Date.now()}_${slot}_${i}`,
+                name: `Korvet ${slot + 1}`,
+                x: sim.boatX + Math.cos(formA) * (160 + ringDist),
+                y: sim.boatY + Math.sin(formA) * (160 + ringDist),
+                angle: Math.random() * Math.PI * 2,
+                hp: ESCORT_SHIP_STATS.maxHp,
+                maxHp: ESCORT_SHIP_STATS.maxHp,
+                lastFireTime: 0,
+                hitFlashTime: -1000,
+                slotIndex: slot,
+                nextDecisionTime: 0,
+                cruiseSpeedMult: 0.86 + Math.random() * 0.28,
+                orbitSign: slot % 2 === 0 ? 1 : -1,
+              });
+            }
+          } else {
+            sim.allyShips = sim.allyShips.slice(0, prof.escortShipCount);
+          }
+        }
+
+        if (sim.allySoldiers.length !== prof.soldiers.length) {
+          const existingMap = new Map<string, AllySoldier>(sim.allySoldiers.map((s) => [s.id, s]));
+          const baseX = sim.isSailing ? sim.boatX : sim.playerX;
+          const baseY = sim.isSailing ? sim.boatY : sim.playerY;
+          sim.allySoldiers = prof.soldiers.map((rs, idx) => {
+            const ex = existingMap.get(rs.id);
+            if (ex) {
+              return { ...ex, hp: rs.hp, maxHp: rs.maxHp };
+            }
+            const a = (idx / Math.max(1, prof.soldiers.length)) * Math.PI * 2;
+            const r = 24 + Math.random() * 34;
+            return {
+              ...rs,
+              x: baseX + Math.cos(a) * r,
+              y: baseY + Math.sin(a) * r,
+              angle: sim.playerAngle,
+              lastAttackTime: 0,
+              hitFlashTime: -1000,
+              walkPhase: idx * 0.6,
+              attackSwingTime: 0,
+            };
+          });
+        } else {
+          for (let i = 0; i < prof.soldiers.length; i++) {
+            if (sim.allySoldiers[i]) {
+              sim.allySoldiers[i].hp = prof.soldiers[i].hp;
+              sim.allySoldiers[i].maxHp = prof.soldiers[i].maxHp;
+            }
+          }
+        }
+
+        saveRef.current = nextSave;
+        setSave(nextSave);
+      },
+      onSnapshot: (players, projectiles) => {
+        const now = performance.now();
+        const selfId = identityRef.current.playerId;
+        if (
+          now - lastRosterUiSyncRef.current >= 950 ||
+          modalRef.current === 'MAP' ||
+          modalRef.current === 'KINGDOM'
+        ) {
+          lastRosterUiSyncRef.current = now;
+          setOnlineLobbyPlayers((prev) => {
+            const selfPose = prev.find((p) => p.id === selfId);
+            const merged = [...players];
+            if (selfPose) merged.unshift(selfPose);
+            return merged;
+          });
+        }
+
+        const seenIds = new Set<string>();
+        for (const p of players) {
+          if (p.id === selfId) continue;
+          seenIds.add(p.id);
+          const existing = remotePlayersRef.current.get(p.id);
+          if (existing) {
+            existing.name = p.name;
+            existing.bannerColor = p.bannerColor;
+            existing.kingdomFounded = p.kingdomFounded;
+            existing.kingdomName = p.kingdomName;
+            existing.targetX = p.x;
+            existing.targetY = p.y;
+            existing.targetAngle = p.angle;
+            existing.targetBoatX = p.boatX;
+            existing.targetBoatY = p.boatY;
+            existing.targetBoatAngle = p.boatAngle;
+            existing.isSailing = p.isSailing;
+            existing.boatLevel = p.boatLevel;
+            existing.boatHp = p.boatHp;
+            existing.maxBoatHp = p.maxBoatHp;
+            existing.playerHp = p.playerHp;
+            existing.equippedWeapon = p.equippedWeapon;
+            existing.speedRatio = p.speedRatio;
+            existing.walkPhase = p.walkPhase;
+            existing.digAnimProgress = p.digAnimProgress;
+            existing.attackAnimProgress = p.attackAnimProgress;
+            existing.hitFlash = p.hitFlash;
+            existing.connected = p.connected;
+            existing.isHost = p.isHost;
+            existing.starterSlotIndex = p.starterSlotIndex;
+            existing.conqueredCount = p.conqueredCount;
+            existing.lastSnapshotTime = now;
+          } else {
+            remotePlayersRef.current.set(p.id, {
+              ...p,
+              targetX: p.x,
+              targetY: p.y,
+              targetAngle: p.angle,
+              targetBoatX: p.boatX,
+              targetBoatY: p.boatY,
+              targetBoatAngle: p.boatAngle,
+              lastSnapshotTime: now,
+            });
+          }
+        }
+        for (const id of remotePlayersRef.current.keys()) {
+          if (!seenIds.has(id)) {
+            remotePlayersRef.current.delete(id);
+          }
+        }
+
+        onlineProjectilesRef.current = projectiles.map((pr) => ({ ...pr }));
+      },
+      onWorldEvent: (evt: OnlineWorldEvent) => {
+        const sim = simRef.current;
+        const payload = evt.payload;
+        if (evt.type === 'crater:dug') {
+          const crater = payload.crater as DigCrater | undefined;
+          if (crater) {
+            setSave((prev) => {
+              const exists = prev.dugCraters.some((c) => c.id === crater.id);
+              const nextCraters = exists
+                ? prev.dugCraters.map((c) => (c.id === crater.id ? crater : c))
+                : [...prev.dugCraters.slice(-380), crater];
+              const next = { ...prev, dugCraters: nextCraters };
+              saveRef.current = next;
+              return next;
+            });
+          }
+        } else if (evt.type === 'treasure:opened') {
+          const tid = String(payload.treasureId || '');
+          const finderId = String(payload.finderId || '');
+          const finderName = String(payload.finderName || 'Bir kaptan');
+          const tx = Number(payload.x || 0);
+          const ty = Number(payload.y || 0);
+          if (tid) {
+            setSave((prev) => {
+              if (prev.openedTreasureIds.includes(tid)) return prev;
+              const next = { ...prev, openedTreasureIds: [...prev.openedTreasureIds, tid] };
+              saveRef.current = next;
+              return next;
+            });
+          }
+          if (finderId && finderId !== identityRef.current.playerId) {
+            addFloatingText(tx, ty - 26, `${finderName} Hazine Buldu!`, '#FDE047');
+          }
+        } else if (evt.type === 'island:claimed') {
+          const islandId = String(payload.islandId || '');
+          const ownerId = String(payload.ownerId || '');
+          const ownerName = String(payload.ownerName || '');
+          const color = String(payload.bannerColor || '#10B981');
+          if (islandId && ownerId) {
+            setOnlineIslandOwners((prev) => ({ ...prev, [islandId]: ownerId }));
+            const isl = worldManagerRef.current.getIslandById(islandId);
+            if (isl && ownerId !== identityRef.current.playerId) {
+              addFloatingText(
+                isl.centerX,
+                isl.centerY - isl.maxRadius - 20,
+                `${ownerName}, ${isl.name} Adasını Aldı!`,
+                color
+              );
+            }
+          }
+        } else if (evt.type === 'player:hit') {
+          const targetId = String(payload.targetId || '');
+          const dmg = Number(payload.damage || 0);
+          const isNaval = Boolean(payload.isNaval);
+          const hx = Number(payload.x || 0);
+          const hy = Number(payload.y || 0);
+          const now = performance.now();
+          soundEngine.playCannonHit();
+          spawnParticles(hx, hy, 9, isNaval ? '#B45309' : '#FCA5A5', isNaval ? 'SPLINTER' : 'SPARK', 100, 3.2, true);
+          if (targetId === identityRef.current.playerId) {
+            sim.screenShake = Math.max(sim.screenShake, isNaval ? 4.5 : 3.0);
+            if (isNaval) {
+              sim.boatHitFlashUntil = now + 180;
+              sim.boatHp = Math.max(0, Number(payload.hpLeft ?? sim.boatHp - dmg));
+              addFloatingText(sim.boatX, sim.boatY - 26, `-${dmg} Gövde`, '#F87171');
+            } else {
+              sim.playerHitFlashUntil = now + 180;
+              sim.playerHp = Math.max(0, Number(payload.hpLeft ?? sim.playerHp - dmg));
+              addFloatingText(sim.playerX, sim.playerY - 22, `-${dmg}`, '#F87171');
+            }
+          }
+        } else if (evt.type === 'player:respawn') {
+          const pid = String(payload.playerId || '');
+          if (pid === identityRef.current.playerId) {
+            const rx = Number(payload.x || 0);
+            const ry = Number(payload.y || 0);
+            const rbx = Number(payload.boatX || rx);
+            const rby = Number(payload.boatY || ry);
+            const isSailing = Boolean(payload.isSailing);
+            sim.playerX = rx;
+            sim.playerY = ry;
+            sim.boatX = rbx;
+            sim.boatY = rby;
+            sim.boatVx = 0;
+            sim.boatVy = 0;
+            sim.isSailing = isSailing;
+            sim.playerHp = 100;
+            sim.boatHp = Math.round(getMaxBoatHp(saveRef.current.upgrades.boatLevel) * 0.75);
+            addFloatingText(rx, ry - 30, 'Başlangıç Adana Çekildin!', '#FBBF24');
+          }
+        }
+      },
+      onChat: (msg) => {
+        setOnlineChat((prev) => [...prev.slice(-24), msg]);
+      },
+      onPingUpdate: (rtt) => {
+        setOnlinePing(rtt);
+      },
+    });
+
+    onlineManagerRef.current = mgr;
+    return mgr;
+  }, [addFloatingText, applySaveSnapshotToSim, profileToSaveData, spawnParticles]);
+
+  useEffect(() => {
+    return () => {
+      onlineManagerRef.current?.disconnect();
+    };
+  }, []);
+
+  const handleLeaveToMenu = useCallback(() => {
+    if (onlineActiveRef.current) {
+      onlineManagerRef.current?.disconnect();
+      onlineActiveRef.current = false;
+      setOnlineActive(false);
+      setOnlineRoomInfo(null);
+      setOnlineLobbyPlayers([]);
+      setOnlineStarterSlots([]);
+      setOnlineIslandOwners({});
+      setOnlinePing(null);
+      remotePlayersRef.current.clear();
+      onlineProjectilesRef.current = [];
+      worldManagerRef.current.setOnlineMode(false);
+
+      const offlineSave = loadSaveData() ?? createInitialSave();
+      worldManagerRef.current.setSeed(offlineSave.worldSeed);
+      worldManagerRef.current.setLuckLevel(offlineSave.upgrades.luckLevel);
+      saveRef.current = offlineSave;
+      setSave(offlineSave);
+      applySaveSnapshotToSim(offlineSave, true);
+    }
+    setActiveModal('NONE');
+    setShowOnlineLobby(false);
+    setPhase('TITLE_MENU');
+  }, [applySaveSnapshotToSim]);
 
   const ensureWarWithFaction = useCallback(
     (factionId: FactionId) => {
@@ -488,6 +1068,18 @@ export default function App() {
         }
       }
       if (hitCount > 0) soundEngine.playCannonHit();
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:land_attack',
+          x: sim.playerX,
+          y: sim.playerY,
+          angle: aimAngle,
+          weaponId,
+          damage: def.damage,
+          range: def.range,
+          isRanged: false,
+        });
+      }
     } else {
       soundEngine.playPistolShot();
       sim.screenShake = Math.max(sim.screenShake, 1.8);
@@ -512,6 +1104,19 @@ export default function App() {
           damage: def.damage,
           color: def.color,
           life: def.range / def.projectileSpeed,
+        });
+      }
+
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:land_attack',
+          x: sim.playerX,
+          y: sim.playerY,
+          angle: aimAngle,
+          weaponId,
+          damage: def.damage,
+          range: def.range,
+          isRanged: true,
         });
       }
 
@@ -632,6 +1237,18 @@ export default function App() {
     const countPerSide = getCannonCountPerSide(cannonLvl);
     const damage = getCannonDamage(cannonLvl);
     const shipSpec = getShipClass(saveRef.current.upgrades.boatLevel);
+    if (onlineActiveRef.current) {
+      soundEngine.playCannonFire(true);
+      onlineManagerRef.current?.submitLocalCommand({
+        type: 'cmd:fire_cannon',
+        x: sim.boatX,
+        y: sim.boatY,
+        angle: sim.boatAngle,
+        cannonCount: countPerSide,
+        damage,
+      });
+      return;
+    }
     fireBroadside(
       'PLAYER',
       sim.boatX,
@@ -720,6 +1337,33 @@ export default function App() {
         '#FDE047'
       );
 
+      const bagItem = {
+        uid: `${hitTreasure.id}_${Date.now()}`,
+        name: hitTreasure.template.name,
+        rarity: hitTreasure.template.rarity,
+        value: finalValue,
+        color: hitTreasure.template.color,
+        islandName: island.name,
+      };
+      const craterId = existingCrater?.id ?? `cr_${Date.now()}_${Math.random()}`;
+
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:dig',
+          islandId: island.id,
+          x: targetX,
+          y: targetY,
+          foundTreasureId: hitTreasure.id,
+          craterId,
+          newDepth,
+          foundTreasure: true,
+          instantBonus,
+          bagItem,
+          unlockedWeapon: foundWeapon ?? undefined,
+        });
+        return;
+      }
+
       commitSave((prev) => {
         const updatedCraters = existingCrater
           ? prev.dugCraters.map((c) =>
@@ -728,7 +1372,7 @@ export default function App() {
           : [
               ...prev.dugCraters.slice(-350),
               {
-                id: `cr_${Date.now()}_${Math.random()}`,
+                id: craterId,
                 islandId: island.id,
                 x: targetX,
                 y: targetY,
@@ -755,17 +1399,7 @@ export default function App() {
           unlockedWeapons: nextUnlocked,
           openedTreasureIds: [...prev.openedTreasureIds, hitTreasure.id],
           dugCraters: updatedCraters,
-          bag: [
-            ...prev.bag,
-            {
-              uid: `${hitTreasure.id}_${Date.now()}`,
-              name: hitTreasure.template.name,
-              rarity: hitTreasure.template.rarity,
-              value: finalValue,
-              color: hitTreasure.template.color,
-              islandName: island.name,
-            },
-          ],
+          bag: [...prev.bag, bagItem],
         };
       });
     } else {
@@ -777,6 +1411,21 @@ export default function App() {
         addFloatingText(targetX, targetY - 22, 'Sandık derinde! Tekrar kaz', '#FCD34D');
       }
 
+      const craterId = existingCrater?.id ?? `cr_${Date.now()}_${Math.random()}`;
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:dig',
+          islandId: island.id,
+          x: targetX,
+          y: targetY,
+          craterId,
+          newDepth,
+          foundTreasure: false,
+          instantBonus: 0,
+        });
+        return;
+      }
+
       commitSave((prev) => {
         const updatedCraters: DigCrater[] = existingCrater
           ? prev.dugCraters.map((c) =>
@@ -785,7 +1434,7 @@ export default function App() {
           : [
               ...prev.dugCraters.slice(-350),
               {
-                id: `cr_${Date.now()}_${Math.random()}`,
+                id: craterId,
                 islandId: island.id,
                 x: targetX,
                 y: targetY,
@@ -1311,6 +1960,13 @@ export default function App() {
                   : [...prev.unlockedWeapons, wp.weaponId],
                 equippedWeapon: pickStrongerWeapon(prev.equippedWeapon, wp.weaponId),
               }));
+              if (onlineActiveRef.current) {
+                onlineManagerRef.current?.submitLocalCommand({
+                  type: 'cmd:pickup_weapon',
+                  pickupId: wp.id,
+                  weaponId: wp.weaponId,
+                });
+              }
             }
           }
         }
@@ -1367,6 +2023,8 @@ export default function App() {
           for (let ei = 0; ei < sim.islandEnemies.length; ei++) {
             const ie = sim.islandEnemies[ei];
             if (ie.alerted) continue;
+            // In Online mode, neutral island villagers stay peaceful unless directly attacked
+            if (onlineActiveRef.current && ie.factionId === 'NEUTRAL') continue;
             if ((ei + frameCounter) % 3 !== 0) continue;
             if (dist(ie.x, ie.y, activeCenterX, activeCenterY) > 1550) continue;
             const spotPlayer = dist(ie.x, ie.y, sim.playerX, sim.playerY) < 255;
@@ -1966,12 +2624,22 @@ export default function App() {
 
       // Safe recovery if Player HP reaches 0 on foot
       if (isPlaying && !sim.isSailing && sim.playerHp <= 0) {
-        const starter = worldManagerRef.current.getIslandAtSector(0, 0);
-        const coastR = starter ? getIslandRadiusAtAngle(starter, 0.12) : 290;
-        const safePlayerX = Math.cos(0.12) * (coastR * 0.45);
-        const safePlayerY = Math.sin(0.12) * (coastR * 0.45);
-        const safeBoatX = Math.cos(0.12) * (coastR + 36);
-        const safeBoatY = Math.sin(0.12) * (coastR + 36);
+        const ownStarterId = onlineActiveRef.current
+          ? `starter_${identityRef.current.playerId}`
+          : '';
+        const starter = onlineActiveRef.current
+          ? worldManagerRef.current.getIslandById(ownStarterId) ??
+            worldManagerRef.current.getStarterIslands()[0] ??
+            null
+          : worldManagerRef.current.getIslandAtSector(0, 0);
+        const dockA = starter?.traderDock?.angle ?? 0.12;
+        const coastR = starter ? getIslandRadiusAtAngle(starter, dockA) : 290;
+        const sx0 = starter?.centerX ?? 0;
+        const sy0 = starter?.centerY ?? 0;
+        const safePlayerX = sx0 + Math.cos(dockA) * (coastR * 0.45);
+        const safePlayerY = sy0 + Math.sin(dockA) * (coastR * 0.45);
+        const safeBoatX = sx0 + Math.cos(dockA) * (coastR + 36);
+        const safeBoatY = sy0 + Math.sin(dockA) * (coastR + 36);
 
         sim.playerX = safePlayerX;
         sim.playerY = safePlayerY;
@@ -1995,9 +2663,13 @@ export default function App() {
       // Gentle player & soldier heal on Starter Capital or Conquered Islands
       if (isPlaying && !sim.isSailing) {
         const standing = findStandingIsland(sim.playerX, sim.playerY);
+        const isOwnStarter =
+          standing &&
+          standing.isStarter &&
+          (!onlineActiveRef.current || standing.id === `starter_${identityRef.current.playerId}`);
         const isFriendlyTerritory =
           standing &&
-          (standing.isStarter || currentSave.kingdom.conqueredIslandIds.includes(standing.id));
+          (isOwnStarter || currentSave.kingdom.conqueredIslandIds.includes(standing.id));
         if (isFriendlyTerritory) {
           if (sim.playerHp < MAX_PLAYER_HP) {
             sim.playerHp = Math.min(MAX_PLAYER_HP, sim.playerHp + 14 * dt);
@@ -2010,8 +2682,8 @@ export default function App() {
         }
       }
 
-      // Periodic Nation Warship Spawner (up to 15 ships & 2–4 ship battle squadrons across rival nations)
-      if (isPlaying) {
+      // Periodic Nation Warship Spawner (Offline only — Online removes bot warships)
+      if (isPlaying && !onlineActiveRef.current) {
         sim.enemies = sim.enemies.filter(
           (e) => dist(e.x, e.y, activeCenterX, activeCenterY) < 2500
         );
@@ -2649,6 +3321,12 @@ export default function App() {
             ...prev,
             discoveredIslandIds: Array.from(new Set([...prev.discoveredIslandIds, ...newlyDiscovered])),
           }));
+          if (onlineActiveRef.current) {
+            onlineManagerRef.current?.submitLocalCommand({
+              type: 'cmd:discover_islands',
+              islandIds: newlyDiscovered,
+            });
+          }
         }
       }
 
@@ -2656,13 +3334,23 @@ export default function App() {
       if (isPlaying && !sim.isSailing) {
         const standing = findStandingIsland(sim.playerX, sim.playerY);
         if (standing && standing.fortPos) {
+          const onlineOwnerId = onlineActiveRef.current
+            ? onlineIslandOwnersRef.current[standing.id]
+            : undefined;
+          const onlineRule = onlineRoomInfoRef.current?.rule ?? 'PVP';
+          const canOnlineCapture =
+            onlineActiveRef.current &&
+            !standing.isStarter &&
+            onlineOwnerId !== identityRef.current.playerId &&
+            (!onlineOwnerId || onlineRule === 'PVP');
+
           const effFaction = getEffectiveIslandFaction(
             standing.factionId,
             standing.id,
             standing.isStarter,
             currentSave.kingdom
           );
-          if (effFaction !== 'NEUTRAL' && effFaction !== 'PLAYER') {
+          if ((!onlineActiveRef.current && effFaction !== 'NEUTRAL' && effFaction !== 'PLAYER') || canOnlineCapture) {
             const defendersLeft = sim.islandEnemies.filter((ie) => ie.islandId === standing.id).length;
             const prevProg =
               sim.fortCapture && sim.fortCapture.islandId === standing.id
@@ -2701,18 +3389,31 @@ export default function App() {
                 '#34D399'
               );
               sim.fortCapture = null;
-              commitSave((prev) => ({
-                ...prev,
-                gold: prev.gold + conquestBounty,
-                totalGoldEarned: prev.totalGoldEarned + conquestBounty,
-                kingdom: {
-                  ...prev.kingdom,
-                  founded: true,
-                  conqueredIslandIds: prev.kingdom.conqueredIslandIds.includes(standing.id)
-                    ? prev.kingdom.conqueredIslandIds
-                    : [...prev.kingdom.conqueredIslandIds, standing.id],
-                },
-              }));
+              if (onlineActiveRef.current) {
+                if (
+                  lastClaimSentRef.current.islandId !== standing.id ||
+                  now - lastClaimSentRef.current.at > 1500
+                ) {
+                  lastClaimSentRef.current = { islandId: standing.id, at: now };
+                  onlineManagerRef.current?.submitLocalCommand({
+                    type: 'cmd:claim_island',
+                    islandId: standing.id,
+                  });
+                }
+              } else {
+                commitSave((prev) => ({
+                  ...prev,
+                  gold: prev.gold + conquestBounty,
+                  totalGoldEarned: prev.totalGoldEarned + conquestBounty,
+                  kingdom: {
+                    ...prev.kingdom,
+                    founded: true,
+                    conqueredIslandIds: prev.kingdom.conqueredIslandIds.includes(standing.id)
+                      ? prev.kingdom.conqueredIslandIds
+                      : [...prev.kingdom.conqueredIslandIds, standing.id],
+                  },
+                }));
+              }
             } else {
               sim.fortCapture = { islandId: standing.id, progress: nextProg, defendersLeft };
             }
@@ -2726,8 +3427,8 @@ export default function App() {
         sim.fortCapture = null;
       }
 
-      // Passive Kingdom Tribute every 20 seconds
-      if (isPlaying && currentSave.kingdom.founded && now - sim.lastTributeTime >= 20000) {
+      // Passive Kingdom Tribute every 20 seconds (Offline)
+      if (isPlaying && !onlineActiveRef.current && currentSave.kingdom.founded && now - sim.lastTributeTime >= 20000) {
         sim.lastTributeTime = now;
         const tribute = 10 + currentSave.kingdom.conqueredIslandIds.length * 15;
         addFloatingText(
@@ -2743,8 +3444,8 @@ export default function App() {
         }));
       }
 
-      // Rival Nations Geopolitics: War Declarations & Island Conquests
-      if (isPlaying && now >= sim.nextCampaignTime) {
+      // Rival Nations Geopolitics (Offline only — Online has neutral villagers instead of bot empires)
+      if (isPlaying && !onlineActiveRef.current && now >= sim.nextCampaignTime) {
         sim.nextCampaignTime = now + 22000 + Math.random() * 12000;
         const k = currentSave.kingdom;
         const worldIslands = worldManagerRef.current.getVisibleIslands(0, 0, 3);
@@ -2980,7 +3681,53 @@ export default function App() {
 
       sim.radarPulses = sim.radarPulses.filter((rp) => now - rp.startTime < 950);
 
-      if (isPlaying && now - sim.lastAutoSaveTime > 2000) {
+      // Smooth 60fps Remote Player Interpolation + Projectile Extrapolation in Online Mode
+      const digProgress =
+        sim.digAnimStart > 0 ? clamp((now - sim.digAnimStart) / 300, 0, 1) : 0;
+      if (digProgress >= 1) sim.digAnimStart = 0;
+
+      const attackProgress =
+        sim.attackAnimStart > 0 ? clamp((now - sim.attackAnimStart) / 220, 0, 1) : 0;
+      if (attackProgress >= 1) sim.attackAnimStart = 0;
+
+      if (onlineActiveRef.current) {
+        const interp = Math.min(1, dt * 12);
+        for (const rp of remotePlayersRef.current.values()) {
+          rp.x = lerp(rp.x, rp.targetX, interp);
+          rp.y = lerp(rp.y, rp.targetY, interp);
+          rp.angle = lerpAngle(rp.angle, rp.targetAngle, interp);
+          rp.boatX = lerp(rp.boatX, rp.targetBoatX, interp);
+          rp.boatY = lerp(rp.boatY, rp.targetBoatY, interp);
+          rp.boatAngle = lerpAngle(rp.boatAngle, rp.targetBoatAngle, interp);
+        }
+        for (const op of onlineProjectilesRef.current) {
+          op.x += op.vx * dt;
+          op.y += op.vy * dt;
+          if (op.kind === 'CANNON') {
+            op.vz -= 210 * dt;
+            op.z = Math.max(0, op.z + op.vz * dt);
+          }
+        }
+
+        if (isPlaying && now - lastPoseSendRef.current >= 50) {
+          lastPoseSendRef.current = now;
+          onlineManagerRef.current?.submitLocalPose({
+            x: sim.playerX,
+            y: sim.playerY,
+            angle: sim.playerAngle,
+            boatX: sim.boatX,
+            boatY: sim.boatY,
+            boatAngle: sim.boatAngle,
+            isSailing: sim.isSailing,
+            speedRatio: sim.boatSpeedRatio,
+            walkPhase: sim.walkPhase,
+            digAnimProgress: digProgress,
+            attackAnimProgress: attackProgress,
+          });
+        }
+      }
+
+      if (isPlaying && !onlineActiveRef.current && now - sim.lastAutoSaveTime > 2000) {
         sim.lastAutoSaveTime = now;
         const updatedSave: SaveData = {
           ...saveRef.current,
@@ -3044,13 +3791,12 @@ export default function App() {
           }
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-          const digProgress =
-            sim.digAnimStart > 0 ? clamp((now - sim.digAnimStart) / 300, 0, 1) : 0;
-          if (digProgress >= 1) sim.digAnimStart = 0;
-
-          const attackProgress =
-            sim.attackAnimStart > 0 ? clamp((now - sim.attackAnimStart) / 220, 0, 1) : 0;
-          if (attackProgress >= 1) sim.attackAnimStart = 0;
+          const selfId = identityRef.current.playerId;
+          const visibleOnlineProjectiles = onlineActiveRef.current
+            ? onlineProjectilesRef.current.filter(
+                (op) => !(op.kind === 'LAND' && op.ownerId === selfId)
+              )
+            : undefined;
 
           renderGameFrame(ctx, rect.width, rect.height, {
             timeSec: now / 1000,
@@ -3099,6 +3845,11 @@ export default function App() {
             showWaves: currentSettings.showWaves,
             nearBoat,
             nearDock,
+            remotePlayers: onlineActiveRef.current
+              ? Array.from(remotePlayersRef.current.values())
+              : undefined,
+            onlineProjectiles: visibleOnlineProjectiles,
+            onlineIslandOwners: onlineOwnersForRenderRef.current,
           });
         }
       }
@@ -3165,6 +3916,10 @@ export default function App() {
       const item = saveRef.current.bag.find((b) => b.uid === uid);
       if (!item) return;
       soundEngine.playSellCoins();
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:sell_item', uid });
+        return;
+      }
       commitSave((prev) => ({
         ...prev,
         gold: prev.gold + item.value,
@@ -3179,6 +3934,10 @@ export default function App() {
     if (!hudState.nearDock || saveRef.current.bag.length === 0) return;
     const total = saveRef.current.bag.reduce((sum, i) => sum + i.value, 0);
     soundEngine.playSellCoins();
+    if (onlineActiveRef.current) {
+      onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:sell_all' });
+      return;
+    }
     commitSave((prev) => ({
       ...prev,
       gold: prev.gold + total,
@@ -3198,6 +3957,10 @@ export default function App() {
       if (saveRef.current.gold < cost) return;
 
       soundEngine.playUpgrade();
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:buy_upgrade', key });
+        return;
+      }
       const nextUpgrades = {
         ...saveRef.current.upgrades,
         [key]: currentLvl + 1,
@@ -3226,6 +3989,14 @@ export default function App() {
         `${name} İlan Edildi!`,
         '#34D399'
       );
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:found_kingdom',
+          name,
+          bannerColor,
+        });
+        return;
+      }
       commitSave((prev) => ({
         ...prev,
         gold: prev.gold - KINGDOM_COSTS.FOUND_KINGDOM,
@@ -3250,6 +4021,15 @@ export default function App() {
       if (!k.founded || saveRef.current.gold < totalCost) return;
 
       soundEngine.playUpgrade();
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:recruit_soldier',
+          soldierType: type,
+          count: actualCount,
+        });
+        return;
+      }
+
       const { hpMult } = getSoldierPowerMultiplier(armyLevel);
       const scaledHp = Math.round(spec.maxHp * hpMult);
       const baseX = simRef.current.isSailing ? simRef.current.boatX : simRef.current.playerX;
@@ -3294,9 +4074,14 @@ export default function App() {
     const cost = getArmyUpgradeCost(curLevel);
     if (!k.founded || curLevel >= MAX_ARMY_LEVEL || saveRef.current.gold < cost) return;
 
+    soundEngine.playUpgrade();
+    if (onlineActiveRef.current) {
+      onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:upgrade_army' });
+      return;
+    }
+
     const nextLevel = curLevel + 1;
     const { hpMult } = getSoldierPowerMultiplier(nextLevel);
-    soundEngine.playUpgrade();
 
     for (const sol of simRef.current.allySoldiers) {
       const baseSpec = SOLDIER_SPECS[sol.type] ?? SOLDIER_SPECS.SWORDSMAN;
@@ -3330,6 +4115,14 @@ export default function App() {
       if (!k.founded || saveRef.current.gold < totalCost) return;
 
       soundEngine.playUpgrade();
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:recruit_ship',
+          count: actualCount,
+        });
+        return;
+      }
+
       for (let i = 0; i < actualCount; i++) {
         const slot = simRef.current.allyShips.length;
         const formA = simRef.current.boatAngle + (slot % 2 === 0 ? 2.1 : -2.1) + i * 0.25;
@@ -3366,6 +4159,10 @@ export default function App() {
   const handleHealArmy = useCallback(() => {
     if (saveRef.current.gold < KINGDOM_COSTS.HEAL_ARMY) return;
     soundEngine.playSellCoins();
+    if (onlineActiveRef.current) {
+      onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:heal_army' });
+      return;
+    }
     for (const sol of simRef.current.allySoldiers) {
       sol.hp = sol.maxHp;
     }
@@ -3462,33 +4259,172 @@ export default function App() {
     return counts;
   }, [save.kingdom, save.worldSeed]);
 
+  const onlineIslandOwnersForDisplay = useMemo(() => {
+    if (!onlineActive) return undefined;
+    const map: Record<string, { shortName: string; color: string; isCapturable?: boolean }> = {};
+    const playerById = new Map<string, RemotePlayerSnapshot>();
+    for (const p of onlineLobbyPlayers) {
+      playerById.set(p.id, p);
+    }
+
+    for (const slot of onlineStarterSlots) {
+      const p = playerById.get(slot.playerId);
+      const isSelf = slot.playerId === identity.playerId;
+      map[slot.islandId] = {
+        shortName: isSelf
+          ? save.kingdom.founded
+            ? save.kingdom.name
+            : identity.name
+          : p?.kingdomFounded
+          ? p.kingdomName
+          : slot.ownerName,
+        color: isSelf ? save.kingdom.bannerColor : p?.bannerColor ?? slot.bannerColor,
+        isCapturable: false,
+      };
+    }
+
+    for (const [islandId, ownerId] of Object.entries(onlineIslandOwners)) {
+      const p = playerById.get(ownerId);
+      const isSelf = ownerId === identity.playerId;
+      map[islandId] = {
+        shortName: isSelf
+          ? save.kingdom.founded
+            ? save.kingdom.name
+            : identity.name
+          : p?.kingdomFounded
+          ? p.kingdomName
+          : p?.name ?? 'Kaptan',
+        color: isSelf ? save.kingdom.bannerColor : p?.bannerColor ?? '#F59E0B',
+        isCapturable: onlineRoomInfo?.rule === 'PVP' && !isSelf,
+      };
+    }
+    return map;
+  }, [
+    onlineActive,
+    onlineLobbyPlayers,
+    onlineStarterSlots,
+    onlineIslandOwners,
+    onlineRoomInfo?.rule,
+    identity.playerId,
+    identity.name,
+    save.kingdom.founded,
+    save.kingdom.name,
+    save.kingdom.bannerColor,
+  ]);
+
+  useEffect(() => {
+    onlineOwnersForRenderRef.current = onlineIslandOwnersForDisplay;
+  }, [onlineIslandOwnersForDisplay]);
+
   const activeHp = hudState.isSailing ? hudState.boatHp : hudState.playerHp;
   const activeMaxHp = hudState.isSailing ? hudState.maxBoatHp : MAX_PLAYER_HP;
   const hpPct = clamp((activeHp / Math.max(1, activeMaxHp)) * 100, 0, 100);
   const weaponDef = hudState.equippedWeapon ? WEAPONS[hudState.equippedWeapon] : null;
+  const isCompactHud = isCoarseDevice || isNarrowViewport;
+  const controlsDisplayMode: ActionControlsDisplayMode =
+    settings.touchControls === 'ALWAYS'
+      ? 'TOUCH'
+      : settings.touchControls === 'HIDDEN'
+      ? 'HIDDEN'
+      : isCoarseDevice
+      ? 'TOUCH'
+      : 'DESKTOP';
+
+  useEffect(() => {
+    if (controlsDisplayMode !== 'TOUCH') {
+      simRef.current.joystickVec = { x: 0, y: 0 };
+    }
+  }, [controlsDisplayMode]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#07364B]">
       <canvas ref={canvasRef} className="block w-full h-full" />
 
-      {phase === 'TITLE_MENU' && (
+      {phase === 'TITLE_MENU' && !showOnlineLobby && (
         <TitleOverlay
           hasSavedProgress={hasSavedProgress}
           savedGold={save.gold}
           discoveredCount={save.discoveredIslandIds.length}
-          onStart={() => setPhase('PLAYING')}
+          inviteRoomCode={inviteRoomCode}
+          onStart={() => {
+            onlineActiveRef.current = false;
+            setOnlineActive(false);
+            worldManagerRef.current.setOnlineMode(false);
+            setPhase('PLAYING');
+          }}
+          onOpenOnline={() => {
+            ensureOnlineManager();
+            setShowOnlineLobby(true);
+          }}
+        />
+      )}
+
+      {showOnlineLobby && (
+        <OnlineLobbyModal
+          identity={identity}
+          onUpdateIdentity={setIdentity}
+          status={onlineStatus}
+          errorMsg={onlineError}
+          role={onlineRole}
+          roomInfo={onlineRoomInfo}
+          players={onlineLobbyPlayers}
+          starterSlots={onlineStarterSlots}
+          initialRoomCode={inviteRoomCode}
+          onCreateRoom={(rule: OnlineModeRule, resumeRoomId?: string) => {
+            const mgr = ensureOnlineManager();
+            void mgr.createOrResumeHostRoom(identity, rule, resumeRoomId).catch(() => {
+              // Error surfaced via onStatusChange
+            });
+          }}
+          onJoinRoom={(code: string) => {
+            const mgr = ensureOnlineManager();
+            mgr.joinRoom(code, identity);
+          }}
+          onHostStartGame={() => {
+            onlineManagerRef.current?.hostStartGame();
+          }}
+          onHostChangeRule={(rule: OnlineModeRule) => {
+            onlineManagerRef.current?.hostSetRule(rule);
+          }}
+          onDisconnect={() => {
+            onlineManagerRef.current?.disconnect();
+            setOnlineRoomInfo(null);
+            setOnlineLobbyPlayers([]);
+            setOnlineStarterSlots([]);
+          }}
+          onClose={() => setShowOnlineLobby(false)}
         />
       )}
 
       {phase === 'PLAYING' && (
-        <div className="pointer-events-none fixed inset-0 z-20 p-3 sm:p-5 flex flex-col justify-between">
+        <div className="pointer-events-none fixed inset-0 z-20 pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-5 flex flex-col justify-between">
           {/* Top Row */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="pointer-events-auto flex flex-col items-start gap-2">
+          <div className="flex items-start justify-between gap-2 sm:gap-4">
+            <div
+              className={`pointer-events-auto flex flex-col items-start gap-1.5 sm:gap-2 min-w-0 ${
+                isCompactHud ? 'max-w-[52vw]' : 'max-w-none'
+              }`}
+            >
+              {onlineActive && onlineRoomInfo && (
+                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#0F2936]/90 border border-sky-400/35 text-[11px] sm:text-xs font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md">
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      onlineStatus === 'RECONNECTING' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                    }`}
+                  />
+                  <span className="truncate font-mono-num">
+                    Oda {onlineRoomInfo.roomId} ·{' '}
+                    {onlineLobbyPlayers.filter((p) => p.connected).length} Kaptan ·{' '}
+                    {onlineRoomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
+                    {!isCompactHud && onlinePing !== null ? ` · ${onlinePing}ms` : ''}
+                  </span>
+                </div>
+              )}
+
               {(hudState.isSailing || activeHp < activeMaxHp || hudState.nearbyEnemyCount > 0) && (
-                <div className="px-3 py-2 rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center gap-2.5 shadow-md">
-                  <Heart className="w-4 h-4 text-red-400 shrink-0" />
-                  <div className="w-24 sm:w-28 h-2 rounded-full bg-slate-900 overflow-hidden">
+                <div className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center gap-1.5 sm:gap-2.5 shadow-md max-w-full">
+                  <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
+                  <div className="w-14 sm:w-28 h-2 rounded-full bg-slate-900 overflow-hidden shrink-0">
                     <div
                       className={`h-full transition-all duration-150 ${
                         hpPct > 45 ? 'bg-emerald-400' : 'bg-red-500'
@@ -3496,10 +4432,10 @@ export default function App() {
                       style={{ width: `${hpPct}%` }}
                     />
                   </div>
-                  <span className="font-mono-num text-xs font-semibold text-slate-100">
+                  <span className="font-mono-num text-[11px] sm:text-xs font-semibold text-slate-100 whitespace-nowrap">
                     {activeHp}/{activeMaxHp}
                   </span>
-                  {hudState.isSailing && (
+                  {hudState.isSailing && !isCompactHud && (
                     <span className="text-[11px] font-semibold text-amber-200/90 border-l border-white/15 pl-2 whitespace-nowrap">
                       {hudState.shipClassName}
                     </span>
@@ -3507,29 +4443,37 @@ export default function App() {
                 </div>
               )}
 
+              {hudState.currentIslandName && (
+                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#0F2936]/85 border border-white/15 text-[11px] sm:text-xs font-medium text-slate-100 truncate max-w-full shadow-md">
+                  {hudState.currentIslandName}
+                </div>
+              )}
+
               {!hudState.isSailing && weaponDef && (
-                <div className="px-3 py-1.5 rounded-xl bg-[#0F2936]/90 border border-white/15 text-xs font-medium text-slate-100 flex items-center gap-2 shadow-md">
+                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-[#0F2936]/90 border border-white/15 text-[11px] sm:text-xs font-medium text-slate-100 flex items-center gap-1.5 sm:gap-2 shadow-md max-w-full">
                   <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="whitespace-nowrap">{weaponDef.name}</span>
+                  <span className="truncate">{weaponDef.name}</span>
                 </div>
               )}
 
               {hudState.nearbyEnemyCount > 0 && (
-                <div className="px-3 py-1.5 rounded-xl bg-red-950/85 border border-red-400/45 text-red-200 text-xs font-semibold flex items-center gap-1.5 shadow-md">
-                  <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-red-950/85 border border-red-400/45 text-red-200 text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shadow-md max-w-full">
+                  <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
                   <span className="whitespace-nowrap">
-                    {hudState.isSailing
+                    {isCompactHud
+                      ? `Düşman (${hudState.nearbyEnemyCount})`
+                      : hudState.isSailing
                       ? `Yakında Düşman Gemisi (${hudState.nearbyEnemyCount})`
                       : `Adada Düşman Takımı (${hudState.nearbyEnemyCount})`}
                   </span>
                 </div>
               )}
 
-              {hudState.nearDock && (
+              {hudState.nearDock && !isCompactHud && (
                 <button
                   type="button"
                   onClick={() => setActiveModal('SHOP')}
-                  className="px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold flex items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
                 >
                   <Store className="w-4 h-4" />
                   <span>Tüccar İskelesi Açık (T)</span>
@@ -3538,10 +4482,10 @@ export default function App() {
             </div>
 
             <TopRightHud
+              isCompactMode={isCompactHud}
               gold={save.gold}
               bagCount={save.bag.length}
               nearDock={hudState.nearDock}
-              currentIslandName={hudState.currentIslandName}
               kingdomFounded={save.kingdom.founded}
               soldierCount={save.kingdom.soldiers.length}
               onOpenSettings={() => setActiveModal('SETTINGS')}
@@ -3552,15 +4496,20 @@ export default function App() {
           </div>
 
           {/* Bottom Row */}
-          <div className="flex items-end justify-between gap-4">
-            <VirtualJoystick
-              mode={settings.joystickMode}
-              onChange={(vec) => {
-                simRef.current.joystickVec = vec;
-              }}
-            />
+          <div className="flex items-end justify-between gap-2 sm:gap-4">
+            {controlsDisplayMode === 'TOUCH' ? (
+              <VirtualJoystick
+                mode={settings.joystickMode}
+                onChange={(vec) => {
+                  simRef.current.joystickVec = vec;
+                }}
+              />
+            ) : (
+              <div aria-hidden="true" />
+            )}
 
             <ActionControls
+              displayMode={controlsDisplayMode}
               isSailing={hudState.isSailing}
               canBoard={hudState.canBoard}
               canDisembark={hudState.canDisembark}
@@ -3581,14 +4530,14 @@ export default function App() {
         </div>
       )}
 
-      {isPortrait && !dismissPortraitHint && phase === 'PLAYING' && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl">
+      {isCoarseDevice && isPortrait && !dismissPortraitHint && phase === 'PLAYING' && (
+        <div className="fixed bottom-[10.5rem] left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-1.5rem)] px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2 shadow-xl">
           <RotateCw className="w-4 h-4 text-amber-300 shrink-0" />
-          <span className="whitespace-nowrap">En iyi deneyim için telefonu yatay çevirin</span>
+          <span className="truncate">En iyi deneyim için telefonu yatay çevirin</span>
           <button
             type="button"
             onClick={() => setDismissPortraitHint(true)}
-            className="text-slate-400 hover:text-white font-semibold ml-1 cursor-pointer"
+            className="text-slate-400 hover:text-white font-semibold ml-1 shrink-0 cursor-pointer"
           >
             Kapat
           </button>
@@ -3605,6 +4554,9 @@ export default function App() {
           playerPos={{ x: simRef.current.playerX, y: simRef.current.playerY }}
           boatPos={{ x: simRef.current.boatX, y: simRef.current.boatY }}
           isSailing={simRef.current.isSailing}
+          onlineMode={onlineActive}
+          onlinePlayers={onlineLobbyPlayers.filter((p) => p.id !== identity.playerId)}
+          onlineIslandOwners={onlineIslandOwnersForDisplay}
           onClose={() => setActiveModal('NONE')}
         />
       )}
@@ -3627,6 +4579,9 @@ export default function App() {
           gold={save.gold}
           kingdom={save.kingdom}
           nationIslandCounts={nationIslandCounts}
+          onlineMode={onlineActive}
+          onlineRule={onlineRoomInfo?.rule}
+          onlinePlayers={onlineLobbyPlayers}
           onFoundKingdom={handleFoundKingdom}
           onRecruitSoldier={handleRecruitSoldier}
           onUpgradeArmy={handleUpgradeArmy}
@@ -3640,8 +4595,11 @@ export default function App() {
       {activeModal === 'SETTINGS' && (
         <SettingsModal
           settings={settings}
+          onlineMode={onlineActive}
+          onlineRoomId={onlineRoomInfo?.roomId}
           onUpdateSettings={setSettings}
           onResetSave={handleResetSave}
+          onLeaveToMenu={handleLeaveToMenu}
           onClose={() => setActiveModal('NONE')}
         />
       )}

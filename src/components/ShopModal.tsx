@@ -48,12 +48,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({
       aria-modal="true"
       aria-label="Liman Tüccarı ve Geliştirmeler"
     >
-      <div className="w-full max-w-4xl max-h-[88vh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="w-full max-w-4xl max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Store className="w-5 h-5 text-amber-400 shrink-0" />
-            <h2 className="font-display text-lg font-bold text-slate-50 truncate">
-              Liman Tüccarı & Geliştirme Dükkanı
+            <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
+              Liman Tüccarı
             </h2>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -80,7 +80,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -158,7 +158,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 return (
                   <div
                     key={def.key}
-                    className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3"
+                    className="p-3 sm:p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3"
                   >
                     <div className="flex items-start gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">

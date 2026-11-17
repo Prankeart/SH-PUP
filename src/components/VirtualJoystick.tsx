@@ -12,6 +12,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ mode, onChange
   const activePointerId = useRef<number | null>(null);
   const originRef = useRef<Vec2>({ x: 0, y: 0 });
   const zoneRef = useRef<HTMLDivElement | null>(null);
+  const maxRadiusRef = useRef<number>(MAX_RADIUS);
   const [knobOffset, setKnobOffset] = useState<Vec2>({ x: 0, y: 0 });
   const [dynamicOrigin, setDynamicOrigin] = useState<Vec2 | null>(null);
   const [isActive, setIsActive] = useState(false);
@@ -27,12 +28,13 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ mode, onChange
       return;
     }
 
-    const clampedDist = Math.min(distance, MAX_RADIUS);
+    const radiusLimit = maxRadiusRef.current;
+    const clampedDist = Math.min(distance, radiusLimit);
     const nx = (dx / distance) * clampedDist;
     const ny = (dy / distance) * clampedDist;
     setKnobOffset({ x: nx, y: ny });
 
-    const normMag = clampedDist / MAX_RADIUS;
+    const normMag = clampedDist / radiusLimit;
     onChange({
       x: (dx / distance) * normMag,
       y: (dy / distance) * normMag,
@@ -46,6 +48,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ mode, onChange
     setIsActive(true);
 
     const rect = e.currentTarget.getBoundingClientRect();
+    maxRadiusRef.current = rect.width < 136 ? 34 : MAX_RADIUS;
     if (mode === 'DYNAMIC') {
       const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
@@ -92,26 +95,26 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({ mode, onChange
       onPointerUp={releasePointer}
       onPointerCancel={releasePointer}
       aria-label="Hareket Joystick"
-      className="pointer-events-auto relative w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center touch-none cursor-grab active:cursor-grabbing"
+      className="pointer-events-auto relative w-28 h-28 sm:w-40 sm:h-40 flex items-center justify-center touch-none cursor-grab active:cursor-grabbing shrink-0"
     >
       <div
         style={basePositionStyle}
         className={`${
           mode === 'DYNAMIC' && dynamicOrigin ? 'absolute' : 'relative'
-        } w-28 h-28 rounded-full border transition-opacity duration-150 flex items-center justify-center ${
+        } w-24 h-24 sm:w-28 sm:h-28 rounded-full border transition-opacity duration-150 flex items-center justify-center ${
           isActive
             ? 'bg-slate-900/55 border-amber-300/60 shadow-lg'
             : 'bg-slate-900/40 border-white/25'
         }`}
       >
         {/* Crosshair guides */}
-        <div className="absolute inset-3 rounded-full border border-white/10 pointer-events-none" />
+        <div className="absolute inset-2.5 sm:inset-3 rounded-full border border-white/10 pointer-events-none" />
         {/* Inner thumb knob */}
         <div
           style={{
             transform: `translate(${knobOffset.x}px, ${knobOffset.y}px)`,
           }}
-          className={`w-12 h-12 rounded-full border shadow-md transition-colors duration-100 pointer-events-none ${
+          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border shadow-md transition-colors duration-100 pointer-events-none ${
             isActive
               ? 'bg-amber-400 border-amber-200'
               : 'bg-slate-100/85 border-white'

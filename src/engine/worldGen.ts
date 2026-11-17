@@ -16,6 +16,7 @@ import {
   WeaponId,
   WeaponPickup,
 } from '../types/game';
+import { StarterSlot } from '../types/online';
 import { ENEMY_FACTIONS, getIslandGarrisonProfile } from './factions';
 import { dist, hashCoords, mulberry32 } from '../utils/prng';
 
@@ -147,11 +148,16 @@ export function generateSectorIsland(
   worldSeed: number,
   sx: number,
   sy: number,
-  luckLevel = 1
+  luckLevel = 1,
+  onlineMode = false
 ): Island | null {
   const sectorSeed = hashCoords(worldSeed, sx, sy);
   const rng = mulberry32(sectorSeed);
-  const isStarter = sx === 0 && sy === 0;
+  const isStarter = !onlineMode && sx === 0 && sy === 0;
+  if (onlineMode && sx === 0 && sy === 0) {
+    // Online mode keeps (0,0) as open central meeting sea surrounded by equal starter islands
+    return null;
+  }
   const isNearOrigin = Math.abs(sx) <= 1 && Math.abs(sy) <= 1;
 
   const spawnRoll = rng();
@@ -208,7 +214,9 @@ export function generateSectorIsland(
     });
   }
 
-  const factionId = pickIslandFaction(sx, sy, isStarter, isLarge, rng);
+  const factionId: FactionId = onlineMode
+    ? 'NEUTRAL'
+    : pickIslandFaction(sx, sy, isStarter, isLarge, rng);
   const biome = pickIslandBiome(isStarter, factionId, isLarge, rng);
 
   const islandId = `island_${sx}_${sy}`;
@@ -831,14 +839,317 @@ export function generateIslandGarrison(island: Island, factionId: FactionId): Is
   );
 }
 
+export function generateStarterIslandFromSlot(slot: StarterSlot, luckLevel = 1): Island {
+  const rng = mulberry32(slot.seed);
+  const centerX = slot.centerX;
+  const centerY = slot.centerY;
+  const baseRadius = 305;
+
+  const p1 = rng() * Math.PI * 2;
+  const p2 = rng() * Math.PI * 2;
+  const p3 = rng() * Math.PI * 2;
+  const radialProfile: number[] = [];
+  const coastPoints: Vec2[] = [];
+  const grassPoints: Vec2[] = [];
+  let maxRadius = 0;
+
+  for (let i = 0; i < PROFILE_SLICES; i++) {
+    const theta = (i / PROFILE_SLICES) * Math.PI * 2;
+    const wave =
+      1 +
+      0.08 * Math.sin(theta * 2 + p1) +
+      0.05 * Math.cos(theta * 3 + p2) +
+      0.03 * Math.sin(theta * 5 + p3);
+    const r = baseRadius * wave;
+    radialProfile.push(r);
+    if (r > maxRadius) maxRadius = r;
+    coastPoints.push({
+      x: centerX + Math.cos(theta) * r,
+      y: centerY + Math.sin(theta) * r,
+    });
+    grassPoints.push({
+      x: centerX + Math.cos(theta) * r * 0.72,
+      y: centerY + Math.sin(theta) * r * 0.72,
+    });
+  }
+
+  // Trader dock faces inward toward the central sea (0,0) so friends meet easily
+  const dockAngle = Math.atan2(-centerY, -centerX);
+  const dockR = getProfileRadius(radialProfile, dockAngle);
+  const traderDock: Island['traderDock'] = {
+    x: centerX + Math.cos(dockAngle) * (dockR + 8),
+    y: centerY + Math.sin(dockAngle) * (dockR + 8),
+    angle: dockAngle,
+  };
+
+  const fortPos: Vec2 = { x: centerX - 62, y: centerY - 28 };
+  const lakes: InlandLake[] = [];
+  const landmarks: Landmark[] = [
+    {
+      id: `${slot.islandId}_camp_0`,
+      type: 'CAMP',
+      x: centerX + 86,
+      y: centerY - 58,
+      radius: 38,
+      rotation: 0.4,
+      subOffsets: [
+        { dx: -22, dy: -12, rot: 0.2, scale: 0.9 },
+        { dx: 24, dy: -10, rot: 2.1, scale: 0.92 },
+        { dx: 4, dy: 24, rot: 4.1, scale: 0.88 },
+      ],
+    },
+    {
+      id: `${slot.islandId}_obelisk_0`,
+      type: 'OBELISK',
+      x: centerX - 75,
+      y: centerY + 84,
+      radius: 22,
+      rotation: 0.9,
+    },
+  ];
+
+  const dockInnerR = getProfileRadius(radialProfile, dockAngle) * 0.85;
+  const roads: IslandRoad[] = [
+    {
+      from: fortPos,
+      to: {
+        x: centerX + Math.cos(dockAngle) * dockInnerR,
+        y: centerY + Math.sin(dockAngle) * dockInnerR,
+      },
+      ctrl: { x: centerX + 12, y: centerY + 14 },
+    },
+    {
+      from: fortPos,
+      to: { x: landmarks[0].x, y: landmarks[0].y },
+      ctrl: { x: centerX + 10, y: centerY - 48 },
+    },
+  ];
+
+  const spawnClearX = centerX + Math.cos(dockAngle) * 75;
+  const spawnClearY = centerY + Math.sin(dockAngle) * 75;
+
+  const palms: PalmTree[] = [];
+  for (let i = 0; i < 48 && palms.length < 13; i++) {
+    const angle = rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const r = localR * (0.2 + rng() * 0.64);
+    const px = centerX + Math.cos(angle) * r;
+    const py = centerY + Math.sin(angle) * r;
+    if (dist(px, py, spawnClearX, spawnClearY) < 68) continue;
+    if (dist(px, py, fortPos.x, fortPos.y) < 58) continue;
+    if (dist(px, py, traderDock.x, traderDock.y) < 72) continue;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, px, py) < lm.radius + 24)) continue;
+    if (palms.some((p) => dist(p.x, p.y, px, py) < 52)) continue;
+    palms.push({
+      id: `${slot.islandId}_palm_${palms.length}`,
+      x: px,
+      y: py,
+      scale: 0.8 + rng() * 0.44,
+      rotation: rng() * Math.PI * 2,
+      frondCount: 6 + Math.floor(rng() * 3),
+      swayOffset: rng() * Math.PI * 2,
+      hasCoconuts: rng() > 0.35,
+    });
+  }
+
+  const rocks: RockProp[] = [];
+  for (let i = 0; i < 16 && rocks.length < 4; i++) {
+    const angle = rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const r = localR * (0.48 + rng() * 0.38);
+    const rx = centerX + Math.cos(angle) * r;
+    const ry = centerY + Math.sin(angle) * r;
+    if (dist(rx, ry, spawnClearX, spawnClearY) < 62) continue;
+    if (dist(rx, ry, fortPos.x, fortPos.y) < 56) continue;
+    if (dist(rx, ry, traderDock.x, traderDock.y) < 64) continue;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, rx, ry) < lm.radius + 22)) continue;
+    if (palms.some((p) => dist(p.x, p.y, rx, ry) < 38)) continue;
+    const rockR = 11 + rng() * 10;
+    const pts: Vec2[] = [];
+    for (let s = 0; s < 7; s++) {
+      const a = (s / 7) * Math.PI * 2;
+      const rad = rockR * (0.78 + rng() * 0.32);
+      pts.push({ x: Math.cos(a) * rad, y: Math.sin(a) * rad });
+    }
+    rocks.push({
+      id: `${slot.islandId}_rock_${rocks.length}`,
+      x: rx,
+      y: ry,
+      radius: rockR,
+      rotation: rng() * Math.PI * 2,
+      points: pts,
+    });
+  }
+
+  const foliage: IslandFoliage[] = [];
+  const flowerColors = ['#FB7185', '#FBBF24', '#E879F9', '#F43F5E'];
+  for (let i = 0; i < 20 && foliage.length < 11; i++) {
+    const angle = rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const r = localR * (0.2 + rng() * 0.58);
+    const fx = centerX + Math.cos(angle) * r;
+    const fy = centerY + Math.sin(angle) * r;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, fx, fy) < lm.radius + 14)) continue;
+    const kind: IslandFoliage['kind'] = rng() < 0.6 ? 'FERN' : 'FLOWERS';
+    foliage.push({
+      x: fx,
+      y: fy,
+      radius: 7 + rng() * 6,
+      kind,
+      color: kind === 'FLOWERS' ? flowerColors[Math.floor(rng() * flowerColors.length)] : '#2E7D32',
+      rotation: rng() * Math.PI * 2,
+    });
+  }
+
+  const wpAngle = dockAngle + Math.PI * 0.65;
+  const wpR = getProfileRadius(radialProfile, wpAngle) * 0.52;
+  const weaponPickups: WeaponPickup[] = [
+    {
+      id: `${slot.islandId}_wp_0`,
+      islandId: slot.islandId,
+      x: centerX + Math.cos(wpAngle) * wpR,
+      y: centerY + Math.sin(wpAngle) * wpR,
+      weaponId: 'CUTLASS',
+    },
+  ];
+
+  const treasures: TreasureSpot[] = [];
+  for (let i = 0; i < 24 && treasures.length < 3; i++) {
+    const angle = treasures.length === 0 ? dockAngle + 0.72 : rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const r = treasures.length === 0 ? localR * 0.68 : localR * (0.26 + rng() * 0.58);
+    const tx = centerX + Math.cos(angle) * r;
+    const ty = centerY + Math.sin(angle) * r;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, tx, ty) < lm.radius + 18)) continue;
+    if (palms.some((p) => dist(p.x, p.y, tx, ty) < 24)) continue;
+    if (rocks.some((rk) => dist(rk.x, rk.y, tx, ty) < 26)) continue;
+    if (treasures.some((tr) => dist(tr.x, tr.y, tx, ty) < 88)) continue;
+    const template =
+      treasures.length === 0
+        ? TREASURE_TEMPLATES[2]
+        : pickTreasureTemplate(rng, 0.15, luckLevel);
+    treasures.push({
+      id: `${slot.islandId}_tr_${treasures.length}`,
+      islandId: slot.islandId,
+      x: tx,
+      y: ty,
+      template,
+    });
+  }
+
+  return {
+    id: slot.islandId,
+    sectorX: 0,
+    sectorY: 0,
+    name: `${slot.ownerName} Adası`,
+    biome: 'TROPICAL',
+    centerX,
+    centerY,
+    baseRadius,
+    maxRadius,
+    isLarge: false,
+    factionId: 'NEUTRAL',
+    fortPos,
+    radialProfile,
+    coastPoints,
+    grassPoints,
+    lakes,
+    roads,
+    foliage,
+    palms,
+    rocks,
+    landmarks,
+    weaponPickups,
+    enemySpawns: [],
+    treasures,
+    traderDock,
+    isStarter: true,
+  };
+}
+
+export function computeNextStarterSlot(
+  existingSlots: StarterSlot[],
+  playerId: string,
+  ownerName: string,
+  bannerColor: string,
+  worldSeed: number,
+  worldManager: WorldManager
+): StarterSlot {
+  const existing = existingSlots.find((s) => s.playerId === playerId);
+  if (existing) {
+    return { ...existing, ownerName, bannerColor };
+  }
+
+  const slotIndex = existingSlots.length;
+  const starterRadius = 345;
+  const waterGap = 190;
+
+  const isFreeWaterSpot = (cx: number, cy: number): boolean => {
+    for (const s of existingSlots) {
+      if (dist(cx, cy, s.centerX, s.centerY) < starterRadius * 2 + waterGap) {
+        return false;
+      }
+    }
+    const nearbySectors = worldManager.getVisibleIslands(cx, cy, 2);
+    for (const isl of nearbySectors) {
+      if (isl.isStarter) continue;
+      if (dist(cx, cy, isl.centerX, isl.centerY) < isl.maxRadius + starterRadius + waterGap) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Ring 0 places the first 4 players close to each other around (0,0) (~760px radius)
+  // Outer rings expand dynamically as more players join
+  const candidatePoints: Array<{ x: number; y: number }> = [];
+  const ring0Angles = [Math.PI * 0.25, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75];
+  for (const a of ring0Angles) {
+    candidatePoints.push({ x: Math.cos(a) * 760, y: Math.sin(a) * 760 });
+  }
+
+  // Expanding concentric ocean rings for additional players (scalable outward indefinitely)
+  for (let ring = 1; ring <= 40; ring++) {
+    const r = 760 + ring * 940;
+    const count = Math.max(8, Math.floor((2 * Math.PI * r) / 960));
+    const phase = ring * 0.37;
+    for (let k = 0; k < count; k++) {
+      const a = phase + (k / count) * Math.PI * 2;
+      candidatePoints.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+  }
+
+  let chosen = candidatePoints[0];
+  for (const pt of candidatePoints) {
+    if (isFreeWaterSpot(pt.x, pt.y)) {
+      chosen = pt;
+      break;
+    }
+  }
+
+  return {
+    slotIndex,
+    playerId,
+    ownerName,
+    bannerColor,
+    islandId: `starter_${playerId}`,
+    centerX: Math.round(chosen.x),
+    centerY: Math.round(chosen.y),
+    seed: hashCoords(worldSeed, slotIndex + 101, 777),
+  };
+}
+
 export class WorldManager {
   private cache = new Map<string, Island | null>();
+  private starterIslands = new Map<string, Island>();
   private worldSeed: number;
   private luckLevel: number;
+  private onlineMode: boolean;
 
-  constructor(worldSeed: number, luckLevel = 1) {
+  constructor(worldSeed: number, luckLevel = 1, onlineMode = false) {
     this.worldSeed = worldSeed;
     this.luckLevel = luckLevel;
+    this.onlineMode = onlineMode;
   }
 
   public setSeed(seed: number) {
@@ -848,14 +1159,53 @@ export class WorldManager {
     }
   }
 
+  public setOnlineMode(online: boolean) {
+    if (online !== this.onlineMode) {
+      this.onlineMode = online;
+      this.cache.clear();
+      if (!online) {
+        this.starterIslands.clear();
+      }
+    }
+  }
+
+  public isOnlineMode(): boolean {
+    return this.onlineMode;
+  }
+
   public setLuckLevel(luckLevel: number) {
     this.luckLevel = luckLevel;
+  }
+
+  public setStarterSlots(slots: StarterSlot[]) {
+    this.starterIslands.clear();
+    for (const slot of slots) {
+      this.starterIslands.set(slot.islandId, generateStarterIslandFromSlot(slot, this.luckLevel));
+    }
+  }
+
+  public addStarterSlot(slot: StarterSlot): Island {
+    const existing = this.starterIslands.get(slot.islandId);
+    if (existing) {
+      existing.name = `${slot.ownerName} Adası`;
+      return existing;
+    }
+    const island = generateStarterIslandFromSlot(slot, this.luckLevel);
+    this.starterIslands.set(slot.islandId, island);
+    return island;
+  }
+
+  public getStarterIslands(): Island[] {
+    return Array.from(this.starterIslands.values());
   }
 
   public getIslandAtSector(sx: number, sy: number): Island | null {
     const key = `${sx}_${sy}`;
     if (!this.cache.has(key)) {
-      this.cache.set(key, generateSectorIsland(this.worldSeed, sx, sy, this.luckLevel));
+      this.cache.set(
+        key,
+        generateSectorIsland(this.worldSeed, sx, sy, this.luckLevel, this.onlineMode)
+      );
     }
     return this.cache.get(key) ?? null;
   }
@@ -871,10 +1221,22 @@ export class WorldManager {
         if (island) result.push(island);
       }
     }
+
+    if (this.onlineMode && this.starterIslands.size > 0) {
+      const maxDist = (radiusSectors + 0.8) * SECTOR_SIZE;
+      for (const isl of this.starterIslands.values()) {
+        if (Math.hypot(isl.centerX - centerX, isl.centerY - centerY) <= maxDist) {
+          result.push(isl);
+        }
+      }
+    }
+
     return result;
   }
 
   public getIslandById(id: string): Island | null {
+    const starter = this.starterIslands.get(id);
+    if (starter) return starter;
     const parts = id.split('_');
     if (parts.length !== 3) return null;
     const sx = Number(parts[1]);

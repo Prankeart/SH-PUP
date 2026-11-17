@@ -22,6 +22,10 @@ export function dist(x1: number, y1: number, x2: number, y2: number): number {
   return Math.hypot(x2 - x1, y2 - y1);
 }
 
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
 export function lerpAngle(a: number, b: number, t: number): number {
   let diff = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
   if (diff < -Math.PI) diff += Math.PI * 2;

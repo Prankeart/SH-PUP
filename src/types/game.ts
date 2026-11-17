@@ -265,6 +265,7 @@ export interface GameSettings {
   soundEnabled: boolean;
   joystickMode: 'FIXED' | 'DYNAMIC';
   showWaves: boolean;
+  touchControls: 'AUTO' | 'ALWAYS' | 'HIDDEN';
 }
 
 export interface RadarReading {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Compass, Flag, MapPin, Ship, Store, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { DigCrater, Island, KingdomState, Vec2 } from '../types/game';
+import { RemotePlayerSnapshot } from '../types/online';
 import { SECTOR_SIZE, WorldManager } from '../engine/worldGen';
 import { ENEMY_FACTION_LIST, getEffectiveIslandFaction, getFactionDisplay } from '../engine/factions';
 
@@ -13,6 +14,9 @@ interface MapModalProps {
   playerPos: Vec2;
   boatPos: Vec2;
   isSailing: boolean;
+  onlineMode?: boolean;
+  onlinePlayers?: RemotePlayerSnapshot[];
+  onlineIslandOwners?: Record<string, { shortName: string; color: string }>;
   onClose: () => void;
 }
 
@@ -25,6 +29,9 @@ export const MapModal: React.FC<MapModalProps> = ({
   playerPos,
   boatPos,
   isSailing,
+  onlineMode = false,
+  onlinePlayers = [],
+  onlineIslandOwners = {},
   onClose,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -103,7 +110,17 @@ export const MapModal: React.FC<MapModalProps> = ({
       }
     }
 
-    // Ensure every discovered island is included even if outside current grid
+    // Ensure all dynamic starter islands & discovered islands are included
+    if (onlineMode) {
+      for (const isl of worldManager.getStarterIslands()) {
+        if (!islandsToDraw.some((item) => item.island.id === isl.id)) {
+          islandsToDraw.push({ island: isl, discovered: true });
+        } else {
+          const found = islandsToDraw.find((item) => item.island.id === isl.id);
+          if (found) found.discovered = true;
+        }
+      }
+    }
     for (const id of discoveredIslandIds) {
       if (!islandsToDraw.some((item) => item.island.id === id)) {
         const isl = worldManager.getIslandById(id);
@@ -118,18 +135,27 @@ export const MapModal: React.FC<MapModalProps> = ({
         island.isStarter,
         kingdom
       );
-      const factionInfo = getFactionDisplay(effFaction, kingdom);
+      const onlineOwner = onlineMode ? onlineIslandOwners[island.id] : undefined;
+      const factionInfo = onlineOwner
+        ? {
+            name: onlineOwner.shortName,
+            shortName: onlineOwner.shortName,
+            color: onlineOwner.color,
+            sailColor: onlineOwner.color,
+          }
+        : getFactionDisplay(effFaction, kingdom);
+      const isOwned = Boolean(onlineOwner) || effFaction !== 'NEUTRAL';
       const isAtWar =
+        !onlineMode &&
         effFaction !== 'NEUTRAL' &&
         effFaction !== 'PLAYER' &&
         kingdom.atWarWith.includes(effFaction);
 
       if (discovered) {
         // Shallow ring (tinted subtly by faction territory if claimed)
-        ctx.fillStyle =
-          effFaction === 'NEUTRAL'
-            ? 'rgba(36, 180, 201, 0.35)'
-            : `${factionInfo.color}38`;
+        ctx.fillStyle = !isOwned
+          ? 'rgba(36, 180, 201, 0.35)'
+          : `${factionInfo.color}38`;
         ctx.beginPath();
         island.coastPoints.forEach((p, idx) => {
           const sx = island.centerX + (p.x - island.centerX) * 1.24;
@@ -140,7 +166,7 @@ export const MapModal: React.FC<MapModalProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        if (effFaction !== 'NEUTRAL') {
+        if (isOwned) {
           ctx.strokeStyle = factionInfo.color;
           ctx.lineWidth = (isAtWar ? 3 : 2) / zoom;
           ctx.stroke();
@@ -196,7 +222,7 @@ export const MapModal: React.FC<MapModalProps> = ({
         }
 
         // Fort / Faction Flag marker
-        if (island.fortPos && effFaction !== 'NEUTRAL') {
+        if (island.fortPos && isOwned) {
           ctx.fillStyle = factionInfo.color;
           ctx.strokeStyle = '#FFFFFF';
           ctx.lineWidth = 1.5 / zoom;
@@ -216,11 +242,17 @@ export const MapModal: React.FC<MapModalProps> = ({
 
         // Island label
         const remainingTreasures = island.treasures.filter((t) => !openedSet.has(t.id)).length;
-        ctx.fillStyle = effFaction === 'PLAYER' ? '#A7F3D0' : isAtWar ? '#FCA5A5' : '#F8FAFC';
+        ctx.fillStyle =
+          effFaction === 'PLAYER' && !onlineOwner
+            ? '#A7F3D0'
+            : isAtWar
+            ? '#FCA5A5'
+            : '#F8FAFC';
         ctx.font = `600 ${Math.round(11 / zoom)}px "Plus Jakarta Sans", sans-serif`;
         ctx.textAlign = 'center';
-        const ownerSuffix =
-          effFaction === 'NEUTRAL' ? '' : ` · ${factionInfo.shortName}${isAtWar ? ' [Savaş]' : ''}`;
+        const ownerSuffix = !isOwned
+          ? ''
+          : ` · ${factionInfo.shortName}${isAtWar ? ' [Savaş]' : ''}`;
         ctx.fillText(
           `${island.name}${remainingTreasures === 0 ? ' (Temiz)' : ` (${remainingTreasures})`}${ownerSuffix}`,
           island.centerX,
@@ -229,11 +261,10 @@ export const MapModal: React.FC<MapModalProps> = ({
       } else {
         // Uncharted fogged silhouette (shows faint nation border if belonging to a major state!)
         ctx.fillStyle = 'rgba(15, 41, 54, 0.55)';
-        ctx.strokeStyle =
-          effFaction !== 'NEUTRAL'
-            ? `${factionInfo.color}66`
-            : 'rgba(148, 163, 184, 0.25)';
-        ctx.lineWidth = (effFaction !== 'NEUTRAL' ? 2.2 : 1.5) / zoom;
+        ctx.strokeStyle = isOwned
+          ? `${factionInfo.color}66`
+          : 'rgba(148, 163, 184, 0.25)';
+        ctx.lineWidth = (isOwned ? 2.2 : 1.5) / zoom;
         ctx.beginPath();
         ctx.arc(island.centerX, island.centerY, island.baseRadius * 0.85, 0, Math.PI * 2);
         ctx.fill();
@@ -269,8 +300,29 @@ export const MapModal: React.FC<MapModalProps> = ({
       ctx.stroke();
     }
 
+    // Remote Online Players on map
+    if (onlineMode && onlinePlayers.length > 0) {
+      for (const rp of onlinePlayers) {
+        if (!rp.connected) continue;
+        const rpx = rp.isSailing ? rp.boatX : rp.x;
+        const rpy = rp.isSailing ? rp.boatY : rp.y;
+        ctx.fillStyle = rp.bannerColor || '#F59E0B';
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2 / zoom;
+        ctx.beginPath();
+        ctx.arc(rpx, rpy, 7 / zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = `700 ${Math.round(11 / zoom)}px "Outfit", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = rp.bannerColor || '#FDE68A';
+        ctx.fillText(rp.name, rpx, rpy - 12 / zoom);
+      }
+    }
+
     ctx.restore();
-  }, [worldManager, discoveredIslandIds, openedTreasureIds, dugCraters, kingdom, playerPos, boatPos, isSailing, zoom, offset]);
+  }, [worldManager, discoveredIslandIds, openedTreasureIds, dugCraters, kingdom, playerPos, boatPos, isSailing, onlineMode, onlinePlayers, onlineIslandOwners, zoom, offset]);
 
   const discoveredCount = discoveredIslandIds.length;
   const totalOpened = openedTreasureIds.length;
@@ -282,15 +334,15 @@ export const MapModal: React.FC<MapModalProps> = ({
       aria-modal="true"
       aria-label="Açık Dünya Haritası"
     >
-      <div className="w-full max-w-4xl h-[88vh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-4xl h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Compass className="w-5 h-5 text-sky-300 shrink-0" />
-            <h2 className="font-display text-lg font-bold text-slate-50 truncate">
+            <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
               Açık Dünya & Devletler Haritası
             </h2>
-            <span className="hidden sm:inline text-xs text-slate-300 font-mono-num">
+            <span className="hidden sm:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
               {discoveredCount} Ada · {totalOpened} Hazine · {kingdom.conqueredIslandIds.length} Fetih
             </span>
           </div>
@@ -360,8 +412,8 @@ export const MapModal: React.FC<MapModalProps> = ({
         </div>
 
         {/* Clean Unboxed Legend Footer */}
-        <div className="px-5 py-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="px-3.5 sm:px-5 py-2 sm:py-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[11px] sm:text-xs text-slate-300 max-h-24 overflow-y-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
               Oyuncu
@@ -380,15 +432,28 @@ export const MapModal: React.FC<MapModalProps> = ({
                 {kingdom.name}
               </span>
             )}
-            {ENEMY_FACTION_LIST.map((f) => (
-              <span key={f.id} className="flex items-center gap-1.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full inline-block"
-                  style={{ backgroundColor: f.color }}
-                />
-                {f.shortName}
-              </span>
-            ))}
+            {!onlineMode &&
+              ENEMY_FACTION_LIST.map((f) => (
+                <span key={f.id} className="flex items-center gap-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full inline-block"
+                    style={{ backgroundColor: f.color }}
+                  />
+                  {f.shortName}
+                </span>
+              ))}
+            {onlineMode &&
+              onlinePlayers
+                .filter((p) => p.connected)
+                .map((p) => (
+                  <span key={p.id} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ backgroundColor: p.bannerColor }}
+                    />
+                    {p.name}
+                  </span>
+                ))}
           </div>
           <span className="text-slate-400">Haritayı sürükleyerek gezebilirsiniz</span>
         </div>

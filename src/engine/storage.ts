@@ -151,6 +151,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   soundEnabled: true,
   joystickMode: 'FIXED',
   showWaves: true,
+  touchControls: 'AUTO',
 };
 
 export function loadSettings(): GameSettings {
@@ -162,6 +163,10 @@ export function loadSettings(): GameSettings {
       soundEnabled: parsed.soundEnabled ?? true,
       joystickMode: parsed.joystickMode === 'DYNAMIC' ? 'DYNAMIC' : 'FIXED',
       showWaves: parsed.showWaves ?? true,
+      touchControls:
+        parsed.touchControls === 'ALWAYS' || parsed.touchControls === 'HIDDEN'
+          ? parsed.touchControls
+          : 'AUTO',
     };
   } catch {
     return DEFAULT_SETTINGS;

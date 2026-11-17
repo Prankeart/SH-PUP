@@ -19,6 +19,7 @@ import {
   WeaponId,
   WeaponPickup,
 } from '../types/game';
+import { OnlineProjectileSnapshot, RemotePlayerView } from '../types/online';
 import { WEAPONS } from './weapons';
 import { getShipClass } from './upgrades';
 import { ENEMY_FACTIONS, getEffectiveIslandFaction, getFactionDisplay } from './factions';
@@ -71,6 +72,9 @@ export interface RenderState {
   showWaves: boolean;
   nearBoat: boolean;
   nearDock: boolean;
+  remotePlayers?: RemotePlayerView[];
+  onlineProjectiles?: OnlineProjectileSnapshot[];
+  onlineIslandOwners?: Record<string, { shortName: string; color: string; isCapturable?: boolean }>;
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -979,7 +983,9 @@ function drawFortFlag(
   island: Island,
   kingdom: KingdomState,
   fortCapture: RenderState['fortCapture'],
-  timeSec: number
+  timeSec: number,
+  onlineOwner?: { shortName: string; color: string; isCapturable?: boolean },
+  isOnlineMode = false
 ) {
   if (!island.fortPos) return;
   const effectiveFaction = getEffectiveIslandFaction(
@@ -988,11 +994,19 @@ function drawFortFlag(
     island.isStarter,
     kingdom
   );
-  if (effectiveFaction === 'NEUTRAL') return;
+  if (effectiveFaction === 'NEUTRAL' && !onlineOwner && (!isOnlineMode || island.isStarter)) {
+    return;
+  }
 
-  const display = getFactionDisplay(effectiveFaction, kingdom);
+  const display = onlineOwner
+    ? { name: onlineOwner.shortName, shortName: onlineOwner.shortName, color: onlineOwner.color, sailColor: onlineOwner.color }
+    : effectiveFaction === 'NEUTRAL'
+    ? { name: 'Tarafsız', shortName: 'Tarafsız', color: '#94A3B8', sailColor: '#94A3B8' }
+    : getFactionDisplay(effectiveFaction, kingdom);
   const { x, y } = island.fortPos;
-  const isEnemyFort = effectiveFaction !== 'PLAYER';
+  const isEnemyFort = onlineOwner
+    ? Boolean(onlineOwner.isCapturable)
+    : effectiveFaction !== 'PLAYER';
   const captureInfo = fortCapture && fortCapture.islandId === island.id ? fortCapture : null;
 
   ctx.save();
@@ -2082,7 +2096,15 @@ export function renderGameFrame(
       }
       drawLandmark(ctx, lm, timeSec);
     }
-    drawFortFlag(ctx, island, state.kingdom, state.fortCapture, timeSec);
+    drawFortFlag(
+      ctx,
+      island,
+      state.kingdom,
+      state.fortCapture,
+      timeSec,
+      state.onlineIslandOwners?.[island.id],
+      Boolean(state.onlineIslandOwners)
+    );
   }
 
   // Uncollected Weapon Pickups
@@ -2178,6 +2200,85 @@ export function renderGameFrame(
       playerFactionDisplay.sailColor,
       timeSec
     );
+  }
+
+  // Remote Online Players (Boats + On-Foot Characters + Nameplates)
+  if (state.remotePlayers && state.remotePlayers.length > 0) {
+    for (const rp of state.remotePlayers) {
+      if (!rp.connected) continue;
+      const rx = rp.isSailing ? rp.boatX : rp.x;
+      const ry = rp.isSailing ? rp.boatY : rp.y;
+      if (rx < viewLeft - 120 || rx > viewRight + 120 || ry < viewTop - 120 || ry > viewBottom + 120) {
+        continue;
+      }
+
+      // Draw remote player's boat
+      drawBoat(
+        ctx,
+        rp.boatX,
+        rp.boatY,
+        rp.boatAngle,
+        rp.isSailing,
+        rp.speedRatio,
+        rp.boatLevel,
+        Math.min(4, 1 + Math.floor((rp.boatLevel - 1) / 2)),
+        rp.hitFlash,
+        false,
+        timeSec
+      );
+
+      // Draw remote player on land or helmsman dot
+      if (!rp.isSailing) {
+        drawPlayer(
+          ctx,
+          rp.x,
+          rp.y,
+          rp.angle,
+          rp.walkPhase,
+          rp.digAnimProgress,
+          rp.attackAnimProgress,
+          rp.equippedWeapon,
+          rp.hitFlash
+        );
+      } else {
+        ctx.save();
+        ctx.translate(rp.boatX - Math.cos(rp.boatAngle) * 8, rp.boatY - Math.sin(rp.boatAngle) * 8);
+        ctx.fillStyle = rp.bannerColor;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Nameplate & Banner Dot
+      const labelY = rp.isSailing ? rp.boatY - 38 : rp.y - 28;
+      const labelX = rp.isSailing ? rp.boatX : rp.x;
+      ctx.save();
+      ctx.font = '700 12px "Outfit", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3.2;
+      ctx.strokeStyle = 'rgba(7, 25, 36, 0.9)';
+      const tag = rp.kingdomFounded ? `${rp.name} · ${rp.kingdomName}` : rp.name;
+      ctx.strokeText(tag, labelX, labelY);
+      ctx.fillStyle = rp.bannerColor || '#FDE68A';
+      ctx.fillText(tag, labelX, labelY);
+
+      // Remote HP bar if damaged
+      const curHp = rp.isSailing ? rp.boatHp : rp.playerHp;
+      const maxHp = rp.isSailing ? rp.maxBoatHp : 100;
+      if (curHp < maxHp) {
+        const bw = 36;
+        const bh = 4;
+        ctx.fillStyle = 'rgba(7, 25, 36, 0.85)';
+        ctx.fillRect(labelX - bw / 2 - 1, labelY + 5, bw + 2, bh + 2);
+        ctx.fillStyle = rp.bannerColor || '#34D399';
+        ctx.fillRect(labelX - bw / 2, labelY + 6, bw * clamp(curHp / Math.max(1, maxHp), 0, 1), bh);
+      }
+      ctx.restore();
+    }
   }
 
   // Player Boat
@@ -2310,6 +2411,35 @@ export function renderGameFrame(
     ctx.arc(cb.x, cb.y - Math.max(0, cb.z), 4.8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+  }
+
+  // Online Authoritative Projectiles
+  if (state.onlineProjectiles && state.onlineProjectiles.length > 0) {
+    for (const op of state.onlineProjectiles) {
+      if (op.x < viewLeft || op.x > viewRight || op.y < viewTop || op.y > viewBottom) continue;
+      if (op.kind === 'CANNON') {
+        ctx.fillStyle = 'rgba(7, 25, 36, 0.32)';
+        ctx.beginPath();
+        ctx.ellipse(op.x, op.y, 4.5, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1E293B';
+        ctx.strokeStyle = op.color || '#F59E0B';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(op.x, op.y - Math.max(0, op.z), 4.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = op.color || '#FDE047';
+        ctx.strokeStyle = '#0F172A';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(op.x, op.y, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
   }
 
   // Radar Pulses

@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { EnemyFactionId, KingdomState, SoldierType } from '../types/game';
+import { OnlineModeRule, RemotePlayerSnapshot } from '../types/online';
 import {
   ENEMY_FACTION_LIST,
   getArmyUpgradeCost,
@@ -26,6 +27,9 @@ interface KingdomModalProps {
   gold: number;
   kingdom: KingdomState;
   nationIslandCounts: Record<EnemyFactionId, number>;
+  onlineMode?: boolean;
+  onlineRule?: OnlineModeRule;
+  onlinePlayers?: RemotePlayerSnapshot[];
   onFoundKingdom: (name: string, bannerColor: string) => void;
   onRecruitSoldier: (type: SoldierType, count?: number) => void;
   onUpgradeArmy: () => void;
@@ -39,6 +43,9 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
   gold,
   kingdom,
   nationIslandCounts,
+  onlineMode = false,
+  onlineRule = 'PVP',
+  onlinePlayers = [],
   onFoundKingdom,
   onRecruitSoldier,
   onUpgradeArmy,
@@ -71,14 +78,14 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
       aria-modal="true"
       aria-label="Devlet ve Ordu Yönetimi"
     >
-      <div className="w-full max-w-5xl max-h-[88vh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="w-full max-w-5xl max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Crown
               className="w-5 h-5 shrink-0"
               style={{ color: kingdom.founded ? kingdom.bannerColor : '#FBBF24' }}
             />
-            <h2 className="font-display text-lg font-bold text-slate-50 truncate">
+            <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
               {kingdom.founded ? kingdom.name : 'Devlet Kur & Ordu Yönetimi'}
             </h2>
           </div>
@@ -177,7 +184,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 flex flex-col gap-4 sm:gap-5">
             {/* Summary Strip */}
             <div className="px-4 py-3 rounded-xl bg-slate-950/35 border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -230,7 +237,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                 </div>
 
                 {/* Barracks / Army Training Upgrade */}
-                <div className="p-3.5 rounded-xl bg-emerald-950/35 border border-emerald-400/25 flex items-center justify-between gap-3">
+                <div className="p-3.5 rounded-xl bg-emerald-950/35 border border-emerald-400/25 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-emerald-100 flex items-center gap-2">
                       <ArrowUpCircle className="w-4 h-4 text-emerald-300 shrink-0" />
@@ -283,7 +290,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                             {scaledHp} Can · {scaledDmg} Hasar{type === 'GRENADIER' ? ' · Alan Patlaması' : ''}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                           {[1, 5, 10].map((qty) => {
                             const cost = spec.cost * qty;
                             const canBuy = gold >= cost;
@@ -351,67 +358,127 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                 </div>
               </div>
 
-              {/* Enemy Nations & Diplomacy */}
+              {/* Enemy Nations & Diplomacy (Offline) OR Online Player Kingdoms */}
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <Swords className="w-4 h-4 text-red-400" />
                   <h3 className="font-display text-base font-semibold text-slate-100">
-                    Rakip Devletler &amp; Fetih
+                    {onlineMode ? 'Odadaki Kaptanlar & Devletler' : 'Rakip Devletler & Fetih'}
                   </h3>
                 </div>
 
-                <div className="flex flex-col gap-2.5">
-                  {ENEMY_FACTION_LIST.map((faction) => {
-                    const atWar = kingdom.atWarWith.includes(faction.id);
-                    const heldIslands = nationIslandCounts[faction.id] ?? 0;
-                    return (
-                      <div
-                        key={faction.id}
-                        className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                            <span
-                              className="w-3 h-3 rounded-full shrink-0"
-                              style={{ backgroundColor: faction.color }}
-                            />
-                            <span className="truncate">{faction.name}</span>
-                            <span className="font-mono-num text-[11px] text-slate-300 shrink-0">
-                              {heldIslands} Ada
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-400 mt-0.5">{faction.description}</p>
-                          <div className="text-[11px] mt-1 font-medium text-slate-300 flex items-center gap-1.5">
-                            <Shield className="w-3 h-3" style={{ color: faction.color }} />
-                            <span>
-                              Durum:{' '}
-                              <strong className={atWar ? 'text-red-300' : 'text-slate-200'}>
-                                {atWar ? 'Savaş Halinde' : 'Tarafsız'}
-                              </strong>
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={atWar}
-                          onClick={() => onDeclareWar(faction.id)}
-                          className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors whitespace-nowrap ${
-                            atWar
-                              ? 'bg-red-500/20 text-red-300 border border-red-400/35 cursor-default'
-                              : 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer'
-                          }`}
-                        >
-                          {atWar ? 'Savaşta' : 'Savaş Aç'}
-                        </button>
+                {onlineMode ? (
+                  <div className="flex flex-col gap-2.5">
+                    {onlinePlayers.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-950/35 border border-white/10 text-xs text-slate-300">
+                        Odada henüz başka kaptan yok. Oda kodunu paylaşarak arkadaşlarını davet edebilirsin.
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : (
+                      onlinePlayers.map((rp) => (
+                        <div
+                          key={rp.id}
+                          className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: rp.bannerColor }}
+                              />
+                              <span className="truncate">
+                                {rp.kingdomFounded ? rp.kingdomName : rp.name}
+                              </span>
+                              <span className="font-mono-num text-[11px] text-slate-300 shrink-0">
+                                {rp.conqueredCount} Ada
+                              </span>
+                            </div>
+                            <div className="text-[11px] mt-1 font-medium text-slate-300 flex items-center gap-1.5">
+                              <Shield className="w-3 h-3" style={{ color: rp.bannerColor }} />
+                              <span>
+                                Kaptan: {rp.name} ·{' '}
+                                <strong
+                                  className={
+                                    onlineRule === 'PVP' ? 'text-red-300' : 'text-emerald-300'
+                                  }
+                                >
+                                  {onlineRule === 'PVP' ? 'PvP Rakip' : 'Co-op Müttefik'}
+                                </strong>
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-[11px] font-semibold whitespace-nowrap ${
+                              rp.connected ? 'text-emerald-300' : 'text-slate-500'
+                            }`}
+                          >
+                            {rp.connected ? 'Aktif' : 'Çevrimdışı'}
+                          </span>
+                        </div>
+                      ))
+                    )}
 
-                <div className="p-3 rounded-xl bg-slate-950/25 border border-white/10 text-xs text-slate-300 leading-relaxed">
-                  Ordu ve donanma sınırı yok: +5 ve +10 alımlarla yüzlerce asker topla! Rakip devletler de adalarında devasa taburlar bulundurur; Humbaracı Topçularla kalabalık düşman saflarını patlatıp kaleyi ele geçirebilirsin.
-                </div>
+                    <div className="p-3 rounded-xl bg-slate-950/25 border border-white/10 text-xs text-slate-300 leading-relaxed">
+                      {onlineRule === 'PVP'
+                        ? 'PvP Devlet Savaşı aktif: Tarafsız köylü adalarını veya rakip oyuncuların adalarını ele geçirebilirsin.'
+                        : 'Co-op Takım aktif: Dost ateşi kapalıdır, tarafsız adaları keşfedip birlikte büyüyebilirsiniz.'}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-2.5">
+                      {ENEMY_FACTION_LIST.map((faction) => {
+                        const atWar = kingdom.atWarWith.includes(faction.id);
+                        const heldIslands = nationIslandCounts[faction.id] ?? 0;
+                        return (
+                          <div
+                            key={faction.id}
+                            className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                                <span
+                                  className="w-3 h-3 rounded-full shrink-0"
+                                  style={{ backgroundColor: faction.color }}
+                                />
+                                <span className="truncate">{faction.name}</span>
+                                <span className="font-mono-num text-[11px] text-slate-300 shrink-0">
+                                  {heldIslands} Ada
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-400 mt-0.5">{faction.description}</p>
+                              <div className="text-[11px] mt-1 font-medium text-slate-300 flex items-center gap-1.5">
+                                <Shield className="w-3 h-3" style={{ color: faction.color }} />
+                                <span>
+                                  Durum:{' '}
+                                  <strong className={atWar ? 'text-red-300' : 'text-slate-200'}>
+                                    {atWar ? 'Savaş Halinde' : 'Tarafsız'}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={atWar}
+                              onClick={() => onDeclareWar(faction.id)}
+                              className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors whitespace-nowrap ${
+                                atWar
+                                  ? 'bg-red-500/20 text-red-300 border border-red-400/35 cursor-default'
+                                  : 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer'
+                              }`}
+                            >
+                              {atWar ? 'Savaşta' : 'Savaş Aç'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950/25 border border-white/10 text-xs text-slate-300 leading-relaxed">
+                      Ordu ve donanma sınırı yok: +5 ve +10 alımlarla yüzlerce asker topla! Rakip devletler de adalarında devasa taburlar bulundurur; Humbaracı Topçularla kalabalık düşman saflarını patlatıp kaleyi ele geçirebilirsin.
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
