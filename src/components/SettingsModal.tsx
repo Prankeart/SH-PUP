@@ -10,6 +10,8 @@ import {
   Keyboard,
   Languages,
   LogOut,
+  Maximize2,
+  Minimize2,
   Move,
   RotateCcw,
   Save,
@@ -25,6 +27,12 @@ import {
 import { GameSettings, KeybindingsConfig } from '../types/game';
 import { DEFAULT_KEYBINDINGS, listSaveSlots, SaveSlotSummary } from '../engine/storage';
 import { soundEngine } from '../engine/audio';
+import {
+  exitAppFullscreen,
+  isCurrentlyFullscreen,
+  isFullscreenSupported,
+  requestAppFullscreen,
+} from '../utils/fullscreen';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -106,7 +114,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [seedInput, setSeedInput] = useState(String(worldSeed));
   const [copiedSeed, setCopiedSeed] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(() => isCurrentlyFullscreen());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const syncFs = () => setIsFullscreen(isCurrentlyFullscreen());
+    document.addEventListener('fullscreenchange', syncFs);
+    document.addEventListener('webkitfullscreenchange', syncFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFs);
+      document.removeEventListener('webkitfullscreenchange', syncFs);
+    };
+  }, []);
 
   useEffect(() => {
     setSeedInput(String(worldSeed));
@@ -339,6 +358,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Auto Fullscreen Toggle */}
+                {isFullscreenSupported() && (
+                  <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {settings.autoFullscreen ? (
+                        <Maximize2 className="w-5 h-5 text-emerald-300 shrink-0" />
+                      ) : (
+                        <Minimize2 className="w-5 h-5 text-slate-400 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {isEn ? 'Auto Fullscreen' : 'Tam Ekran Modu'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Automatically launch in fullscreen (turn off to stay windowed)'
+                            : 'Site açıldığında otomatik tam ekrana geçer'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-auto">
+                      {settings.autoFullscreen && !isFullscreen && (
+                        <button
+                          type="button"
+                          onClick={() => void requestAppFullscreen()}
+                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                        >
+                          {isEn ? 'Enter Now' : 'Tam Ekrana Geç'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !settings.autoFullscreen;
+                          onUpdateSettings({ ...settings, autoFullscreen: next });
+                          if (next) {
+                            void requestAppFullscreen();
+                          } else {
+                            void exitAppFullscreen();
+                          }
+                        }}
+                        className={`min-w-[72px] px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                          settings.autoFullscreen
+                            ? 'bg-emerald-500 text-slate-950'
+                            : 'bg-white/10 text-slate-300'
+                        }`}
+                      >
+                        {settings.autoFullscreen
+                          ? isEn
+                            ? 'On'
+                            : 'Açık'
+                          : isEn
+                          ? 'Off'
+                          : 'Kapalı'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Ocean Waves Visual Toggle */}
                 <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3">

@@ -547,6 +547,7 @@ export interface GameSettings {
   masterVolume: number;
   sfxVolume: number;
   ambientVolume: number;
+  autoFullscreen: boolean;
   joystickMode: 'FIXED' | 'DYNAMIC';
   showWaves: boolean;
   touchControls: 'AUTO' | 'ALWAYS' | 'HIDDEN';

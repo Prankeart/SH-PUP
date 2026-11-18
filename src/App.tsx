@@ -128,6 +128,11 @@ import { PerformanceGovernor } from './engine/perfGovernor';
 import { soundEngine } from './engine/audio';
 import { clamp, dist, lerp, lerpAngle } from './utils/prng';
 import {
+  exitAppFullscreen,
+  isCurrentlyFullscreen,
+  requestAppFullscreen,
+} from './utils/fullscreen';
+import {
   OnlineChatMessage,
   OnlineConnectionStatus,
   OnlineModeRule,
@@ -478,6 +483,8 @@ export default function App() {
     onlineAtWarSetRef.current = nextWarSet;
   }, [onlineWarDeclarations, onlineRoomInfo?.rule, identity.playerId]);
 
+  const sessionFullscreenHandledRef = useRef(false);
+
   useEffect(() => {
     settingsRef.current = settings;
     soundEngine.setEnabled(settings.soundEnabled);
@@ -489,6 +496,46 @@ export default function App() {
     );
     persistSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (!settings.autoFullscreen) {
+      sessionFullscreenHandledRef.current = true;
+      void exitAppFullscreen();
+      return;
+    }
+
+    if (sessionFullscreenHandledRef.current || isCurrentlyFullscreen()) {
+      return;
+    }
+
+    let cleanedUp = false;
+    void requestAppFullscreen().then((entered) => {
+      if (!cleanedUp && entered) {
+        sessionFullscreenHandledRef.current = true;
+      }
+    });
+
+    const handleFirstGesture = () => {
+      if (sessionFullscreenHandledRef.current || !settingsRef.current.autoFullscreen) {
+        cleanup();
+        return;
+      }
+      sessionFullscreenHandledRef.current = true;
+      void requestAppFullscreen();
+      cleanup();
+    };
+
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      window.removeEventListener('pointerdown', handleFirstGesture, true);
+      window.removeEventListener('keydown', handleFirstGesture, true);
+    };
+
+    window.addEventListener('pointerdown', handleFirstGesture, true);
+    window.addEventListener('keydown', handleFirstGesture, true);
+    return cleanup;
+  }, [settings.autoFullscreen]);
 
   useEffect(() => {
     phaseRef.current = phase;
