@@ -12,7 +12,12 @@ export type SoldierType = 'SWORDSMAN' | 'MUSKETEER' | 'HEAVY_GUARD' | 'GRENADIER
 
 export type SeasonId = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
 
-export type WorldEventType = 'STORM' | 'TREASURE_TIDE' | 'BOUNTY_CONVOY' | 'FOG';
+export type WorldEventType =
+  | 'STORM'
+  | 'TREASURE_TIDE'
+  | 'BOUNTY_CONVOY'
+  | 'FOG'
+  | 'CASTAWAY_RESCUE';
 
 export interface ActiveWorldEvent {
   type: WorldEventType;
@@ -28,6 +33,8 @@ export interface KeybindingsConfig {
   boat: string;
   radar: string;
   ability: string;
+  fish: string;
+  stance: string;
   map: string;
   shop: string;
   kingdom: string;
@@ -67,9 +74,142 @@ export type LandmarkType =
   | 'CAMP'
   | 'OBELISK'
   | 'RUINS'
-  | 'SHIPWRECK';
+  | 'SHIPWRECK'
+  | 'LIGHTHOUSE'
+  | 'TRADING_POST'
+  | 'SEA_ARCH'
+  | 'CITY_PLAZA'
+  | 'TAVERN'
+  | 'FOUNTAIN'
+  | 'ARENA_RING'
+  | 'CAVE_ENTRANCE'
+  | 'SECRET_SHRINE';
 
-export type IslandBiome = 'TROPICAL' | 'JUNGLE' | 'OASIS' | 'VOLCANIC' | 'RUINS';
+export type SpecialZoneType = 'CITY' | 'ARENA' | 'SECRET';
+
+export interface CaveEntrance {
+  id: string;
+  islandId: string;
+  x: number;
+  y: number;
+  name: string;
+  tier: 1 | 2 | 3;
+}
+
+export type CaveEnemyKind = 'CRAB' | 'BAT' | 'SCORPION' | 'CRYSTAL_GOLEM';
+
+export interface CaveEnemy {
+  id: string;
+  kind: CaveEnemyKind;
+  name: string;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+  damage: number;
+  speed: number;
+  radius: number;
+  isBoss?: boolean;
+  lastAttackTime: number;
+  hitFlashTime: number;
+  walkPhase: number;
+  homePos: Vec2;
+  goldBounty: number;
+}
+
+export interface CaveChest {
+  id: string;
+  x: number;
+  y: number;
+  goldValue: number;
+  tier: 'NORMAL' | 'BOSS';
+  opened: boolean;
+}
+
+export interface CaveWeaponAltar {
+  id: string;
+  x: number;
+  y: number;
+  weaponId: WeaponId;
+  claimed: boolean;
+}
+
+export interface CaveChamber {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
+export interface CaveWallPillar {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface CaveInterior {
+  caveId: string;
+  islandId: string;
+  name: string;
+  tier: 1 | 2 | 3;
+  width: number;
+  height: number;
+  chambers: CaveChamber[];
+  corridors: Array<{ x1: number; y1: number; x2: number; y2: number; width: number }>;
+  pillars: CaveWallPillar[];
+  pools: Array<{ x: number; y: number; rx: number; ry: number }>;
+  crystals: Array<{ x: number; y: number; size: number; color: string; angle: number }>;
+  torches: Array<{ x: number; y: number; phase: number }>;
+  entryPos: Vec2;
+  exitPos: Vec2;
+  chests: CaveChest[];
+  weaponAltar: CaveWeaponAltar | null;
+  enemies: CaveEnemy[];
+}
+
+export interface ActiveCaveState {
+  cave: CaveInterior;
+  returnX: number;
+  returnY: number;
+  islandId: string;
+  islandName: string;
+  playerX: number;
+  playerY: number;
+  playerAngle: number;
+  bossDefeated: boolean;
+}
+
+export type IslandBiome =
+  | 'TROPICAL'
+  | 'JUNGLE'
+  | 'OASIS'
+  | 'VOLCANIC'
+  | 'RUINS'
+  | 'CORAL_REEF'
+  | 'DARK_LAGOON';
+
+export type PetId = 'PARROT' | 'MONKEY' | 'TURTLE';
+
+export type ArmyStance = 'FOLLOW' | 'CHARGE' | 'DEFEND';
+
+export interface ResourceNode {
+  id: string;
+  islandId: string;
+  kind: 'WOOD' | 'IRON';
+  x: number;
+  y: number;
+  amount: number;
+}
+
+export interface SeaHazard {
+  id: string;
+  kind: 'MINE' | 'BARREL';
+  x: number;
+  y: number;
+  radius: number;
+  bobOffset: number;
+}
 
 export interface InlandLake {
   x: number;
@@ -105,7 +245,14 @@ export interface Landmark {
   subOffsets?: Array<{ dx: number; dy: number; rot: number; scale: number }>;
 }
 
-export type WeaponId = 'CUTLASS' | 'PISTOL' | 'MUSKET' | 'DUAL_PISTOL';
+export type WeaponId =
+  | 'CUTLASS'
+  | 'PISTOL'
+  | 'MUSKET'
+  | 'DUAL_PISTOL'
+  | 'OBSIDIAN_BLADE'
+  | 'CRYSTAL_BLUNDERBUSS'
+  | 'ANCIENT_HARPOON';
 
 export interface WeaponPickup {
   id: string;
@@ -247,10 +394,15 @@ export interface Island {
   rocks: RockProp[];
   landmarks: Landmark[];
   weaponPickups: WeaponPickup[];
+  resourceNodes: ResourceNode[];
   enemySpawns: IslandEnemySpawn[];
   treasures: TreasureSpot[];
   traderDock: TraderDock | null;
   isStarter: boolean;
+  specialZone?: SpecialZoneType | null;
+  isSecret?: boolean;
+  caves?: CaveEntrance[];
+  arenaCenter?: Vec2 | null;
 }
 
 export interface DigCrater {
@@ -281,6 +433,7 @@ export interface Upgrades {
   cannonLevel: number;
   hullPlatingLevel?: number;
   crewSkillLevel?: number;
+  repairShellsLevel?: number;
 }
 
 export interface KingdomState {
@@ -366,6 +519,7 @@ export interface EnemyShip {
   goldBounty: number;
   tier: 1 | 2 | 3;
   isEventBoss?: boolean;
+  isHealer?: boolean;
   lastSelfRepairTime?: number;
 }
 
@@ -388,6 +542,7 @@ export interface FloatingLoot {
   y: number;
   goldValue: number;
   healHp?: number;
+  kind?: 'CHEST' | 'CASTAWAY_MAP';
   bobOffset: number;
   life: number;
 }
@@ -428,6 +583,23 @@ export interface SaveData {
   unlockedAchievementIds?: string[];
   tutorialCompleted?: string[];
   stormsSurvivedCount?: number;
+  wood?: number;
+  iron?: number;
+  repairKits?: number;
+  caughtFishCount?: number;
+  ownedPets?: PetId[];
+  activePet?: PetId | null;
+  armyStance?: ArmyStance;
+  fortTurretIslandIds?: string[];
+  harvestedNodeIds?: string[];
+  discoveredLogIds?: string[];
+  soldiersLostCount?: number;
+  shipsLostCount?: number;
+  conquestHistory?: Array<{ islandName: string; factionName: string; dayNumber: number }>;
+  openedCaveChestIds?: string[];
+  clearedCaveIds?: string[];
+  arenaWinsCount?: number;
+  cavesExploredCount?: number;
   player: {
     x: number;
     y: number;

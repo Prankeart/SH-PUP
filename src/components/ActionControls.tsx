@@ -1,6 +1,6 @@
 import React from 'react';
-import { Anchor, Compass, Crosshair, Pickaxe, Ship, Sword, Zap } from 'lucide-react';
-import { RadarReading, WeaponId } from '../types/game';
+import { Anchor, Compass, Crosshair, DoorOpen, Fish, Pickaxe, Shield, Ship, Sword, Wrench, Zap } from 'lucide-react';
+import { ArmyStance, RadarReading, WeaponId } from '../types/game';
 import { WEAPONS } from '../engine/weapons';
 
 export type ActionControlsDisplayMode = 'TOUCH' | 'DESKTOP' | 'HIDDEN';
@@ -21,12 +21,23 @@ interface ActionControlsProps {
   colorblindMode?: boolean;
   language?: 'tr' | 'en';
   abilityKeyLabel?: string;
+  canFish?: boolean;
+  isFishing?: boolean;
+  fishingBite?: boolean;
+  repairKits?: number;
+  armyStance?: ArmyStance;
+  hasSoldiers?: boolean;
+  interactLabel?: string | null;
   onDig: () => void;
   onFireCannons: () => void;
   onAttackLand: () => void;
   onToggleBoat: () => void;
+  onInteract?: () => void;
   onRadar: () => void;
   onTriggerAbility: () => void;
+  onFish?: () => void;
+  onUseRepairKit?: () => void;
+  onCycleStance?: () => void;
 }
 
 const HEAT_STYLES: Record<string, string> = {
@@ -69,12 +80,23 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   colorblindMode = false,
   language = 'tr',
   abilityKeyLabel = 'Q',
+  canFish = false,
+  isFishing = false,
+  fishingBite = false,
+  repairKits = 0,
+  armyStance = 'CHARGE',
+  hasSoldiers = false,
+  interactLabel = null,
   onDig,
   onFireCannons,
   onAttackLand,
   onToggleBoat,
+  onInteract,
   onRadar,
   onTriggerAbility,
+  onFish,
+  onUseRepairKit,
+  onCycleStance,
 }) => {
   const isEn = language === 'en';
   const boatActionEnabled = isSailing ? canDisembark : canBoard;
@@ -114,6 +136,74 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           <div className="absolute bottom-full right-0 mb-2">{radarToastContent}</div>
         )}
         <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-xl bg-[#0F2936]/85 border border-white/15 shadow-lg">
+          {onCycleStance && hasSoldiers && !isSailing && (
+            <button
+              type="button"
+              onClick={onCycleStance}
+              title={isEn ? 'Cycle Army Stance (V)' : 'Ordu Düzenini Değiştir (V)'}
+              className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>
+                {armyStance === 'FOLLOW'
+                  ? isEn
+                    ? 'Follow'
+                    : 'Takip'
+                  : armyStance === 'DEFEND'
+                  ? isEn
+                    ? 'Defend'
+                    : 'Savun'
+                  : isEn
+                  ? 'Charge'
+                  : 'Saldır'}
+              </span>
+              <kbd className="text-[10px] opacity-75 font-mono-num">[V]</kbd>
+            </button>
+          )}
+
+          {onUseRepairKit && repairKits > 0 && (
+            <button
+              type="button"
+              onClick={onUseRepairKit}
+              title={isEn ? 'Use Repair Kit' : 'Tamir Kiti Kullan'}
+              className="h-9 px-2.5 rounded-lg bg-emerald-600/85 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              <span className="font-mono-num">{repairKits}</span>
+            </button>
+          )}
+
+          {onFish && (canFish || isFishing) && (
+            <button
+              type="button"
+              onClick={onFish}
+              title={isEn ? 'Cast / Reel Fishing Line (G)' : 'Olta At / Çek (G)'}
+              className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+                fishingBite
+                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 animate-pulse'
+                  : isFishing
+                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                  : 'bg-cyan-600/90 hover:bg-cyan-500 text-white'
+              }`}
+            >
+              <Fish className="w-3.5 h-3.5" />
+              <span>
+                {fishingBite
+                  ? isEn
+                    ? 'Reel!'
+                    : 'Çek!'
+                  : isFishing
+                  ? isEn
+                    ? 'Waiting...'
+                    : 'Bekle...'
+                  : isEn
+                  ? 'Fish'
+                  : 'Balık'}
+              </span>
+              <kbd className="text-[10px] opacity-80 font-mono-num">[G]</kbd>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -176,33 +266,46 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             <kbd className="text-[10px] opacity-75 font-mono-num">[R]</kbd>
           </button>
 
-          {boatActionEnabled && (
+          {interactLabel && onInteract ? (
             <button
               type="button"
-              onClick={onToggleBoat}
-              title={
-                isSailing
-                  ? isEn
-                    ? 'Disembark (E)'
-                    : 'Kıyıya İn (E)'
-                  : isEn
-                  ? 'Board Ship (E)'
-                  : 'Tekneye Bin (E)'
-              }
-              className="h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+              onClick={onInteract}
+              title={`${interactLabel} (E)`}
+              className="h-9 px-3 rounded-lg bg-purple-600/95 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shadow-md"
             >
-              {isSailing ? <Anchor className="w-3.5 h-3.5" /> : <Ship className="w-3.5 h-3.5" />}
-              <span>
-                {isSailing
-                  ? isEn
-                    ? 'Disembark'
-                    : 'Kıyıya İn'
-                  : isEn
-                  ? 'Board'
-                  : 'Tekneye Bin'}
-              </span>
+              <DoorOpen className="w-3.5 h-3.5" />
+              <span>{interactLabel}</span>
               <kbd className="text-[10px] opacity-85 font-mono-num">[E]</kbd>
             </button>
+          ) : (
+            boatActionEnabled && (
+              <button
+                type="button"
+                onClick={onToggleBoat}
+                title={
+                  isSailing
+                    ? isEn
+                      ? 'Disembark (E)'
+                      : 'Kıyıya İn (E)'
+                    : isEn
+                    ? 'Board Ship (E)'
+                    : 'Tekneye Bin (E)'
+                }
+                className="h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {isSailing ? <Anchor className="w-3.5 h-3.5" /> : <Ship className="w-3.5 h-3.5" />}
+                <span>
+                  {isSailing
+                    ? isEn
+                      ? 'Disembark'
+                      : 'Kıyıya İn'
+                    : isEn
+                    ? 'Board'
+                    : 'Tekneye Bin'}
+                </span>
+                <kbd className="text-[10px] opacity-85 font-mono-num">[E]</kbd>
+              </button>
+            )
           )}
 
           <button
@@ -252,6 +355,30 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
       )}
 
       <div className="pointer-events-auto relative w-44 h-40 sm:w-56 sm:h-48">
+        {/* Contextual Fishing button on Touch HUD */}
+        {onFish && (canFish || isFishing) && (
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              onFish();
+            }}
+            aria-label={isEn ? 'Fish (G)' : 'Balık Tut (G)'}
+            className={`absolute -top-12 right-2 w-11 h-11 rounded-full border flex flex-col items-center justify-center shadow-lg active:scale-95 cursor-pointer ${
+              fishingBite
+                ? 'bg-amber-400 border-amber-100 text-slate-950 animate-pulse'
+                : isFishing
+                ? 'bg-cyan-500 border-cyan-200 text-slate-950'
+                : 'bg-cyan-700/90 border-cyan-300/60 text-white'
+            }`}
+          >
+            <Fish className="w-4 h-4" />
+            <span className="text-[8px] font-bold whitespace-nowrap">
+              {fishingBite ? (isEn ? 'Reel!' : 'Çek!') : isEn ? 'Fish' : 'Olta'}
+            </span>
+          </button>
+        )}
+
         {/* Tactical Ability button */}
         <button
           type="button"
@@ -324,31 +451,50 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </span>
         </button>
 
-        {/* Bottom-left secondary button: Tekneye Bin / İn */}
-        <button
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            if (boatActionEnabled) onToggleBoat();
-          }}
-          disabled={!boatActionEnabled}
-          aria-label={isSailing ? 'Kıyıya İn (E)' : 'Tekneye Bin (E)'}
-          title={isSailing ? 'Kıyıya İn (E)' : 'Tekneye Bin (E)'}
-          className={`absolute bottom-1 left-2 sm:bottom-2 sm:left-3 w-12 h-12 sm:w-16 sm:h-16 rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-transform duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-emerald-400 ${
-            boatActionEnabled
-              ? 'bg-emerald-600/90 border-emerald-300/60 text-white hover:bg-emerald-500 cursor-pointer'
-              : 'bg-slate-900/55 border-white/15 text-slate-400 cursor-not-allowed'
-          }`}
-        >
-          {isSailing ? (
-            <Anchor className="w-4 h-4 sm:w-5 sm:h-5" />
-          ) : (
-            <Ship className="w-4 h-4 sm:w-5 sm:h-5" />
-          )}
-          <span className="text-[9px] sm:text-[10px] font-semibold tracking-tight whitespace-nowrap">
-            {isSailing ? (isEn ? 'Land' : 'İn') : isEn ? 'Ship' : 'Tekne'}
-          </span>
-        </button>
+        {/* Contextual Cave / Arena / Altar Interact button on Touch HUD */}
+        {interactLabel && onInteract ? (
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              onInteract();
+            }}
+            aria-label={`${interactLabel} (E)`}
+            title={`${interactLabel} (E)`}
+            className="absolute bottom-1 left-2 sm:bottom-2 sm:left-3 w-12 h-12 sm:w-16 sm:h-16 rounded-full border bg-purple-600/95 border-purple-200/70 text-white hover:bg-purple-500 flex flex-col items-center justify-center gap-0.5 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+          >
+            <DoorOpen className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[8px] sm:text-[9px] font-semibold tracking-tight whitespace-nowrap max-w-[3.4rem] truncate">
+              {interactLabel}
+            </span>
+          </button>
+        ) : (
+          /* Bottom-left secondary button: Tekneye Bin / İn */
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              if (boatActionEnabled) onToggleBoat();
+            }}
+            disabled={!boatActionEnabled}
+            aria-label={isSailing ? 'Kıyıya İn (E)' : 'Tekneye Bin (E)'}
+            title={isSailing ? 'Kıyıya İn (E)' : 'Tekneye Bin (E)'}
+            className={`absolute bottom-1 left-2 sm:bottom-2 sm:left-3 w-12 h-12 sm:w-16 sm:h-16 rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-transform duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-emerald-400 ${
+              boatActionEnabled
+                ? 'bg-emerald-600/90 border-emerald-300/60 text-white hover:bg-emerald-500 cursor-pointer'
+                : 'bg-slate-900/55 border-white/15 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {isSailing ? (
+              <Anchor className="w-4 h-4 sm:w-5 sm:h-5" />
+            ) : (
+              <Ship className="w-4 h-4 sm:w-5 sm:h-5" />
+            )}
+            <span className="text-[9px] sm:text-[10px] font-semibold tracking-tight whitespace-nowrap">
+              {isSailing ? (isEn ? 'Land' : 'İn') : isEn ? 'Ship' : 'Tekne'}
+            </span>
+          </button>
+        )}
 
         {/* Bottom-right primary large button */}
         <button

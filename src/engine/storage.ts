@@ -11,6 +11,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsConfig = {
   boat: 'KeyE',
   radar: 'KeyR',
   ability: 'KeyQ',
+  fish: 'KeyG',
+  stance: 'KeyV',
   map: 'KeyM',
   shop: 'KeyT',
   kingdom: 'KeyK',
@@ -41,6 +43,7 @@ export function createInitialSave(worldSeed?: number): SaveData {
       cannonLevel: 1,
       hullPlatingLevel: 1,
       crewSkillLevel: 1,
+      repairShellsLevel: 1,
     },
     kingdom: {
       founded: false,
@@ -63,6 +66,23 @@ export function createInitialSave(worldSeed?: number): SaveData {
     unlockedAchievementIds: [],
     tutorialCompleted: [],
     stormsSurvivedCount: 0,
+    wood: 0,
+    iron: 0,
+    repairKits: 1,
+    caughtFishCount: 0,
+    ownedPets: [],
+    activePet: null,
+    armyStance: 'CHARGE',
+    fortTurretIslandIds: [],
+    harvestedNodeIds: [],
+    discoveredLogIds: [],
+    soldiersLostCount: 0,
+    shipsLostCount: 0,
+    conquestHistory: [],
+    openedCaveChestIds: [],
+    clearedCaveIds: [],
+    arenaWinsCount: 0,
+    cavesExploredCount: 0,
     player: {
       x: 110,
       y: 25,
@@ -112,6 +132,7 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
         cannonLevel: parsed.upgrades.cannonLevel ?? 1,
         hullPlatingLevel: parsed.upgrades.hullPlatingLevel ?? 1,
         crewSkillLevel: parsed.upgrades.crewSkillLevel ?? 1,
+        repairShellsLevel: parsed.upgrades.repairShellsLevel ?? 1,
       },
       kingdom: {
         founded: Boolean(parsed.kingdom?.founded),
@@ -156,6 +177,39 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
       tutorialCompleted: Array.isArray(parsed.tutorialCompleted) ? parsed.tutorialCompleted : [],
       stormsSurvivedCount:
         typeof parsed.stormsSurvivedCount === 'number' ? parsed.stormsSurvivedCount : 0,
+      wood: typeof parsed.wood === 'number' ? parsed.wood : 0,
+      iron: typeof parsed.iron === 'number' ? parsed.iron : 0,
+      repairKits: typeof parsed.repairKits === 'number' ? parsed.repairKits : 1,
+      caughtFishCount: typeof parsed.caughtFishCount === 'number' ? parsed.caughtFishCount : 0,
+      ownedPets: Array.isArray(parsed.ownedPets) ? parsed.ownedPets : [],
+      activePet: parsed.activePet ?? null,
+      armyStance:
+        parsed.armyStance === 'FOLLOW' || parsed.armyStance === 'DEFEND'
+          ? parsed.armyStance
+          : 'CHARGE',
+      fortTurretIslandIds: Array.isArray(parsed.fortTurretIslandIds)
+        ? parsed.fortTurretIslandIds
+        : [],
+      harvestedNodeIds: Array.isArray(parsed.harvestedNodeIds)
+        ? parsed.harvestedNodeIds
+        : [],
+      discoveredLogIds: Array.isArray(parsed.discoveredLogIds)
+        ? parsed.discoveredLogIds
+        : [],
+      soldiersLostCount:
+        typeof parsed.soldiersLostCount === 'number' ? parsed.soldiersLostCount : 0,
+      shipsLostCount:
+        typeof parsed.shipsLostCount === 'number' ? parsed.shipsLostCount : 0,
+      conquestHistory: Array.isArray(parsed.conquestHistory)
+        ? parsed.conquestHistory
+        : [],
+      openedCaveChestIds: Array.isArray(parsed.openedCaveChestIds)
+        ? parsed.openedCaveChestIds
+        : [],
+      clearedCaveIds: Array.isArray(parsed.clearedCaveIds) ? parsed.clearedCaveIds : [],
+      arenaWinsCount: typeof parsed.arenaWinsCount === 'number' ? parsed.arenaWinsCount : 0,
+      cavesExploredCount:
+        typeof parsed.cavesExploredCount === 'number' ? parsed.cavesExploredCount : 0,
       player: parsed.player,
       boat: parsed.boat,
     };

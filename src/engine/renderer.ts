@@ -13,7 +13,10 @@ import {
   LandProjectile,
   Landmark,
   Particle,
+  PetId,
   RadarPulseEffect,
+  ResourceNode,
+  SeaHazard,
   Vec2,
   WaterRipple,
   WeaponId,
@@ -70,7 +73,13 @@ export interface RenderState {
   particles: Particle[];
   floatingTexts: FloatingText[];
   kingdom: KingdomState;
-  fortCapture: { islandId: string; progress: number; defendersLeft: number } | null;
+  fortCapture: {
+    islandId: string;
+    progress: number;
+    defendersLeft: number;
+    wallHp?: number;
+    maxWallHp?: number;
+  } | null;
   showWaves: boolean;
   nearBoat: boolean;
   nearDock: boolean;
@@ -95,6 +104,14 @@ export interface RenderState {
   };
   activeWorldEventType?: WorldEventType | null;
   abilityAuraUntilMs?: number;
+  abilityActive?: boolean;
+  activeEmotes?: Array<{ x: number; y: number; emote: string; alpha: number }>;
+  hazards?: SeaHazard[];
+  activePet?: PetId | null;
+  fishingState?: { active: boolean; x: number; y: number; bite: boolean } | null;
+  fortTurretIslandIds?: Set<string>;
+  harvestedNodeIds?: Set<string>;
+  interactionHint?: { x: number; y: number; label: string; color?: string } | null;
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -478,6 +495,20 @@ const BIOME_PALETTES = {
     grass: '#639C52',
     grassStroke: '#4D7E3F',
     highland: '#74AC62',
+  },
+  CORAL_REEF: {
+    sand: '#F9D8B4',
+    sandStroke: '#E8B88A',
+    grass: '#2FB388',
+    grassStroke: '#1D8B68',
+    highland: '#44C89E',
+  },
+  DARK_LAGOON: {
+    sand: '#CBD5E1',
+    sandStroke: '#94A3B8',
+    grass: '#1F6E66',
+    grassStroke: '#134E4A',
+    highland: '#2B857B',
   },
 } as const;
 
@@ -1141,6 +1172,277 @@ function drawLandmark(ctx: CanvasRenderingContext2D, lm: Landmark, timeSec: numb
     ctx.moveTo(-2, 0);
     ctx.lineTo(18, -18);
     ctx.stroke();
+  } else if (lm.type === 'LIGHTHOUSE') {
+    // Stone base shadow
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.3)';
+    ctx.beginPath();
+    ctx.arc(5, 6, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotating translucent golden beam
+    const beamAngle = timeSec * 1.1 + lm.rotation;
+    ctx.save();
+    ctx.rotate(beamAngle);
+    const beamGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, 115);
+    beamGrad.addColorStop(0, 'rgba(253, 224, 71, 0.42)');
+    beamGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, 115, -0.26, 0.26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Red/White striped tower
+    ctx.fillStyle = '#F8FAFC';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#DC2626';
+    ctx.beginPath();
+    ctx.arc(0, 0, 12.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#FDE047';
+    ctx.beginPath();
+    ctx.arc(0, 0, 6.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (lm.type === 'TRADING_POST') {
+    ctx.rotate(lm.rotation);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+    ctx.fillRect(-24, -18, 52, 40);
+
+    // Wooden market deck
+    ctx.fillStyle = '#92400E';
+    ctx.strokeStyle = '#451A03';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-24, -18, 48, 36, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Striped canopy awning
+    ctx.fillStyle = '#EA580C';
+    ctx.fillRect(-20, -14, 40, 16);
+    ctx.fillStyle = '#FEF3C7';
+    ctx.fillRect(-12, -14, 8, 16);
+    ctx.fillRect(4, -14, 8, 16);
+
+    // Crates & barrels
+    ctx.fillStyle = '#D97706';
+    ctx.fillRect(-16, 6, 10, 9);
+    ctx.fillStyle = '#B45309';
+    ctx.beginPath();
+    ctx.arc(10, 10, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (lm.type === 'SEA_ARCH') {
+    ctx.rotate(lm.rotation);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(4, 6, 28, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Two stone arch pillars + bridge span
+    ctx.fillStyle = '#475569';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(-18, 0, 10, 0, Math.PI * 2);
+    ctx.arc(18, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748B';
+    ctx.beginPath();
+    ctx.roundRect(-22, -7, 44, 14, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(22, 163, 74, 0.5)';
+    ctx.beginPath();
+    ctx.arc(-8, -2, 6, 0, Math.PI * 2);
+    ctx.arc(10, 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (lm.type === 'CITY_PLAZA') {
+    // Grand paved stone plaza circle for social gathering capitals
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.52)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.48)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, lm.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, lm.radius * 0.68, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 36, Math.sin(a) * 36);
+      ctx.lineTo(Math.cos(a) * lm.radius, Math.sin(a) * lm.radius);
+      ctx.stroke();
+    }
+  } else if (lm.type === 'FOUNTAIN') {
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+    ctx.beginPath();
+    ctx.arc(3, 4, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#CBD5E1';
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#0EA5E9';
+    ctx.beginPath();
+    ctx.arc(0, 0, 21, 0, Math.PI * 2);
+    ctx.fill();
+
+    const rippleR = 8 + ((timeSec * 12) % 12);
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.65)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, rippleR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#E2E8F0';
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (lm.type === 'TAVERN') {
+    ctx.rotate(lm.rotation);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+    ctx.beginPath();
+    ctx.roundRect(-30, -22, 64, 48, 6);
+    ctx.fill();
+
+    ctx.fillStyle = '#78350F';
+    ctx.strokeStyle = '#451A03';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.roundRect(-32, -24, 64, 48, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#B45309';
+    ctx.beginPath();
+    ctx.roundRect(-27, -19, 54, 38, 4);
+    ctx.fill();
+
+    // Warm lantern glow outside tavern door
+    const glow = 0.72 + Math.sin(timeSec * 6 + lm.x) * 0.2;
+    ctx.fillStyle = `rgba(251, 191, 36, ${glow})`;
+    ctx.beginPath();
+    ctx.arc(0, 22, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#FEF3C7';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(-26, 0);
+    ctx.lineTo(26, 0);
+    ctx.stroke();
+  } else if (lm.type === 'ARENA_RING') {
+    // Sand & stone combat arena circle
+    ctx.fillStyle = 'rgba(180, 83, 9, 0.24)';
+    ctx.beginPath();
+    ctx.arc(0, 0, lm.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#F97316';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, lm.radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.setLineDash([14, 10]);
+    ctx.strokeStyle = 'rgba(254, 215, 170, 0.7)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, lm.radius - 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Center crossed blades emblem
+    ctx.strokeStyle = 'rgba(251, 146, 60, 0.5)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-26, -26);
+    ctx.lineTo(26, 26);
+    ctx.moveTo(26, -26);
+    ctx.lineTo(-26, 26);
+    ctx.stroke();
+  } else if (lm.type === 'CAVE_ENTRANCE') {
+    // Rocky stone archway with dark cavern portal & hanging lantern
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.32)';
+    ctx.beginPath();
+    ctx.ellipse(4, 6, 30, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#475569';
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(0, -2, 26, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.lineTo(24, 18);
+    ctx.lineTo(-24, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Dark cavern mouth
+    ctx.fillStyle = '#090B12';
+    ctx.beginPath();
+    ctx.arc(0, 4, 14, Math.PI, Math.PI * 2);
+    ctx.lineTo(14, 18);
+    ctx.lineTo(-14, 18);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pulsing purple/amber entrance beacon
+    const pulse = 0.65 + Math.sin(timeSec * 4 + lm.x) * 0.25;
+    ctx.strokeStyle = `rgba(192, 132, 252, ${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 4, 20, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#FDE047';
+    ctx.beginPath();
+    ctx.arc(-18, 12, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (lm.type === 'SECRET_SHRINE') {
+    ctx.rotate(lm.rotation);
+    ctx.fillStyle = 'rgba(88, 28, 135, 0.35)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 42, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#312E81';
+    ctx.strokeStyle = '#E879F9';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, 26, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    const orbR = 8 + Math.sin(timeSec * 4.5) * 2;
+    ctx.fillStyle = '#F0ABFC';
+    ctx.beginPath();
+    ctx.arc(0, 0, orbR, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   ctx.restore();
@@ -1381,6 +1683,22 @@ function drawFortFlag(
     ctx.globalAlpha = 1;
   }
 
+  const wallHp = captureInfo?.wallHp ?? 0;
+  const maxWallHp = captureInfo?.maxWallHp ?? 0;
+  const hasIntactWall = isEnemyFort && maxWallHp > 0 && wallHp > 0;
+
+  if (hasIntactWall) {
+    // Destructible stone perimeter wall segments
+    ctx.save();
+    ctx.strokeStyle = '#94A3B8';
+    ctx.lineWidth = 4.5;
+    ctx.setLineDash([12, 5]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 31, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Stone bastion plinth shadow
   ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
   ctx.beginPath();
@@ -1431,6 +1749,15 @@ function drawFortFlag(
   ctx.arc(0, -35, 3.2, 0, Math.PI * 2);
   ctx.fill();
 
+  if (hasIntactWall) {
+    const bw = 46;
+    const bh = 5;
+    ctx.fillStyle = 'rgba(7, 25, 36, 0.9)';
+    ctx.fillRect(-bw / 2 - 1, -46, bw + 2, bh + 2);
+    ctx.fillStyle = '#E2E8F0';
+    ctx.fillRect(-bw / 2, -45, bw * clamp(wallHp / maxWallHp, 0, 1), bh);
+  }
+
   // Label under fort
   ctx.font = '700 12px "Outfit", system-ui, sans-serif';
   ctx.textAlign = 'center';
@@ -1438,13 +1765,17 @@ function drawFortFlag(
   ctx.strokeStyle = 'rgba(7, 25, 36, 0.85)';
   const labelText =
     isEnemyFort && captureInfo && captureInfo.defendersLeft > 0
-      ? `${display.shortName} (${captureInfo.defendersLeft} Asker)`
+      ? hasIntactWall
+        ? `${display.shortName} (${captureInfo.defendersLeft} Asker · Sur)`
+        : `${display.shortName} (${captureInfo.defendersLeft} Asker)`
+      : isEnemyFort && hasIntactWall
+      ? `Suru Yık! (${Math.ceil(wallHp)}/${maxWallHp})`
       : isEnemyFort
       ? 'Bayrağı Çek!'
       : display.shortName;
-  ctx.strokeText(labelText, 0, 34);
+  ctx.strokeText(labelText, 0, 38);
   ctx.fillStyle = isEnemyFort ? '#FDE68A' : '#A7F3D0';
-  ctx.fillText(labelText, 0, 34);
+  ctx.fillText(labelText, 0, 38);
 
   ctx.restore();
 }
@@ -1453,7 +1784,8 @@ function drawAllySoldier(
   ctx: CanvasRenderingContext2D,
   soldier: AllySoldier,
   bannerColor: string,
-  timeSec: number
+  timeSec: number,
+  abilityActive = false
 ) {
   const isFlashing = timeSec * 1000 - soldier.hitFlashTime < 120;
   const swingProg =
@@ -1463,6 +1795,24 @@ function drawAllySoldier(
 
   ctx.save();
   ctx.translate(soldier.x, soldier.y);
+
+  if (abilityActive) {
+    const auraColor =
+      soldier.type === 'SWORDSMAN'
+        ? '#38BDF8'
+        : soldier.type === 'HEAVY_GUARD'
+        ? '#FBBF24'
+        : soldier.type === 'GRENADIER'
+        ? '#FB923C'
+        : '#7DD3FC';
+    ctx.strokeStyle = auraColor;
+    ctx.globalAlpha = 0.72 + Math.sin(timeSec * 10) * 0.2;
+    ctx.lineWidth = soldier.type === 'SWORDSMAN' ? 2.8 : 2.1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 15.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // Allied subtle floor ring
   ctx.strokeStyle = bannerColor;
@@ -2070,8 +2420,8 @@ function drawEnemyShip(ctx: CanvasRenderingContext2D, enemy: EnemyShip, timeSec:
     ctx.stroke();
   }
 
-  ctx.strokeStyle = '#F8FAFC';
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = enemy.isHealer ? '#34D399' : '#F8FAFC';
+  ctx.lineWidth = enemy.isHealer ? 2.4 : 1.6;
   ctx.beginPath();
   ctx.moveTo(5 + billow * 0.35, -4);
   ctx.lineTo(5 + billow * 0.35, 4);
@@ -2453,6 +2803,88 @@ export function renderGameFrame(
       state.onlineIslandOwners?.[island.id],
       Boolean(state.onlineIslandOwners)
     );
+    if (island.fortPos && state.fortTurretIslandIds?.has(island.id)) {
+      ctx.save();
+      ctx.translate(island.fortPos.x, island.fortPos.y);
+      ctx.strokeStyle = '#38BDF8';
+      ctx.fillStyle = '#0F172A';
+      ctx.lineWidth = 2;
+      for (let t = 0; t < 3; t++) {
+        const ta = timeSec * 0.6 + (t * Math.PI * 2) / 3;
+        const tx = Math.cos(ta) * 34;
+        const ty = Math.sin(ta) * 34;
+        ctx.beginPath();
+        ctx.arc(tx, ty, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = '#FBBF24';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx + Math.cos(ta) * 10, ty + Math.sin(ta) * 10);
+        ctx.stroke();
+        ctx.strokeStyle = '#38BDF8';
+      }
+      ctx.restore();
+    }
+  }
+
+  // Unharvested Resource Nodes (Wood & Iron)
+  for (const island of onScreenIslands) {
+    for (const rn of island.resourceNodes ?? []) {
+      if (
+        state.harvestedNodeIds?.has(rn.id) ||
+        rn.x < viewLeft ||
+        rn.x > viewRight ||
+        rn.y < viewTop ||
+        rn.y > viewBottom
+      ) {
+        continue;
+      }
+      ctx.save();
+      ctx.translate(rn.x, rn.y);
+      if (rn.kind === 'WOOD') {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+        ctx.beginPath();
+        ctx.ellipse(2, 4, 13, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#78350F';
+        ctx.strokeStyle = '#451A03';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-11, -6, 22, 6, 2);
+        ctx.roundRect(-9, 1, 20, 6, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#FDE68A';
+        ctx.beginPath();
+        ctx.arc(-9, -3, 2.2, 0, Math.PI * 2);
+        ctx.arc(9, 4, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(2, 4, 13, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#475569';
+        ctx.strokeStyle = '#1E293B';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-11, 5);
+        ctx.lineTo(-7, -8);
+        ctx.lineTo(4, -10);
+        ctx.lineTo(12, 2);
+        ctx.lineTo(5, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#38BDF8';
+        ctx.beginPath();
+        ctx.arc(-2, -3, 2.6, 0, Math.PI * 2);
+        ctx.arc(5, 1, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   // Uncollected Weapon Pickups
@@ -2470,6 +2902,47 @@ export function renderGameFrame(
     }
   }
 
+  // Sea Hazards (Naval Mines & Floating Supply Barrels)
+  if (state.hazards && state.hazards.length > 0) {
+    for (const hz of state.hazards) {
+      if (hz.x < viewLeft || hz.x > viewRight || hz.y < viewTop || hz.y > viewBottom) continue;
+      const bob = Math.sin(timeSec * 3.1 + hz.bobOffset) * 2.2;
+      ctx.save();
+      ctx.translate(hz.x, hz.y + bob);
+      if (hz.kind === 'MINE') {
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.38)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, hz.radius + 4 + Math.sin(timeSec * 5) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#1E293B';
+        ctx.strokeStyle = '#DC2626';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        for (let k = 0; k < 6; k++) {
+          const sa = (k / 6) * Math.PI * 2 + timeSec * 0.4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(sa) * 9, Math.sin(sa) * 9);
+          ctx.lineTo(Math.cos(sa) * 14, Math.sin(sa) * 14);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#92400E';
+        ctx.strokeStyle = '#F59E0B';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 10, 7, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   // Floating ocean loot & land drops
   for (const loot of state.floatingLoot) {
     if (loot.x < viewLeft || loot.x > viewRight || loot.y < viewTop || loot.y > viewBottom) {
@@ -2479,25 +2952,56 @@ export function renderGameFrame(
     ctx.save();
     ctx.translate(loot.x, loot.y + bob);
 
-    const shimmer = 16 + Math.sin(timeSec * 4) * 2.5;
-    ctx.strokeStyle = loot.healHp ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 191, 36, 0.55)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, shimmer, 0, Math.PI * 2);
-    ctx.stroke();
+    if (loot.kind === 'CASTAWAY_MAP') {
+      const shimmer = 19 + Math.sin(timeSec * 5) * 3;
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, shimmer, 0, Math.PI * 2);
+      ctx.stroke();
 
-    ctx.fillStyle = loot.healHp ? '#065F46' : '#92400E';
-    ctx.strokeStyle = loot.healHp ? '#34D399' : '#FBBF24';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(-9, -7, 18, 14, 3);
-    ctx.fill();
-    ctx.stroke();
+      // Small drifting wooden raft + parchment map bottle
+      ctx.fillStyle = '#78350F';
+      ctx.strokeStyle = '#451A03';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.roundRect(-12, -9, 24, 18, 3);
+      ctx.fill();
+      ctx.stroke();
 
-    ctx.fillStyle = loot.healHp ? '#A7F3D0' : '#FDE047';
-    ctx.beginPath();
-    ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
-    ctx.fill();
+      ctx.fillStyle = '#FEF3C7';
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.roundRect(-6, -5, 12, 10, 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#38BDF8';
+      ctx.beginPath();
+      ctx.arc(5, -4, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const shimmer = 16 + Math.sin(timeSec * 4) * 2.5;
+      ctx.strokeStyle = loot.healHp ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 191, 36, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, shimmer, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = loot.healHp ? '#065F46' : '#92400E';
+      ctx.strokeStyle = loot.healHp ? '#34D399' : '#FBBF24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-9, -7, 18, 14, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = loot.healHp ? '#A7F3D0' : '#FDE047';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -2588,10 +3092,17 @@ export function renderGameFrame(
 
   // Allied Recruited Soldiers (when on land, viewport culled + Sprite-Atlas Swarm LOD)
   const playerFactionDisplay = getFactionDisplay('PLAYER', state.kingdom);
+  const soldierAbilityActive = Boolean(state.abilityActive);
   if (!player.isSailing && visibleAllySoldiers.length > 0) {
     if (effectiveLod === 'FULL') {
       for (let i = 0; i < visibleAllySoldiers.length; i++) {
-        drawAllySoldier(ctx, visibleAllySoldiers[i], playerFactionDisplay.color, timeSec);
+        drawAllySoldier(
+          ctx,
+          visibleAllySoldiers[i],
+          playerFactionDisplay.color,
+          timeSec,
+          soldierAbilityActive
+        );
       }
     } else {
       const showHalos = effectiveLod === 'SPRITE_SWARM';
@@ -2602,7 +3113,20 @@ export function renderGameFrame(
 
         ctx.save();
         ctx.translate(sol.x, sol.y);
-        if (showHalos) {
+        if (soldierAbilityActive) {
+          ctx.strokeStyle =
+            sol.type === 'SWORDSMAN'
+              ? '#38BDF8'
+              : sol.type === 'HEAVY_GUARD'
+              ? '#FBBF24'
+              : '#FB923C';
+          ctx.globalAlpha = 0.72;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, 15, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        } else if (showHalos) {
           ctx.strokeStyle = playerFactionDisplay.color;
           ctx.globalAlpha = 0.45;
           ctx.lineWidth = 1.4;
@@ -2915,6 +3439,91 @@ export function renderGameFrame(
     ctx.restore();
   }
 
+  // Active Pet Companion
+  if (state.activePet) {
+    const baseX = player.isSailing ? boat.x : player.x;
+    const baseY = player.isSailing ? boat.y : player.y;
+    const baseAngle = player.isSailing ? boat.angle : player.angle;
+    ctx.save();
+    if (state.activePet === 'PARROT') {
+      const orbitA = timeSec * 2.4;
+      const px = baseX + Math.cos(orbitA) * 26;
+      const py = baseY + Math.sin(orbitA) * 22 - 14;
+      ctx.translate(px, py);
+      ctx.rotate(orbitA + Math.PI * 0.5);
+      const wing = Math.sin(timeSec * 14) * 5;
+      ctx.fillStyle = '#EF4444';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FDE047';
+      ctx.beginPath();
+      ctx.moveTo(-2, -3);
+      ctx.lineTo(-6, -9 - wing);
+      ctx.lineTo(2, -3);
+      ctx.moveTo(-2, 3);
+      ctx.lineTo(-6, 9 + wing);
+      ctx.lineTo(2, 3);
+      ctx.fill();
+    } else if (state.activePet === 'MONKEY') {
+      const px = baseX - Math.cos(baseAngle) * 22 + Math.cos(timeSec * 3) * 3;
+      const py = baseY - Math.sin(baseAngle) * 22 + Math.sin(timeSec * 3) * 3;
+      ctx.translate(px, py);
+      ctx.fillStyle = '#B45309';
+      ctx.strokeStyle = '#FDE68A';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (state.activePet === 'TURTLE') {
+      const px = baseX + Math.cos(baseAngle + 2.2) * 26;
+      const py = baseY + Math.sin(baseAngle + 2.2) * 26;
+      ctx.translate(px, py);
+      ctx.fillStyle = '#10B981';
+      ctx.strokeStyle = '#064E3B';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 8, 6, baseAngle, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Fishing Line & Bobber
+  if (state.fishingState?.active) {
+    const fx = state.fishingState.x;
+    const fy = state.fishingState.y;
+    const rodX = player.isSailing ? boat.x : player.x;
+    const rodY = player.isSailing ? boat.y : player.y;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.72)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(rodX, rodY);
+    ctx.lineTo(fx, fy);
+    ctx.stroke();
+
+    const rippleR = state.fishingState.bite
+      ? 12 + Math.sin(timeSec * 16) * 5
+      : 7 + Math.sin(timeSec * 4) * 2;
+    ctx.strokeStyle = state.fishingState.bite ? '#FDE047' : 'rgba(125, 211, 252, 0.7)';
+    ctx.lineWidth = state.fishingState.bite ? 2.6 : 1.5;
+    ctx.beginPath();
+    ctx.arc(fx, fy, rippleR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = state.fishingState.bite ? '#F59E0B' : '#EF4444';
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Palm trees (cached sprites + viewport culled)
   for (const island of onScreenIslands) {
     for (const palm of island.palms) {
@@ -3120,30 +3729,90 @@ export function renderGameFrame(
   }
   ctx.globalAlpha = 1;
 
+  // Floating Online Emote Speech Bubbles
+  if (state.activeEmotes && state.activeEmotes.length > 0) {
+    for (const em of state.activeEmotes) {
+      if (em.x < viewLeft || em.x > viewRight || em.y < viewTop || em.y > viewBottom) continue;
+      ctx.save();
+      ctx.globalAlpha = clamp(em.alpha, 0, 1);
+      ctx.fillStyle = 'rgba(15, 41, 54, 0.94)';
+      ctx.strokeStyle = '#FBBF24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(em.x - 18, em.y - 68, 36, 30, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(em.emote, em.x, em.y - 52);
+      ctx.restore();
+    }
+  }
+
+  if (state.interactionHint) {
+    const hint = state.interactionHint;
+    ctx.save();
+    ctx.font = '700 12px "Outfit", system-ui, sans-serif';
+    const w = ctx.measureText(hint.label).width + 20;
+    ctx.fillStyle = 'rgba(15, 41, 54, 0.94)';
+    ctx.strokeStyle = hint.color || '#FBBF24';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.roundRect(hint.x - w / 2, hint.y - 44, w, 24, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#F8FAFC';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(hint.label, hint.x, hint.y - 32);
+    ctx.restore();
+  }
+
   ctx.restore();
 
   // Day/Night & Seasonal Atmospheric Lighting + Lantern Glows (screen space)
   const darkness = state.worldCycle?.darknessAlpha ?? 0;
   if (darkness > 0.02) {
     ctx.save();
-    ctx.fillStyle = state.worldCycle?.tintColor || `rgba(7, 20, 42, ${darkness})`;
+    ctx.fillStyle = state.worldCycle?.tintColor || `rgba(7, 20, 44, ${darkness})`;
     ctx.fillRect(0, 0, width, height);
+
+    ctx.globalCompositeOperation = 'lighter';
+    const drawLanternGlow = (worldX: number, worldY: number, worldR: number, strength = 1) => {
+      const lx = width / 2 + (worldX - camera.x) * zoom;
+      const ly = height / 2 + (worldY - camera.y) * zoom;
+      const lr = worldR * zoom;
+      if (lx + lr < 0 || lx - lr > width || ly + lr < 0 || ly - lr > height) return;
+      const g = ctx.createRadialGradient(lx, ly, Math.max(4, lr * 0.06), lx, ly, lr);
+      g.addColorStop(0, `rgba(253, 224, 71, ${(darkness * 0.44 * strength).toFixed(3)})`);
+      g.addColorStop(0.45, `rgba(251, 146, 60, ${(darkness * 0.16 * strength).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(251, 146, 60, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
     // Warm lantern glow centered around player/boat
     const focusX = player.isSailing ? boat.x : player.x;
     const focusY = player.isSailing ? boat.y : player.y;
-    const sx = width / 2 + (focusX - camera.x) * zoom;
-    const sy = height / 2 + (focusY - camera.y) * zoom;
-    const glowR = 230 * zoom;
-    const grad = ctx.createRadialGradient(sx, sy, 12, sx, sy, glowR);
-    grad.addColorStop(0, `rgba(253, 224, 71, ${(darkness * 0.42).toFixed(3)})`);
-    grad.addColorStop(0.45, `rgba(251, 146, 60, ${(darkness * 0.16).toFixed(3)})`);
-    grad.addColorStop(1, 'rgba(251, 146, 60, 0)');
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(sx, sy, glowR, 0, Math.PI * 2);
-    ctx.fill();
+    drawLanternGlow(focusX, focusY, 240, 1);
+
+    // Glows around visible Trader Docks, Lighthouses, and Trading Posts
+    for (const isl of onScreenIslands) {
+      if (isl.traderDock) {
+        drawLanternGlow(isl.traderDock.x, isl.traderDock.y, 175, 0.85);
+      }
+      if (isl.landmarks) {
+        for (const lm of isl.landmarks) {
+          if (lm.type === 'LIGHTHOUSE' || lm.type === 'TRADING_POST') {
+            drawLanternGlow(lm.x, lm.y, lm.type === 'LIGHTHOUSE' ? 230 : 140, 0.9);
+          }
+        }
+      }
+    }
     ctx.restore();
   }
 

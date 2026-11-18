@@ -20,13 +20,15 @@ import {
   ACHIEVEMENTS,
   CAMPAIGN_MILESTONES,
   CampaignStatsInput,
+  CAPTAIN_LOGS,
+  getCaptainLogBonuses,
   getRelicSetBonuses,
   RELIC_DEFS,
   RELIC_SETS,
 } from '../engine/progression';
 import { getShipClass, SHIP_CLASSES } from '../engine/upgrades';
 
-type JournalTab = 'STATS' | 'CAMPAIGN' | 'RELICS' | 'ACHIEVEMENTS';
+type JournalTab = 'STATS' | 'CAMPAIGN' | 'LOGS' | 'RELICS' | 'ACHIEVEMENTS';
 
 interface JournalModalProps {
   save: SaveData;
@@ -58,7 +60,10 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   const collectedRelicIds = save.collectedRelicIds ?? [];
   const claimedMilestoneIds = save.claimedMilestoneIds ?? [];
   const unlockedAchievementIds = save.unlockedAchievementIds ?? [];
+  const discoveredLogIds = save.discoveredLogIds ?? [];
   const relicBonuses = getRelicSetBonuses(collectedRelicIds);
+  const logBonuses = getCaptainLogBonuses(discoveredLogIds);
+  const conquestHistory = save.conquestHistory ?? [];
 
   const statsInput: CampaignStatsInput = {
     treasuresFoundCount: save.treasuresFoundCount,
@@ -126,6 +131,21 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                 {claimableCount}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab('LOGS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              tab === 'LOGS'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>
+              {isEn ? "Karloff's Book" : 'Karloff Kitabı'} ({discoveredLogIds.length}/{CAPTAIN_LOGS.length})
+            </span>
           </button>
 
           <button
@@ -240,6 +260,81 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {tab === 'LOGS' && (
+            <div className="flex flex-col gap-3">
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-100">
+                <div>
+                  <div className="font-bold text-amber-200">
+                    {isEn ? "Captain Karloff's Lost Chronicles" : 'Kaptan Karloff’un Kayıp Günlükleri'}
+                  </div>
+                  <div className="text-slate-300 mt-0.5">
+                    {isEn
+                      ? 'Found in treasure chests, castaway map rafts, rare catches, and conquered forts.'
+                      : 'Hazine sandıklarından, kazazede haritalarından, nadir balıklardan ve fethedilen kalelerden sayfa topla.'}
+                  </div>
+                </div>
+                <div className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-950/45 border border-amber-400/25 font-mono-num text-[11px] text-emerald-300 font-semibold">
+                  +{Math.round((logBonuses.treasureValueMult - 1) * 100)}% {isEn ? 'Value' : 'Hazine'} · +
+                  {(logBonuses.rareLuckBonus * 100).toFixed(1)}% {isEn ? 'Luck' : 'Şans'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CAPTAIN_LOGS.map((log) => {
+                  const unlocked = discoveredLogIds.includes(log.id);
+                  return (
+                    <div
+                      key={log.id}
+                      className={`p-3.5 rounded-xl border flex flex-col gap-2 ${
+                        unlocked
+                          ? 'bg-emerald-950/25 border-emerald-400/35'
+                          : 'bg-slate-950/35 border-white/10 opacity-75'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="px-2 py-0.5 rounded bg-white/10 text-[11px] font-mono-num text-amber-300 shrink-0">
+                            #{log.chapter}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-100 truncate">
+                            {unlocked ? (isEn ? log.titleEn : log.title) : '???'}
+                          </span>
+                        </div>
+                        {unlocked ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                        )}
+                      </div>
+
+                      {unlocked ? (
+                        <>
+                          <div className="text-[11px] text-amber-200/80 font-medium">
+                            {isEn ? 'Author:' : 'Yazar:'} {log.author} · +{log.rewardGold}{' '}
+                            {isEn ? 'Gold' : 'Altın'}
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed italic">
+                            “{isEn ? log.excerptEn : log.excerpt}”
+                          </p>
+                          <div className="mt-auto pt-1.5 border-t border-white/10 text-[11px] text-sky-300 font-medium">
+                            {isEn ? 'Tactical Clue: ' : 'Gizli İpucu: '}
+                            {isEn ? log.secretClueEn : log.secretClue}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Lost journal page. Dig chests, rescue castaways, or conquer forts to recover it.'
+                            : 'Kayıp seyir sayfası. Sandık kazarak, kazazede haritası bularak veya kale fethederek aç.'}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -423,6 +518,16 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                     value: `${collectedRelicIds.length}/${RELIC_DEFS.length}`,
                   },
                   {
+                    icon: <Swords className="w-4 h-4 text-orange-300" />,
+                    label: isEn ? 'Arena Wins' : 'Arena Zaferi',
+                    value: String(save.arenaWinsCount ?? 0),
+                  },
+                  {
+                    icon: <Compass className="w-4 h-4 text-purple-300" />,
+                    label: isEn ? 'Caves Explored' : 'Keşfedilen Mağara',
+                    value: String(save.cavesExploredCount ?? 0),
+                  },
+                  {
                     icon: <BookOpen className="w-4 h-4 text-slate-300" />,
                     label: isEn ? 'Playtime' : 'Oynama Süresi',
                     value: formatDuration(save.playTimeSec ?? 0, language),
@@ -471,10 +576,65 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                 </div>
               </div>
 
+              {/* Casualties & Conquest History */}
+              <div className="p-4 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                    <Swords className="w-4 h-4 text-rose-400" />
+                    {isEn ? 'Fleet Casualties & Conquest History' : 'Donanma Kayıpları & Fetih Geçmişi'}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs font-mono-num">
+                    <span className="text-rose-300">
+                      {isEn ? 'Soldiers Lost:' : 'Düşen Asker:'} <strong>{save.soldiersLostCount ?? 0}</strong>
+                    </span>
+                    <span className="text-amber-300">
+                      {isEn ? 'Ships Lost:' : 'Batan Gemi:'} <strong>{save.shipsLostCount ?? 0}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {conquestHistory.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {conquestHistory.slice(-10).reverse().map((entry, idx) => (
+                      <div
+                        key={`${entry.islandName}_${idx}`}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-950/35 border border-emerald-400/25 text-[11px] text-slate-200 flex items-center gap-1.5"
+                      >
+                        <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="font-mono-num text-amber-200">
+                          {isEn ? `Day ${entry.dayNumber}` : `Gün ${entry.dayNumber}`}
+                        </span>
+                        <span className="font-semibold text-emerald-200">{entry.islandName}</span>
+                        <span className="text-slate-400">({entry.factionName})</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400">
+                    {isEn
+                      ? 'No fort conquests recorded yet. Capture an enemy island fort to etch history!'
+                      : 'Henüz kale fethi kaydedilmedi. Bir düşman adası fethederek tarih yaz!'}
+                  </div>
+                )}
+              </div>
+
               <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2">
                 <span>
                   {isEn ? 'World Seed:' : 'Dünya Tohumu (Seed):'}{' '}
                   <strong className="font-mono-num text-amber-300">{save.worldSeed}</strong>
+                </span>
+                <span>
+                  {isEn ? 'Fish Caught:' : 'Tutulan Balık:'}{' '}
+                  <strong className="font-mono-num text-cyan-300">
+                    {save.caughtFishCount ?? 0}
+                  </strong>
+                </span>
+                <span>
+                  {isEn ? 'Resources:' : 'Kaynaklar:'}{' '}
+                  <strong className="font-mono-num text-emerald-300">
+                    {save.wood ?? 0} {isEn ? 'Wood' : 'Odun'} · {save.iron ?? 0}{' '}
+                    {isEn ? 'Iron' : 'Demir'}
+                  </strong>
                 </span>
                 <span>
                   {isEn ? 'Storms Survived:' : 'Atlatılan Fırtına:'}{' '}

@@ -15,6 +15,7 @@ import {
   RemoteSoldierSnapshot,
   RoomLedger,
   StarterSlot,
+  VoicePeerInfo,
 } from '../types/online';
 import { SoldierType, WeaponId } from '../types/game';
 import {
@@ -44,6 +45,14 @@ import {
   SOLDIER_SPECS,
 } from './factions';
 import { pickStrongerWeapon } from './weapons';
+import {
+  ACHIEVEMENTS,
+  CAMPAIGN_MILESTONES,
+  CampaignStatsInput,
+  CAPTAIN_LOGS,
+  PET_DEFS,
+  RELIC_DEFS,
+} from './progression';
 import { clamp, dist } from '../utils/prng';
 
 const PEER_PREFIX = 'shpup-tropikada-v1-';
@@ -76,6 +85,7 @@ export interface OnlineCallbacks {
   onWarSync: (warDeclarations: Record<string, string[]>) => void;
   onChat: (msg: OnlineChatMessage) => void;
   onPingUpdate: (rttMs: number) => void;
+  onVoicePeers?: (peers: VoicePeerInfo[]) => void;
 }
 
 export class OnlineSessionManager {
@@ -90,6 +100,7 @@ export class OnlineSessionManager {
   private worldManager: WorldManager | null = null;
   private connections = new Map<string, DataConnection>(); // conn.peer -> conn
   private peerToPlayerId = new Map<string, string>();
+  private peerIdByPlayerId = new Map<string, string>();
   private playerToConn = new Map<string, DataConnection>();
   private playerPoses = new Map<string, RemotePlayerSnapshot>();
   private playerSoldierPoses = new Map<
@@ -115,6 +126,10 @@ export class OnlineSessionManager {
     this.callbacks = callbacks;
   }
 
+  public getPeer(): Peer | null {
+    return this.peer;
+  }
+
   public getRole(): 'HOST' | 'CLIENT' | null {
     return this.role;
   }
@@ -125,6 +140,32 @@ export class OnlineSessionManager {
 
   public getLedger(): RoomLedger | null {
     return this.ledger;
+  }
+
+  public getVoicePeers(): VoicePeerInfo[] {
+    if (!this.ledger) return [];
+    const peers: VoicePeerInfo[] = [];
+    for (const [pid, pose] of this.playerPoses.entries()) {
+      if (!pose.connected) continue;
+      const peerId = this.peerIdByPlayerId.get(pid);
+      if (!peerId) continue;
+      peers.push({
+        playerId: pid,
+        peerId,
+        name: pose.name,
+        bannerColor: pose.bannerColor,
+        x: pose.isSailing ? pose.boatX : pose.x,
+        y: pose.isSailing ? pose.boatY : pose.y,
+      });
+    }
+    return peers;
+  }
+
+  private emitVoicePeers() {
+    if (this.role !== 'HOST') return;
+    const peers = this.getVoicePeers();
+    this.callbacks.onVoicePeers?.(peers);
+    this.broadcastToClients({ type: 'voice:peers', peers });
   }
 
   private setStatus(next: OnlineConnectionStatus, err?: string) {
@@ -230,6 +271,7 @@ export class OnlineSessionManager {
 
       peer.on('open', () => {
         if (this.destroyed) return;
+        this.peerIdByPlayerId.set(identity.playerId, peer.id);
         this.setStatus(existingLedger!.roomInfo.started ? 'PLAYING' : 'LOBBY');
         this.callbacks.onWelcome({
           type: 'welcome',
@@ -242,6 +284,7 @@ export class OnlineSessionManager {
           warDeclarations: existingLedger!.warDeclarations ?? {},
           players: Array.from(this.playerPoses.values()),
         });
+        this.emitVoicePeers();
         this.startHostLoops();
         resolve(roomId);
       });
@@ -417,6 +460,7 @@ export class OnlineSessionManager {
     if (msg.type === 'hello') {
       const pid = msg.playerId;
       this.peerToPlayerId.set(conn.peer, pid);
+      this.peerIdByPlayerId.set(pid, conn.peer);
       this.playerToConn.set(pid, conn);
 
       let prof = this.ledger.playersById[pid];
@@ -500,6 +544,18 @@ export class OnlineSessionManager {
     }
   }
 
+  public sendChat(text: string) {
+    const clean = text.trim().slice(0, 140);
+    if (!clean) return;
+    this.submitLocalCommand({ type: 'cmd:chat', text: clean });
+  }
+
+  public sendEmote(emote: string) {
+    const clean = emote.trim().slice(0, 8);
+    if (!clean) return;
+    this.submitLocalCommand({ type: 'cmd:emote', emote: clean });
+  }
+
   public hostStartGame() {
     if (this.role !== 'HOST' || !this.ledger) return;
     this.ledger.roomInfo.started = true;
@@ -526,6 +582,63 @@ export class OnlineSessionManager {
     if (!this.ledger || this.ledger.roomInfo.rule !== 'PVP' || pidA === pidB) return false;
     const decl = this.ledger.warDeclarations ?? {};
     return Boolean(decl[pidA]?.includes(pidB) && decl[pidB]?.includes(pidA));
+  }
+
+  private isPositionInCitySafeZone(x: number, y: number): boolean {
+    if (!this.worldManager) return false;
+    const islands = this.worldManager.getVisibleIslands(x, y, 1);
+    return islands.some(
+      (isl) => isl.specialZone === 'CITY' && isPointOnIsland(isl, x, y, 42)
+    );
+  }
+
+  private isPositionInArenaRing(
+    x: number,
+    y: number
+  ): { inArena: boolean; centerX: number; centerY: number } {
+    if (!this.worldManager) return { inArena: false, centerX: 0, centerY: 0 };
+    const islands = this.worldManager.getVisibleIslands(x, y, 1);
+    for (const isl of islands) {
+      if (isl.specialZone === 'ARENA' && isl.arenaCenter) {
+        if (dist(x, y, isl.arenaCenter.x, isl.arenaCenter.y) <= 198) {
+          return { inArena: true, centerX: isl.arenaCenter.x, centerY: isl.arenaCenter.y };
+        }
+      }
+    }
+    return { inArena: false, centerX: 0, centerY: 0 };
+  }
+
+  private canPlayersDamageEachOther(
+    atkId: string,
+    tgtId: string,
+    atkX: number,
+    atkY: number,
+    tgtX: number,
+    tgtY: number
+  ): { allowed: boolean; inArena: boolean; arenaCenterX?: number; arenaCenterY?: number } {
+    if (atkId === tgtId) return { allowed: false, inArena: false };
+    const atkPose = this.playerPoses.get(atkId);
+    const tgtPose = this.playerPoses.get(tgtId);
+    if (atkPose?.inCaveId || tgtPose?.inCaveId) {
+      return { allowed: false, inArena: false };
+    }
+    if (
+      this.isPositionInCitySafeZone(atkX, atkY) ||
+      this.isPositionInCitySafeZone(tgtX, tgtY)
+    ) {
+      return { allowed: false, inArena: false };
+    }
+    const atkArena = this.isPositionInArenaRing(atkX, atkY);
+    const tgtArena = this.isPositionInArenaRing(tgtX, tgtY);
+    if (atkArena.inArena && tgtArena.inArena) {
+      return {
+        allowed: true,
+        inArena: true,
+        arenaCenterX: tgtArena.centerX,
+        arenaCenterY: tgtArena.centerY,
+      };
+    }
+    return { allowed: this.arePlayersAtWar(atkId, tgtId), inArena: false };
   }
 
   private broadcastWarSync() {
@@ -556,6 +669,7 @@ export class OnlineSessionManager {
     pose.walkPhase = msg.walkPhase;
     pose.digAnimProgress = msg.digAnimProgress;
     pose.attackAnimProgress = msg.attackAnimProgress;
+    pose.inCaveId = msg.inCaveId;
     pose.connected = true;
 
     if (msg.soldiers) {
@@ -634,6 +748,22 @@ export class OnlineSessionManager {
       return;
     }
 
+    if (msg.type === 'cmd:emote') {
+      const clean = msg.emote.trim().slice(0, 8);
+      if (!clean) return;
+      this.emitAndBroadcastEvent({
+        eventId: `emo_${pid}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        type: 'player:emote',
+        payload: {
+          playerId: pid,
+          playerName: prof.name,
+          bannerColor: prof.bannerColor,
+          emote: clean,
+        },
+      });
+      return;
+    }
+
     if (msg.type === 'cmd:discover_islands') {
       let changed = false;
       for (const id of msg.islandIds) {
@@ -643,6 +773,179 @@ export class OnlineSessionManager {
         }
       }
       if (changed) this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:claim_milestone') {
+      const claimed = prof.claimedMilestoneIds ?? [];
+      if (claimed.includes(msg.milestoneId)) return;
+      const ms = CAMPAIGN_MILESTONES.find((m) => m.id === msg.milestoneId);
+      if (!ms) return;
+      const statsInput: CampaignStatsInput = {
+        treasuresFoundCount: prof.treasuresFoundCount,
+        enemiesSunkCount: prof.enemiesSunkCount,
+        landEnemiesDefeated: prof.landEnemiesDefeated,
+        discoveredIslandsCount: prof.discoveredIslandIds.length,
+        conqueredIslandsCount: prof.conqueredIslandIds.length,
+        kingdomFounded: prof.kingdomFounded,
+        boatLevel: prof.upgrades.boatLevel,
+        collectedRelicsCount: (prof.collectedRelicIds ?? []).length,
+        totalGoldEarned: prof.totalGoldEarned,
+        stormsSurvivedCount: prof.stormsSurvivedCount ?? 0,
+        soldiersCount: prof.soldiers.length,
+        escortShipCount: prof.escortShipCount,
+      };
+      if (!ms.isComplete(statsInput)) return;
+      prof.claimedMilestoneIds = [...claimed, ms.id];
+      prof.gold += ms.rewardGold;
+      prof.totalGoldEarned += ms.rewardGold;
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:unlock_achievements') {
+      const unlocked = new Set(prof.unlockedAchievementIds ?? []);
+      const statsInput: CampaignStatsInput = {
+        treasuresFoundCount: prof.treasuresFoundCount,
+        enemiesSunkCount: prof.enemiesSunkCount,
+        landEnemiesDefeated: prof.landEnemiesDefeated,
+        discoveredIslandsCount: prof.discoveredIslandIds.length,
+        conqueredIslandsCount: prof.conqueredIslandIds.length,
+        kingdomFounded: prof.kingdomFounded,
+        boatLevel: prof.upgrades.boatLevel,
+        collectedRelicsCount: (prof.collectedRelicIds ?? []).length,
+        totalGoldEarned: prof.totalGoldEarned,
+        stormsSurvivedCount: prof.stormsSurvivedCount ?? 0,
+        soldiersCount: prof.soldiers.length,
+        escortShipCount: prof.escortShipCount,
+      };
+      let bonus = 0;
+      let changed = false;
+      for (const ach of ACHIEVEMENTS) {
+        if (!unlocked.has(ach.id) && (msg.achievementIds.includes(ach.id) || ach.check(statsInput))) {
+          if (ach.check(statsInput)) {
+            unlocked.add(ach.id);
+            bonus += ach.rewardGold;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        prof.unlockedAchievementIds = Array.from(unlocked);
+        prof.gold += bonus;
+        prof.totalGoldEarned += bonus;
+        this.syncProfileToPlayer(pid, prof);
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:discover_relic') {
+      const valid = RELIC_DEFS.some((r) => r.id === msg.relicId);
+      if (!valid) return;
+      const owned = prof.collectedRelicIds ?? [];
+      if (!owned.includes(msg.relicId)) {
+        prof.collectedRelicIds = [...owned, msg.relicId];
+        this.syncProfileToPlayer(pid, prof);
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:discover_log') {
+      const logDef = CAPTAIN_LOGS.find((l) => l.id === msg.logId);
+      if (!logDef) return;
+      const owned = prof.discoveredLogIds ?? [];
+      if (!owned.includes(logDef.id)) {
+        prof.discoveredLogIds = [...owned, logDef.id];
+        prof.gold += logDef.rewardGold;
+        prof.totalGoldEarned += logDef.rewardGold;
+        this.syncProfileToPlayer(pid, prof);
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:harvest_resource') {
+      const qty = clamp(Math.round(msg.amount), 1, 5);
+      if (msg.kind === 'WOOD') {
+        prof.wood = (prof.wood ?? 0) + qty;
+      } else {
+        prof.iron = (prof.iron ?? 0) + qty;
+      }
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:sell_resources') {
+      const w = prof.wood ?? 0;
+      const ir = prof.iron ?? 0;
+      const total = w * 12 + ir * 18;
+      if (total <= 0) return;
+      prof.wood = 0;
+      prof.iron = 0;
+      prof.gold += total;
+      prof.totalGoldEarned += total;
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:craft_repair_kit') {
+      const w = prof.wood ?? 0;
+      const ir = prof.iron ?? 0;
+      if (w >= 2 && ir >= 1) {
+        prof.wood = w - 2;
+        prof.iron = ir - 1;
+        prof.repairKits = (prof.repairKits ?? 0) + 1;
+        this.syncProfileToPlayer(pid, prof);
+      } else if (prof.gold >= 60) {
+        prof.gold -= 60;
+        prof.repairKits = (prof.repairKits ?? 0) + 1;
+        this.syncProfileToPlayer(pid, prof);
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:use_repair_kit') {
+      const kits = prof.repairKits ?? 0;
+      if (kits <= 0) return;
+      const maxBoat = getMaxBoatHp(prof.upgrades.boatLevel);
+      prof.repairKits = kits - 1;
+      prof.boatHp = Math.min(maxBoat, prof.boatHp + 75);
+      prof.playerHp = Math.min(100, prof.playerHp + 40);
+      const pose = this.playerPoses.get(pid);
+      if (pose) {
+        pose.boatHp = prof.boatHp;
+        pose.playerHp = prof.playerHp;
+      }
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:fish_catch') {
+      const val = clamp(Math.round(msg.goldValue), 5, 300);
+      prof.gold += val;
+      prof.totalGoldEarned += val;
+      prof.caughtFishCount = (prof.caughtFishCount ?? 0) + 1;
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:adopt_pet') {
+      const pet = PET_DEFS.find((p) => p.id === msg.petId);
+      if (!pet) return;
+      const owned = prof.ownedPets ?? [];
+      if (owned.includes(pet.id) || prof.gold < pet.cost) return;
+      prof.gold -= pet.cost;
+      prof.ownedPets = [...owned, pet.id];
+      prof.activePet = pet.id;
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:equip_pet') {
+      const owned = prof.ownedPets ?? [];
+      if (msg.petId === null || owned.includes(msg.petId)) {
+        prof.activePet = msg.petId;
+        this.syncProfileToPlayer(pid, prof);
+      }
       return;
     }
 
@@ -969,11 +1272,74 @@ export class OnlineSessionManager {
       return;
     }
 
+    if (msg.type === 'cmd:claim_cave_chest') {
+      const opened = prof.openedCaveChestIds ?? [];
+      if (opened.includes(msg.chestId)) return;
+      const safeGold = clamp(Math.round(msg.goldValue), 10, 450);
+      prof.openedCaveChestIds = [...opened, msg.chestId];
+      prof.gold += safeGold;
+      prof.totalGoldEarned += safeGold;
+      if (msg.isBossOrFirstInCave) {
+        prof.cavesExploredCount = (prof.cavesExploredCount ?? 0) + 1;
+      }
+      if (msg.weaponId) {
+        if (!prof.unlockedWeapons.includes(msg.weaponId)) {
+          prof.unlockedWeapons.push(msg.weaponId);
+        }
+        prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.weaponId);
+        const pose = this.playerPoses.get(pid);
+        if (pose) pose.equippedWeapon = prof.equippedWeapon;
+      }
+      this.syncProfileToPlayer(pid, prof);
+      void saveRoomLedger(this.ledger);
+      return;
+    }
+
+    if (msg.type === 'cmd:arena_win') {
+      const safeGold = clamp(Math.round(msg.rewardGold), 10, 300);
+      prof.gold += safeGold;
+      prof.totalGoldEarned += safeGold;
+      prof.arenaWinsCount = (prof.arenaWinsCount ?? 0) + 1;
+      if (msg.unlockedWeapon) {
+        if (!prof.unlockedWeapons.includes(msg.unlockedWeapon)) {
+          prof.unlockedWeapons.push(msg.unlockedWeapon);
+        }
+        prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.unlockedWeapon);
+        const pose = this.playerPoses.get(pid);
+        if (pose) pose.equippedWeapon = prof.equippedWeapon;
+      }
+      this.emitAndBroadcastEvent({
+        eventId: `arena_pve_${pid}_${Date.now()}`,
+        type: 'arena:win',
+        payload: {
+          winnerId: pid,
+          winnerName: prof.name,
+          rewardGold: safeGold,
+        },
+      });
+      this.syncProfileToPlayer(pid, prof);
+      void saveRoomLedger(this.ledger);
+      return;
+    }
+
     if (msg.type === 'cmd:pvp_army_hit') {
-      if (!this.arePlayersAtWar(pid, msg.targetPlayerId)) return;
+      const atkPose = this.playerPoses.get(pid);
       const targetProf = this.ledger.playersById[msg.targetPlayerId];
       const targetPose = this.playerPoses.get(msg.targetPlayerId);
-      if (!targetProf || !targetPose || !targetPose.connected) return;
+      if (!atkPose || !targetProf || !targetPose || !targetPose.connected) return;
+      const atkX = atkPose.isSailing ? atkPose.boatX : atkPose.x;
+      const atkY = atkPose.isSailing ? atkPose.boatY : atkPose.y;
+      const tgtX = targetPose.isSailing ? targetPose.boatX : targetPose.x;
+      const tgtY = targetPose.isSailing ? targetPose.boatY : targetPose.y;
+      const dmgRule = this.canPlayersDamageEachOther(
+        pid,
+        msg.targetPlayerId,
+        atkX,
+        atkY,
+        tgtX,
+        tgtY
+      );
+      if (!dmgRule.allowed) return;
       const safeDmg = clamp(Math.round(msg.damage), 1, 140);
 
       if (msg.targetUnitKind === 'PLAYER') {
@@ -981,7 +1347,15 @@ export class OnlineSessionManager {
         const tx = isNaval ? targetPose.boatX : targetPose.x;
         const ty = isNaval ? targetPose.boatY : targetPose.y;
         if (dist(msg.x, msg.y, tx, ty) <= 220) {
-          this.damagePlayerOnHost(msg.targetPlayerId, safeDmg, pid, isNaval);
+          this.damagePlayerOnHost(
+            msg.targetPlayerId,
+            safeDmg,
+            pid,
+            isNaval,
+            dmgRule.inArena
+              ? { centerX: dmgRule.arenaCenterX ?? tx, centerY: dmgRule.arenaCenterY ?? ty }
+              : undefined
+          );
         }
         return;
       }
@@ -994,6 +1368,7 @@ export class OnlineSessionManager {
         const killed = sol.hp <= 0;
         if (killed) {
           targetProf.soldiers.splice(sIdx, 1);
+          targetProf.soldiersLostCount = (targetProf.soldiersLostCount ?? 0) + 1;
           prof.landEnemiesDefeated += 1;
           prof.gold += 8;
           prof.totalGoldEarned += 8;
@@ -1028,6 +1403,7 @@ export class OnlineSessionManager {
         if (killed) {
           ships.splice(shIdx, 1);
           targetProf.escortShipCount = Math.max(0, targetProf.escortShipCount - 1);
+          targetProf.shipsLostCount = (targetProf.shipsLostCount ?? 0) + 1;
           prof.enemiesSunkCount += 1;
           prof.gold += 30;
           prof.totalGoldEarned += 30;
@@ -1099,14 +1475,33 @@ export class OnlineSessionManager {
           life: msg.range ? Math.min(1.2, msg.range / speed + 0.15) : 0.9,
           splashRadius: msg.splashRadius,
         });
-      } else if (this.ledger.roomInfo.rule === 'PVP') {
-        // Authoritative melee PvP hit check (only against players at war with attacker)
+      } else {
+        // Authoritative melee PvP hit check (War OR Arena PvP Duel Ring)
         for (const [targetId, targetPose] of this.playerPoses.entries()) {
           if (targetId === pid || !targetPose.connected || targetPose.isSailing) continue;
-          if (!this.arePlayersAtWar(pid, targetId)) continue;
+          const dmgRule = this.canPlayersDamageEachOther(
+            pid,
+            targetId,
+            msg.x,
+            msg.y,
+            targetPose.x,
+            targetPose.y
+          );
+          if (!dmgRule.allowed) continue;
           const d = dist(msg.x, msg.y, targetPose.x, targetPose.y);
           if (d <= msg.range + 16) {
-            this.damagePlayerOnHost(targetId, msg.damage, pid, false);
+            this.damagePlayerOnHost(
+              targetId,
+              msg.damage,
+              pid,
+              false,
+              dmgRule.inArena
+                ? {
+                    centerX: dmgRule.arenaCenterX ?? targetPose.x,
+                    centerY: dmgRule.arenaCenterY ?? targetPose.y,
+                  }
+                : undefined
+            );
           }
           // Also check melee hit against enemy player's soldiers
           const targetProf = this.ledger.playersById[targetId];
@@ -1123,6 +1518,7 @@ export class OnlineSessionManager {
                 const killed = sol.hp <= 0;
                 if (killed) {
                   targetProf.soldiers.splice(si, 1);
+                  targetProf.soldiersLostCount = (targetProf.soldiersLostCount ?? 0) + 1;
                   prof.landEnemiesDefeated += 1;
                   prof.gold += 8;
                   prof.totalGoldEarned += 8;
@@ -1157,7 +1553,8 @@ export class OnlineSessionManager {
     targetId: string,
     damage: number,
     attackerId: string,
-    isNaval: boolean
+    isNaval: boolean,
+    arenaCtx?: { centerX: number; centerY: number }
   ) {
     if (!this.ledger || !this.worldManager) return;
     const prof = this.ledger.playersById[targetId];
@@ -1183,6 +1580,7 @@ export class OnlineSessionManager {
         },
       });
       if (prof.boatHp <= 0) {
+        prof.shipsLostCount = (prof.shipsLostCount ?? 0) + 1;
         const attacker = this.ledger.playersById[attackerId];
         if (attacker) {
           attacker.enemiesSunkCount += 1;
@@ -1212,17 +1610,73 @@ export class OnlineSessionManager {
       });
       if (prof.playerHp <= 0) {
         const attacker = this.ledger.playersById[attackerId];
-        if (attacker) {
-          attacker.landEnemiesDefeated += 1;
-          attacker.gold += 45;
-          attacker.totalGoldEarned += 45;
-          this.syncProfileToPlayer(attackerId, attacker);
+        if (arenaCtx) {
+          const bounty = 80;
+          if (attacker) {
+            attacker.landEnemiesDefeated += 1;
+            attacker.arenaWinsCount = (attacker.arenaWinsCount ?? 0) + 1;
+            attacker.gold += bounty;
+            attacker.totalGoldEarned += bounty;
+            this.syncProfileToPlayer(attackerId, attacker);
+            this.emitAndBroadcastEvent({
+              eventId: `arena_${targetId}_${Date.now()}`,
+              type: 'arena:win',
+              payload: {
+                winnerId: attackerId,
+                winnerName: attacker.name,
+                loserId: targetId,
+                loserName: prof.name,
+                rewardGold: bounty,
+              },
+            });
+          }
+          this.respawnPlayerOutsideArena(targetId, prof, pose, arenaCtx.centerX, arenaCtx.centerY);
+        } else {
+          if (attacker) {
+            attacker.landEnemiesDefeated += 1;
+            attacker.gold += 45;
+            attacker.totalGoldEarned += 45;
+            this.syncProfileToPlayer(attackerId, attacker);
+          }
+          this.respawnPlayerAtStarter(targetId, prof, pose, false);
         }
-        this.respawnPlayerAtStarter(targetId, prof, pose, false);
       } else {
         this.syncProfileToPlayer(targetId, prof);
       }
     }
+  }
+
+  private respawnPlayerOutsideArena(
+    pid: string,
+    prof: PlayerProfileLedger,
+    pose: RemotePlayerSnapshot,
+    centerX: number,
+    centerY: number
+  ) {
+    const angle = Math.atan2(pose.y - centerY, pose.x - centerX);
+    const outX = centerX + Math.cos(angle) * 230;
+    const outY = centerY + Math.sin(angle) * 230;
+    prof.playerHp = 100;
+    prof.player = { x: outX, y: outY, angle: angle + Math.PI, isSailing: false };
+    pose.x = outX;
+    pose.y = outY;
+    pose.isSailing = false;
+    pose.playerHp = 100;
+
+    this.emitAndBroadcastEvent({
+      eventId: `resp_arena_${pid}_${Date.now()}`,
+      type: 'player:respawn',
+      payload: {
+        playerId: pid,
+        name: prof.name,
+        x: outX,
+        y: outY,
+        boatX: pose.boatX,
+        boatY: pose.boatY,
+        isSailing: false,
+      },
+    });
+    this.syncProfileToPlayer(pid, prof);
   }
 
   private respawnPlayerAtStarter(
@@ -1302,7 +1756,6 @@ export class OnlineSessionManager {
 
   private stepHostProjectiles(dt: number, now: number) {
     if (!this.ledger || !this.worldManager) return;
-    const isPvp = this.ledger.roomInfo.rule === 'PVP';
 
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
@@ -1315,121 +1768,146 @@ export class OnlineSessionManager {
       }
 
       let hit = false;
-      if (isPvp) {
-        for (const [targetId, targetPose] of this.playerPoses.entries()) {
-          if (targetId === p.ownerId || !targetPose.connected) continue;
-          if (!this.arePlayersAtWar(p.ownerId, targetId)) continue;
+      const ownerPose = this.playerPoses.get(p.ownerId);
+      const ownerX = ownerPose ? (ownerPose.isSailing ? ownerPose.boatX : ownerPose.x) : p.x;
+      const ownerY = ownerPose ? (ownerPose.isSailing ? ownerPose.boatY : ownerPose.y) : p.y;
 
-          if (p.kind === 'CANNON') {
-            if (targetPose.isSailing && dist(p.x, p.y, targetPose.boatX, targetPose.boatY) <= 28) {
-              this.damagePlayerOnHost(targetId, p.damage, p.ownerId, true);
-              hit = true;
-              break;
-            }
-            const ships = this.playerEscortShips.get(targetId);
-            const targetProf = this.ledger.playersById[targetId];
-            if (ships && targetProf) {
-              for (let si = ships.length - 1; si >= 0; si--) {
-                const ship = ships[si];
-                if (dist(p.x, p.y, ship.x, ship.y) <= 26) {
-                  ship.hp = Math.max(0, ship.hp - p.damage);
-                  const killed = ship.hp <= 0;
-                  if (killed) {
-                    ships.splice(si, 1);
-                    targetProf.escortShipCount = Math.max(0, targetProf.escortShipCount - 1);
-                    const atkProf = this.ledger.playersById[p.ownerId];
-                    if (atkProf) {
-                      atkProf.enemiesSunkCount += 1;
-                      atkProf.gold += 30;
-                      atkProf.totalGoldEarned += 30;
-                      this.syncProfileToPlayer(p.ownerId, atkProf);
-                    }
-                    this.syncProfileToPlayer(targetId, targetProf);
+      for (const [targetId, targetPose] of this.playerPoses.entries()) {
+        if (targetId === p.ownerId || !targetPose.connected) continue;
+        const tgtX = targetPose.isSailing ? targetPose.boatX : targetPose.x;
+        const tgtY = targetPose.isSailing ? targetPose.boatY : targetPose.y;
+        const dmgRule = this.canPlayersDamageEachOther(
+          p.ownerId,
+          targetId,
+          ownerX,
+          ownerY,
+          tgtX,
+          tgtY
+        );
+        if (!dmgRule.allowed) continue;
+
+        if (p.kind === 'CANNON') {
+          if (targetPose.isSailing && dist(p.x, p.y, targetPose.boatX, targetPose.boatY) <= 28) {
+            this.damagePlayerOnHost(targetId, p.damage, p.ownerId, true);
+            hit = true;
+            break;
+          }
+          const ships = this.playerEscortShips.get(targetId);
+          const targetProf = this.ledger.playersById[targetId];
+          if (ships && targetProf) {
+            for (let si = ships.length - 1; si >= 0; si--) {
+              const ship = ships[si];
+              if (dist(p.x, p.y, ship.x, ship.y) <= 26) {
+                ship.hp = Math.max(0, ship.hp - p.damage);
+                const killed = ship.hp <= 0;
+                if (killed) {
+                  ships.splice(si, 1);
+                  targetProf.escortShipCount = Math.max(0, targetProf.escortShipCount - 1);
+                  targetProf.shipsLostCount = (targetProf.shipsLostCount ?? 0) + 1;
+                  const atkProf = this.ledger.playersById[p.ownerId];
+                  if (atkProf) {
+                    atkProf.enemiesSunkCount += 1;
+                    atkProf.gold += 30;
+                    atkProf.totalGoldEarned += 30;
+                    this.syncProfileToPlayer(p.ownerId, atkProf);
                   }
-                  this.emitAndBroadcastEvent({
-                    eventId: `ahit_${ship.id}_${Date.now()}_${si}`,
-                    type: 'army:hit',
-                    payload: {
-                      targetPlayerId: targetId,
-                      unitKind: 'SHIP',
-                      unitId: ship.id,
-                      x: ship.x,
-                      y: ship.y,
-                      damage: p.damage,
-                      killed,
-                      bannerColor: targetProf.bannerColor,
-                    },
-                  });
-                  hit = true;
-                  break;
+                  this.syncProfileToPlayer(targetId, targetProf);
                 }
+                this.emitAndBroadcastEvent({
+                  eventId: `ahit_${ship.id}_${Date.now()}_${si}`,
+                  type: 'army:hit',
+                  payload: {
+                    targetPlayerId: targetId,
+                    unitKind: 'SHIP',
+                    unitId: ship.id,
+                    x: ship.x,
+                    y: ship.y,
+                    damage: p.damage,
+                    killed,
+                    bannerColor: targetProf.bannerColor,
+                  },
+                });
+                hit = true;
+                break;
               }
-              if (hit) break;
-            }
-          } else if (p.kind === 'LAND' && !targetPose.isSailing) {
-            if (dist(p.x, p.y, targetPose.x, targetPose.y) <= 18) {
-              this.damagePlayerOnHost(targetId, p.damage, p.ownerId, false);
-              hit = true;
-            }
-            const targetProf = this.ledger.playersById[targetId];
-            const smap = this.playerSoldierPoses.get(targetId);
-            if (!hit && targetProf && smap && targetProf.soldiers.length > 0) {
-              const hitR = p.splashRadius ? 20 : 16;
-              for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
-                const sol = targetProf.soldiers[si];
-                const spos = smap.get(sol.id);
-                if (!spos) continue;
-                if (dist(p.x, p.y, spos.x, spos.y) <= hitR) {
-                  hit = true;
-                  break;
-                }
-              }
-            }
-            if (hit && targetProf && smap) {
-              const blastR = p.splashRadius ?? 20;
-              let anySoldierDamaged = false;
-              for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
-                const sol = targetProf.soldiers[si];
-                const spos = smap.get(sol.id);
-                if (!spos) continue;
-                if (dist(p.x, p.y, spos.x, spos.y) <= blastR) {
-                  const dealt = p.splashRadius ? Math.round(p.damage * 0.85) : p.damage;
-                  sol.hp = Math.max(0, sol.hp - dealt);
-                  anySoldierDamaged = true;
-                  const killed = sol.hp <= 0;
-                  if (killed) {
-                    targetProf.soldiers.splice(si, 1);
-                    const atkProf = this.ledger.playersById[p.ownerId];
-                    if (atkProf) {
-                      atkProf.landEnemiesDefeated += 1;
-                      atkProf.gold += 8;
-                      atkProf.totalGoldEarned += 8;
-                      this.syncProfileToPlayer(p.ownerId, atkProf);
-                    }
-                  }
-                  this.emitAndBroadcastEvent({
-                    eventId: `ahit_${sol.id}_${Date.now()}_${si}`,
-                    type: 'army:hit',
-                    payload: {
-                      targetPlayerId: targetId,
-                      unitKind: 'SOLDIER',
-                      unitId: sol.id,
-                      x: spos.x,
-                      y: spos.y,
-                      damage: dealt,
-                      killed,
-                      bannerColor: targetProf.bannerColor,
-                    },
-                  });
-                }
-              }
-              if (anySoldierDamaged) {
-                this.syncProfileToPlayer(targetId, targetProf);
-              }
-              break;
             }
             if (hit) break;
           }
+        } else if (p.kind === 'LAND' && !targetPose.isSailing) {
+          if (dist(p.x, p.y, targetPose.x, targetPose.y) <= 18) {
+            this.damagePlayerOnHost(
+              targetId,
+              p.damage,
+              p.ownerId,
+              false,
+              dmgRule.inArena
+                ? {
+                    centerX: dmgRule.arenaCenterX ?? targetPose.x,
+                    centerY: dmgRule.arenaCenterY ?? targetPose.y,
+                  }
+                : undefined
+            );
+            hit = true;
+          }
+          const targetProf = this.ledger.playersById[targetId];
+          const smap = this.playerSoldierPoses.get(targetId);
+          if (!hit && targetProf && smap && targetProf.soldiers.length > 0) {
+            const hitR = p.splashRadius ? 20 : 16;
+            for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
+              const sol = targetProf.soldiers[si];
+              const spos = smap.get(sol.id);
+              if (!spos) continue;
+              if (dist(p.x, p.y, spos.x, spos.y) <= hitR) {
+                hit = true;
+                break;
+              }
+            }
+          }
+          if (hit && targetProf && smap) {
+            const blastR = p.splashRadius ?? 20;
+            let anySoldierDamaged = false;
+            for (let si = targetProf.soldiers.length - 1; si >= 0; si--) {
+              const sol = targetProf.soldiers[si];
+              const spos = smap.get(sol.id);
+              if (!spos) continue;
+              if (dist(p.x, p.y, spos.x, spos.y) <= blastR) {
+                const dealt = p.splashRadius ? Math.round(p.damage * 0.85) : p.damage;
+                sol.hp = Math.max(0, sol.hp - dealt);
+                anySoldierDamaged = true;
+                const killed = sol.hp <= 0;
+                if (killed) {
+                  targetProf.soldiers.splice(si, 1);
+                  targetProf.soldiersLostCount = (targetProf.soldiersLostCount ?? 0) + 1;
+                  const atkProf = this.ledger.playersById[p.ownerId];
+                  if (atkProf) {
+                    atkProf.landEnemiesDefeated += 1;
+                    atkProf.gold += 8;
+                    atkProf.totalGoldEarned += 8;
+                    this.syncProfileToPlayer(p.ownerId, atkProf);
+                  }
+                }
+                this.emitAndBroadcastEvent({
+                  eventId: `ahit_${sol.id}_${Date.now()}_${si}`,
+                  type: 'army:hit',
+                  payload: {
+                    targetPlayerId: targetId,
+                    unitKind: 'SOLDIER',
+                    unitId: sol.id,
+                    x: spos.x,
+                    y: spos.y,
+                    damage: dealt,
+                    killed,
+                    bannerColor: targetProf.bannerColor,
+                  },
+                });
+              }
+            }
+            if (anySoldierDamaged) {
+              this.syncProfileToPlayer(targetId, targetProf);
+            }
+            break;
+          }
+          if (hit) break;
         }
       }
 
@@ -1568,6 +2046,7 @@ export class OnlineSessionManager {
       starterSlots: this.ledger.starterSlots,
       warDeclarations: warDecl,
     });
+    this.emitVoicePeers();
   }
 
   private emitAndBroadcastEvent(event: OnlineWorldEvent) {
@@ -1636,6 +2115,10 @@ export class OnlineSessionManager {
       }
       return;
     }
+    if (msg.type === 'voice:peers') {
+      this.callbacks.onVoicePeers?.(msg.peers);
+      return;
+    }
     if (msg.type === 'error') {
       this.setStatus('ERROR', msg.message);
     }
@@ -1671,11 +2154,13 @@ export class OnlineSessionManager {
     }
     this.connections.clear();
     this.peerToPlayerId.clear();
+    this.peerIdByPlayerId.clear();
     this.playerToConn.clear();
     this.playerPoses.clear();
     this.playerSoldierPoses.clear();
     this.playerEscortShips.clear();
     this.projectiles = [];
+    this.callbacks.onVoicePeers?.([]);
     if (this.hostConn) {
       try {
         this.hostConn.close();

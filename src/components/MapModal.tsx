@@ -138,6 +138,11 @@ export const MapModal: React.FC<MapModalProps> = ({
     }
 
     for (const { island, discovered } of islandsToDraw) {
+      // Secret islands stay completely hidden until physically discovered
+      if (!discovered && island.isSecret) {
+        continue;
+      }
+
       const effFaction = getEffectiveIslandFaction(
         island.factionId,
         island.id,
@@ -173,10 +178,17 @@ export const MapModal: React.FC<MapModalProps> = ({
       }
 
       if (discovered) {
-        // Shallow ring (tinted subtly by faction territory if claimed)
-        ctx.fillStyle = !isOwned
-          ? 'rgba(36, 180, 201, 0.35)'
-          : `${factionInfo.color}38`;
+        // Shallow ring (tinted subtly by faction territory or special zone)
+        ctx.fillStyle =
+          island.specialZone === 'CITY'
+            ? 'rgba(56, 189, 248, 0.28)'
+            : island.specialZone === 'ARENA'
+            ? 'rgba(249, 115, 22, 0.28)'
+            : island.specialZone === 'SECRET'
+            ? 'rgba(232, 121, 249, 0.28)'
+            : !isOwned
+            ? 'rgba(36, 180, 201, 0.35)'
+            : `${factionInfo.color}38`;
         ctx.beginPath();
         island.coastPoints.forEach((p, idx) => {
           const sx = island.centerX + (p.x - island.centerX) * 1.24;
@@ -187,8 +199,15 @@ export const MapModal: React.FC<MapModalProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        if (isOwned) {
-          ctx.strokeStyle = factionInfo.color;
+        if (isOwned || island.specialZone) {
+          ctx.strokeStyle =
+            island.specialZone === 'CITY'
+              ? '#38BDF8'
+              : island.specialZone === 'ARENA'
+              ? '#F97316'
+              : island.specialZone === 'SECRET'
+              ? '#E879F9'
+              : factionInfo.color;
           ctx.lineWidth = (isAtWar ? 3 : 2) / zoom;
           ctx.stroke();
         }
@@ -204,7 +223,12 @@ export const MapModal: React.FC<MapModalProps> = ({
         ctx.fill();
 
         // Grass
-        ctx.fillStyle = '#5CA44E';
+        ctx.fillStyle =
+          island.specialZone === 'ARENA'
+            ? '#78716C'
+            : island.specialZone === 'SECRET'
+            ? '#4C1D95'
+            : '#5CA44E';
         ctx.beginPath();
         island.grassPoints.forEach((p, idx) => {
           if (idx === 0) ctx.moveTo(p.x, p.y);
@@ -228,17 +252,33 @@ export const MapModal: React.FC<MapModalProps> = ({
         // Landmarks
         for (const lm of island.landmarks) {
           ctx.fillStyle =
-            lm.type === 'TEMPLE' || lm.type === 'RUINS'
+            lm.type === 'CITY_PLAZA' || lm.type === 'FOUNTAIN'
+              ? '#38BDF8'
+              : lm.type === 'TAVERN'
+              ? '#F59E0B'
+              : lm.type === 'ARENA_RING'
+              ? '#F97316'
+              : lm.type === 'CAVE_ENTRANCE'
+              ? '#A855F7'
+              : lm.type === 'SECRET_SHRINE'
+              ? '#E879F9'
+              : lm.type === 'TEMPLE' || lm.type === 'RUINS'
               ? '#CBD5E1'
               : lm.type === 'TOWER' || lm.type === 'BASTION'
               ? '#94A3B8'
               : lm.type === 'OBELISK'
               ? '#22D3EE'
+              : lm.type === 'LIGHTHOUSE'
+              ? '#FDE047'
+              : lm.type === 'TRADING_POST'
+              ? '#FB923C'
+              : lm.type === 'SEA_ARCH'
+              ? '#2DD4BF'
               : lm.type === 'SHIPWRECK'
               ? '#92400E'
               : '#D97706';
           ctx.beginPath();
-          ctx.arc(lm.x, lm.y, 4.5 / zoom, 0, Math.PI * 2);
+          ctx.arc(lm.x, lm.y, (lm.type === 'CAVE_ENTRANCE' ? 5.5 : 4.5) / zoom, 0, Math.PI * 2);
           ctx.fill();
         }
 
@@ -279,7 +319,13 @@ export const MapModal: React.FC<MapModalProps> = ({
 
         // Island label
         ctx.fillStyle =
-          effFaction === 'PLAYER' && !onlineOwner
+          island.specialZone === 'CITY'
+            ? '#7DD3FC'
+            : island.specialZone === 'ARENA'
+            ? '#FDBA74'
+            : island.specialZone === 'SECRET'
+            ? '#F5D0FE'
+            : effFaction === 'PLAYER' && !onlineOwner
             ? '#A7F3D0'
             : isAtWar
             ? colorblindMode
@@ -299,10 +345,15 @@ export const MapModal: React.FC<MapModalProps> = ({
       } else {
         // Uncharted fogged silhouette
         ctx.fillStyle = 'rgba(15, 41, 54, 0.55)';
-        ctx.strokeStyle = isOwned
-          ? `${factionInfo.color}66`
-          : 'rgba(148, 163, 184, 0.25)';
-        ctx.lineWidth = (isOwned ? 2.2 : 1.5) / zoom;
+        ctx.strokeStyle =
+          island.specialZone === 'CITY'
+            ? 'rgba(56, 189, 248, 0.5)'
+            : island.specialZone === 'ARENA'
+            ? 'rgba(249, 115, 22, 0.5)'
+            : isOwned
+            ? `${factionInfo.color}66`
+            : 'rgba(148, 163, 184, 0.25)';
+        ctx.lineWidth = (isOwned || island.specialZone ? 2.2 : 1.5) / zoom;
         ctx.beginPath();
         ctx.arc(island.centerX, island.centerY, island.baseRadius * 0.85, 0, Math.PI * 2);
         ctx.fill();
@@ -545,6 +596,18 @@ export const MapModal: React.FC<MapModalProps> = ({
             <span className="flex items-center gap-1.5">
               <Store className="w-3.5 h-3.5 text-amber-400" />
               {isEn ? 'Trader' : 'Tüccar'}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block bg-sky-400" />
+              {isEn ? 'City' : 'Kent'}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block bg-orange-500" />
+              {isEn ? 'Arena' : 'Arena'}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block bg-purple-400" />
+              {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
             </span>
             {kingdom.founded && (
               <span className="flex items-center gap-1.5">

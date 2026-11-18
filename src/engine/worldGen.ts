@@ -1,4 +1,5 @@
 import {
+  CaveEntrance,
   EnemyFactionId,
   FactionId,
   InlandLake,
@@ -9,7 +10,9 @@ import {
   IslandRoad,
   Landmark,
   PalmTree,
+  ResourceNode,
   RockProp,
+  SpecialZoneType,
   TreasureSpot,
   TreasureTemplate,
   Vec2,
@@ -83,21 +86,32 @@ function pickIslandBiome(isStarter: boolean, factionId: FactionId, isLarge: bool
   if (isStarter) return 'TROPICAL';
   const r = rng();
   if (factionId === 'CORSAIR') {
-    if (r < 0.34) return 'VOLCANIC';
-    if (r < 0.65) return 'JUNGLE';
-    return r < 0.85 ? 'TROPICAL' : 'RUINS';
+    if (r < 0.28) return 'VOLCANIC';
+    if (r < 0.54) return 'DARK_LAGOON';
+    if (r < 0.78) return 'JUNGLE';
+    return r < 0.9 ? 'TROPICAL' : 'RUINS';
   }
   if (factionId === 'SUN_CLAN') {
-    if (r < 0.36) return 'OASIS';
-    if (r < 0.72) return 'RUINS';
+    if (r < 0.3) return 'OASIS';
+    if (r < 0.58) return 'CORAL_REEF';
+    if (r < 0.82) return 'RUINS';
     return 'TROPICAL';
   }
   if (factionId === 'IMPERIAL') {
-    if (r < 0.35) return 'TROPICAL';
-    if (r < 0.65) return 'JUNGLE';
-    return isLarge ? 'RUINS' : 'OASIS';
+    if (r < 0.28) return 'TROPICAL';
+    if (r < 0.52) return 'CORAL_REEF';
+    if (r < 0.74) return 'JUNGLE';
+    return isLarge ? 'RUINS' : 'DARK_LAGOON';
   }
-  const biomes: IslandBiome[] = ['TROPICAL', 'JUNGLE', 'OASIS', 'RUINS', 'VOLCANIC'];
+  const biomes: IslandBiome[] = [
+    'TROPICAL',
+    'JUNGLE',
+    'OASIS',
+    'RUINS',
+    'VOLCANIC',
+    'CORAL_REEF',
+    'DARK_LAGOON',
+  ];
   return biomes[Math.floor(r * biomes.length)];
 }
 
@@ -160,21 +174,54 @@ export function generateSectorIsland(
   }
   const isNearOrigin = Math.abs(sx) <= 1 && Math.abs(sy) <= 1;
 
+  const isGuaranteedCity = sx === 1 && sy === 1;
+  const isGuaranteedArena = sx === -1 && sy === 1;
+  const isGuaranteedSecret = (sx === 2 && sy === 1) || (sx === -2 && sy === -1);
   const spawnRoll = rng();
   const guaranteedNeighbor =
-    (sx === 1 && sy === 0) || (sx === 0 && sy === 1) || (sx === -1 && sy === 0);
+    (sx === 1 && sy === 0) ||
+    (sx === 0 && sy === 1) ||
+    (sx === -1 && sy === 0) ||
+    isGuaranteedCity ||
+    isGuaranteedArena ||
+    isGuaranteedSecret;
   if (!isStarter && !guaranteedNeighbor && spawnRoll > 0.77) {
     return null;
   }
 
+  let specialZone: SpecialZoneType | null = null;
+  if (!isStarter) {
+    if (isGuaranteedCity) specialZone = 'CITY';
+    else if (isGuaranteedArena) specialZone = 'ARENA';
+    else if (isGuaranteedSecret) specialZone = 'SECRET';
+    else if (Math.abs(sx) >= 2 || Math.abs(sy) >= 2) {
+      const zRoll = rng();
+      if (zRoll < 0.1) specialZone = 'CITY';
+      else if (zRoll < 0.18) specialZone = 'ARENA';
+      else if (zRoll < 0.3) specialZone = 'SECRET';
+    }
+  }
+  const isSecret = specialZone === 'SECRET';
+
   // Large & Mega Islands with rich interiors and huge armies
   const isGuaranteedLarge = sx === 0 && sy === 1;
-  const isLarge = !isStarter && (isGuaranteedLarge || rng() < 0.42);
+  const isLarge =
+    !isStarter &&
+    (specialZone === 'CITY' ||
+      specialZone === 'ARENA' ||
+      isGuaranteedLarge ||
+      rng() < 0.42);
 
   const centerX = isStarter ? 0 : sx * SECTOR_SIZE + (rng() - 0.5) * 340;
   const centerY = isStarter ? 0 : sy * SECTOR_SIZE + (rng() - 0.5) * 340;
   const baseRadius = isStarter
     ? 375
+    : specialZone === 'CITY'
+    ? 820 + rng() * 120
+    : specialZone === 'ARENA'
+    ? 540 + rng() * 80
+    : specialZone === 'SECRET'
+    ? 440 + rng() * 90
     : isLarge
     ? 580 + rng() * 225
     : 300 + rng() * 190;
@@ -214,21 +261,40 @@ export function generateSectorIsland(
     });
   }
 
-  const factionId: FactionId = onlineMode
-    ? 'NEUTRAL'
-    : pickIslandFaction(sx, sy, isStarter, isLarge, rng);
-  const biome = pickIslandBiome(isStarter, factionId, isLarge, rng);
+  const factionId: FactionId =
+    onlineMode || specialZone !== null
+      ? 'NEUTRAL'
+      : pickIslandFaction(sx, sy, isStarter, isLarge, rng);
+  const biome =
+    specialZone === 'CITY'
+      ? 'TROPICAL'
+      : specialZone === 'ARENA'
+      ? 'VOLCANIC'
+      : specialZone === 'SECRET'
+      ? 'DARK_LAGOON'
+      : pickIslandBiome(isStarter, factionId, isLarge, rng);
 
   const islandId = `island_${sx}_${sy}`;
   const isMega = isLarge && baseRadius >= 690;
+  const rawBaseName = `${ISLAND_PREFIXES[Math.floor(rng() * ISLAND_PREFIXES.length)]} ${
+    ISLAND_SUFFIXES[Math.floor(rng() * ISLAND_SUFFIXES.length)]
+  }`;
   const name = isStarter
     ? 'Başlangıç Limanı'
-    : `${ISLAND_PREFIXES[Math.floor(rng() * ISLAND_PREFIXES.length)]} ${
-        ISLAND_SUFFIXES[Math.floor(rng() * ISLAND_SUFFIXES.length)]
-      }${isMega ? ' (Büyük Kıta)' : isLarge ? ' (Büyük Ada)' : ''}`;
+    : specialZone === 'CITY'
+    ? `${rawBaseName} Büyük Kenti`
+    : specialZone === 'ARENA'
+    ? `${rawBaseName} Savaş Arenası`
+    : specialZone === 'SECRET'
+    ? `Gizli ${rawBaseName} Sığınağı`
+    : `${rawBaseName}${isMega ? ' (Büyük Kıta)' : isLarge ? ' (Büyük Ada)' : ''}`;
 
   const hasTrader =
-    isStarter || (sx === 1 && sy === 0) || (!isNearOrigin && factionId === 'NEUTRAL' && rng() < 0.36);
+    isStarter ||
+    specialZone === 'CITY' ||
+    specialZone === 'ARENA' ||
+    (sx === 1 && sy === 0) ||
+    (!isNearOrigin && factionId === 'NEUTRAL' && rng() < 0.36);
   let traderDock: Island['traderDock'] = null;
   if (hasTrader) {
     const dockAngle = isStarter ? Math.PI : rng() * Math.PI * 2;
@@ -242,7 +308,9 @@ export function generateSectorIsland(
 
   // Command Fort / Flagpole position placed early so landmarks & lakes respect it
   let fortPos: Vec2 | null = { x: centerX, y: centerY };
-  if (isStarter) {
+  if (specialZone === 'CITY' || specialZone === 'ARENA') {
+    fortPos = null;
+  } else if (isStarter) {
     fortPos = { x: centerX - 75, y: centerY - 36 };
   } else {
     const fa = rng() * Math.PI * 2;
@@ -339,7 +407,80 @@ export function generateSectorIsland(
     return offs;
   };
 
-  if (isStarter) {
+  let arenaCenter: Vec2 | null = null;
+  const caves: CaveEntrance[] = [];
+
+  if (specialZone === 'CITY') {
+    landmarks.push({
+      id: `${islandId}_city_plaza`,
+      type: 'CITY_PLAZA',
+      x: centerX,
+      y: centerY,
+      radius: 95,
+      rotation: 0,
+    });
+    landmarks.push({
+      id: `${islandId}_fountain`,
+      type: 'FOUNTAIN',
+      x: centerX,
+      y: centerY,
+      radius: 34,
+      rotation: 0,
+    });
+    tryPlaceLandmark(`${islandId}_tavern_0`, 'TAVERN', 48, 0.24, 0.34);
+    tryPlaceLandmark(`${islandId}_tavern_1`, 'TAVERN', 46, 0.3, 0.44);
+    tryPlaceLandmark(`${islandId}_trading_city`, 'TRADING_POST', 36, 0.26, 0.42);
+    tryPlaceLandmark(
+      `${islandId}_village_0`,
+      'VILLAGE',
+      64,
+      0.38,
+      0.56,
+      makeClusterOffsets(6, 42)
+    );
+    tryPlaceLandmark(
+      `${islandId}_village_1`,
+      'VILLAGE',
+      62,
+      0.42,
+      0.62,
+      makeClusterOffsets(5, 38)
+    );
+    tryPlaceLandmark(`${islandId}_lighthouse_city`, 'LIGHTHOUSE', 28, 0.76, 0.86);
+  } else if (specialZone === 'ARENA') {
+    arenaCenter = { x: centerX, y: centerY };
+    landmarks.push({
+      id: `${islandId}_arena_ring`,
+      type: 'ARENA_RING',
+      x: centerX,
+      y: centerY,
+      radius: 195,
+      rotation: 0,
+    });
+    for (let t = 0; t < 4; t++) {
+      const ta = (t / 4) * Math.PI * 2 + Math.PI * 0.25;
+      landmarks.push({
+        id: `${islandId}_arena_tower_${t}`,
+        type: 'TOWER',
+        x: centerX + Math.cos(ta) * 245,
+        y: centerY + Math.sin(ta) * 245,
+        radius: 26,
+        rotation: ta,
+      });
+    }
+    tryPlaceLandmark(
+      `${islandId}_arena_camp`,
+      'CAMP',
+      44,
+      0.54,
+      0.7,
+      makeClusterOffsets(4, 30)
+    );
+  } else if (specialZone === 'SECRET') {
+    tryPlaceLandmark(`${islandId}_secret_shrine`, 'SECRET_SHRINE', 44, 0.2, 0.36);
+    tryPlaceLandmark(`${islandId}_secret_obelisk`, 'OBELISK', 24, 0.42, 0.6);
+    tryPlaceLandmark(`${islandId}_secret_ruins`, 'RUINS', 36, 0.38, 0.62);
+  } else if (isStarter) {
     // Cozy camp & ancient obelisk on starter island for immediate exploration variety
     tryPlaceLandmark(`${islandId}_camp_0`, 'CAMP', 42, 0.42, 0.56, makeClusterOffsets(3, 28));
     tryPlaceLandmark(`${islandId}_obelisk_0`, 'OBELISK', 24, 0.46, 0.6, undefined);
@@ -396,9 +537,28 @@ export function generateSectorIsland(
     if (rng() < 0.78) {
       tryPlaceLandmark(`${islandId}_wreck`, 'SHIPWRECK', 34, 0.74, 0.86);
     }
+    if (rng() < 0.68) {
+      tryPlaceLandmark(`${islandId}_lighthouse`, 'LIGHTHOUSE', 26, 0.76, 0.88);
+    }
+    if (rng() < 0.65) {
+      tryPlaceLandmark(`${islandId}_trading`, 'TRADING_POST', 32, 0.42, 0.66);
+    }
+    if (rng() < 0.55) {
+      tryPlaceLandmark(`${islandId}_arch`, 'SEA_ARCH', 30, 0.78, 0.89);
+    }
   } else {
     // Standard / Medium islands get 1 to 3 varied landmarks
-    const mediumPool: Landmark['type'][] = ['TOWER', 'CAMP', 'OBELISK', 'RUINS', 'VILLAGE', 'SHIPWRECK'];
+    const mediumPool: Landmark['type'][] = [
+      'TOWER',
+      'CAMP',
+      'OBELISK',
+      'RUINS',
+      'VILLAGE',
+      'SHIPWRECK',
+      'LIGHTHOUSE',
+      'TRADING_POST',
+      'SEA_ARCH',
+    ];
     const targetCount = baseRadius >= 380 ? 3 : 1 + Math.floor(rng() * 2);
     for (let m = 0; m < targetCount; m++) {
       const picked = mediumPool[Math.floor(rng() * mediumPool.length)];
@@ -409,11 +569,15 @@ export function generateSectorIsland(
           ? 42
           : picked === 'RUINS'
           ? 34
-          : picked === 'SHIPWRECK'
+          : picked === 'SHIPWRECK' || picked === 'TRADING_POST'
           ? 32
+          : picked === 'SEA_ARCH'
+          ? 29
           : 25;
-      const minF = picked === 'SHIPWRECK' ? 0.74 : 0.28;
-      const maxF = picked === 'SHIPWRECK' ? 0.85 : 0.64;
+      const minF =
+        picked === 'SHIPWRECK' || picked === 'LIGHTHOUSE' || picked === 'SEA_ARCH' ? 0.74 : 0.28;
+      const maxF =
+        picked === 'SHIPWRECK' || picked === 'LIGHTHOUSE' || picked === 'SEA_ARCH' ? 0.87 : 0.64;
       const subs =
         picked === 'VILLAGE'
           ? makeClusterOffsets(3 + Math.floor(rng() * 2), 34)
@@ -424,9 +588,40 @@ export function generateSectorIsland(
     }
   }
 
-  // Dirt / Cobble Roads linking fort, landmarks, and trader dock
+  // Enterable Cave Entrances on eligible islands
+  const isGuaranteedCave = sx === 1 && sy === 0;
+  const wantCave =
+    !isStarter &&
+    specialZone !== 'CITY' &&
+    specialZone !== 'ARENA' &&
+    (isGuaranteedCave || specialZone === 'SECRET' || (isLarge && rng() < 0.65) || rng() < 0.35);
+  if (wantCave) {
+    const caveId = `${islandId}_cave_0`;
+    if (tryPlaceLandmark(`${caveId}_lm`, 'CAVE_ENTRANCE', 30, 0.35, 0.65)) {
+      const caveLm = landmarks[landmarks.length - 1];
+      const sectorTier = Math.hypot(sx, sy);
+      const tier: 1 | 2 | 3 =
+        specialZone === 'SECRET' || sectorTier >= 2.8 ? 3 : isLarge || sectorTier >= 1.5 ? 2 : 1;
+      caves.push({
+        id: caveId,
+        islandId,
+        x: caveLm.x,
+        y: caveLm.y,
+        name:
+          tier === 3
+            ? `${rawBaseName} Kristal Mağarası`
+            : tier === 2
+            ? `${rawBaseName} Derin Mağara`
+            : `${rawBaseName} Mağarası`,
+        tier,
+      });
+    }
+  }
+
+  // Dirt / Cobble Roads linking fort/plaza, landmarks, and trader dock
   const roads: IslandRoad[] = [];
-  if (fortPos) {
+  const hubPos = fortPos ?? (specialZone === 'CITY' ? { x: centerX, y: centerY } : null);
+  if (hubPos) {
     const roadTargets: Vec2[] = [];
     if (traderDock) {
       const dockAngle = traderDock.angle;
@@ -436,15 +631,15 @@ export function generateSectorIsland(
         y: centerY + Math.sin(dockAngle) * innerR,
       });
     }
-    for (const lm of landmarks.slice(0, 4)) {
-      if (lm.type !== 'SHIPWRECK') {
+    for (const lm of landmarks.slice(0, specialZone === 'CITY' ? 6 : 4)) {
+      if (lm.type !== 'SHIPWRECK' && lm.type !== 'CITY_PLAZA' && lm.type !== 'FOUNTAIN') {
         roadTargets.push({ x: lm.x, y: lm.y });
       }
     }
     for (const target of roadTargets) {
-      const midX = (fortPos.x + target.x) * 0.5 + (rng() - 0.5) * 44;
-      const midY = (fortPos.y + target.y) * 0.5 + (rng() - 0.5) * 44;
-      roads.push({ from: fortPos, to: target, ctrl: { x: midX, y: midY } });
+      const midX = (hubPos.x + target.x) * 0.5 + (rng() - 0.5) * 44;
+      const midY = (hubPos.y + target.y) * 0.5 + (rng() - 0.5) * 44;
+      roads.push({ from: hubPos, to: target, ctrl: { x: midX, y: midY } });
     }
   }
 
@@ -604,27 +799,32 @@ export function generateSectorIsland(
     }
   }
 
-  // Coordinated Massive Island Enemy Armies & Garrison Squads
+  // Coordinated Massive Island Enemy Armies & Garrison Squads (Cities & Arenas are garrison-free)
   const sectorDist = Math.hypot(sx, sy);
-  const enemySpawns: IslandEnemySpawn[] = isStarter
-    ? []
-    : buildGarrisonSpawns(
-        islandId,
-        centerX,
-        centerY,
-        radialProfile,
-        landmarks,
-        fortPos,
-        isLarge,
-        baseRadius,
-        factionId,
-        sectorDist,
-        rng
-      );
+  const enemySpawns: IslandEnemySpawn[] =
+    isStarter || specialZone === 'CITY' || specialZone === 'ARENA'
+      ? []
+      : buildGarrisonSpawns(
+          islandId,
+          centerX,
+          centerY,
+          radialProfile,
+          landmarks,
+          fortPos,
+          isLarge,
+          baseRadius,
+          factionId,
+          sectorDist,
+          rng
+        );
 
-  // Hidden buried treasures (scaled to huge islands)
+  // Hidden buried treasures (scaled to huge islands & secret sanctuaries)
   const treasureCount = isStarter
     ? 3
+    : specialZone === 'SECRET'
+    ? 5 + Math.floor(rng() * 2)
+    : specialZone === 'CITY' || specialZone === 'ARENA'
+    ? 2
     : isMega
     ? 5 + Math.floor(rng() * 3)
     : isLarge
@@ -659,6 +859,32 @@ export function generateSectorIsland(
     });
   }
 
+  // Harvestable Wood & Iron Resource Nodes
+  const resourceTarget = isStarter ? 4 : isMega ? 9 : isLarge ? 7 : 4;
+  const resourceNodes: ResourceNode[] = [];
+  for (let i = 0; i < resourceTarget * 4 && resourceNodes.length < resourceTarget; i++) {
+    const angle = rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const kind: ResourceNode['kind'] = i % 2 === 0 ? 'WOOD' : 'IRON';
+    const r = localR * (kind === 'WOOD' ? 0.28 + rng() * 0.42 : 0.42 + rng() * 0.36);
+    const nx = centerX + Math.cos(angle) * r;
+    const ny = centerY + Math.sin(angle) * r;
+    if (fortPos && dist(nx, ny, fortPos.x, fortPos.y) < 55) continue;
+    if (traderDock && dist(nx, ny, traderDock.x, traderDock.y) < 62) continue;
+    if (lakes.some((lk) => dist(nx, ny, lk.x, lk.y) < lk.radius + 18)) continue;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, nx, ny) < lm.radius + 20)) continue;
+    if (resourceNodes.some((rn) => dist(rn.x, rn.y, nx, ny) < 60)) continue;
+
+    resourceNodes.push({
+      id: `${islandId}_res_${resourceNodes.length}`,
+      islandId,
+      kind,
+      x: nx,
+      y: ny,
+      amount: kind === 'WOOD' ? 2 + Math.floor(rng() * 3) : 1 + Math.floor(rng() * 3),
+    });
+  }
+
   return {
     id: islandId,
     sectorX: sx,
@@ -682,10 +908,15 @@ export function generateSectorIsland(
     rocks,
     landmarks,
     weaponPickups,
+    resourceNodes,
     enemySpawns,
     treasures,
     traderDock,
     isStarter,
+    specialZone,
+    isSecret,
+    caves,
+    arenaCenter,
   };
 }
 
@@ -1037,6 +1268,28 @@ export function generateStarterIslandFromSlot(slot: StarterSlot, luckLevel = 1):
     });
   }
 
+  const resourceNodes: ResourceNode[] = [];
+  for (let i = 0; i < 12 && resourceNodes.length < 4; i++) {
+    const angle = rng() * Math.PI * 2;
+    const localR = getProfileRadius(radialProfile, angle);
+    const kind: ResourceNode['kind'] = i % 2 === 0 ? 'WOOD' : 'IRON';
+    const r = localR * (0.3 + rng() * 0.42);
+    const nx = centerX + Math.cos(angle) * r;
+    const ny = centerY + Math.sin(angle) * r;
+    if (dist(nx, ny, fortPos.x, fortPos.y) < 52) continue;
+    if (dist(nx, ny, traderDock.x, traderDock.y) < 60) continue;
+    if (landmarks.some((lm) => dist(lm.x, lm.y, nx, ny) < lm.radius + 18)) continue;
+    if (resourceNodes.some((rn) => dist(rn.x, rn.y, nx, ny) < 55)) continue;
+    resourceNodes.push({
+      id: `${slot.islandId}_res_${resourceNodes.length}`,
+      islandId: slot.islandId,
+      kind,
+      x: nx,
+      y: ny,
+      amount: 2,
+    });
+  }
+
   return {
     id: slot.islandId,
     sectorX: 0,
@@ -1060,6 +1313,7 @@ export function generateStarterIslandFromSlot(slot: StarterSlot, luckLevel = 1):
     rocks,
     landmarks,
     weaponPickups,
+    resourceNodes,
     enemySpawns: [],
     treasures,
     traderDock,

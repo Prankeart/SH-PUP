@@ -2,6 +2,7 @@ import {
   AllySoldierRosterItem,
   BagItem,
   DigCrater,
+  PetId,
   SoldierType,
   Upgrades,
   WeaponId,
@@ -61,6 +62,22 @@ export interface PlayerProfileLedger {
   escortShipCount: number;
   soldiers: AllySoldierRosterItem[];
   discoveredIslandIds: string[];
+  claimedMilestoneIds?: string[];
+  unlockedAchievementIds?: string[];
+  collectedRelicIds?: string[];
+  stormsSurvivedCount?: number;
+  wood?: number;
+  iron?: number;
+  repairKits?: number;
+  caughtFishCount?: number;
+  ownedPets?: PetId[];
+  activePet?: PetId | null;
+  discoveredLogIds?: string[];
+  soldiersLostCount?: number;
+  shipsLostCount?: number;
+  openedCaveChestIds?: string[];
+  arenaWinsCount?: number;
+  cavesExploredCount?: number;
   player: {
     x: number;
     y: number;
@@ -122,8 +139,18 @@ export interface RemotePlayerSnapshot {
   isHost: boolean;
   starterSlotIndex: number;
   conqueredCount: number;
+  inCaveId?: string | null;
   soldiers?: RemoteSoldierSnapshot[];
   ships?: RemoteEscortShipSnapshot[];
+}
+
+export interface VoicePeerInfo {
+  playerId: string;
+  peerId: string;
+  name: string;
+  bannerColor: string;
+  x?: number;
+  y?: number;
 }
 
 export interface RemotePlayerView extends RemotePlayerSnapshot {
@@ -195,6 +222,8 @@ export interface OnlineWorldEvent {
     | 'war:status'
     | 'army:hit'
     | 'chat:msg'
+    | 'player:emote'
+    | 'arena:win'
     | 'fx:toast';
   payload: Record<string, unknown>;
 }
@@ -220,6 +249,7 @@ export type ClientToHostMessage =
       walkPhase: number;
       digAnimProgress: number;
       attackAnimProgress: number;
+      inCaveId?: string | null;
       soldiers?: Array<{ id: string; x: number; y: number; angle: number; swinging?: boolean }>;
       ships?: Array<{ id: string; x: number; y: number; angle: number }>;
     }
@@ -315,8 +345,68 @@ export type ClientToHostMessage =
       y: number;
     }
   | {
+      type: 'cmd:claim_milestone';
+      milestoneId: string;
+    }
+  | {
+      type: 'cmd:unlock_achievements';
+      achievementIds: string[];
+    }
+  | {
+      type: 'cmd:discover_relic';
+      relicId: string;
+    }
+  | {
+      type: 'cmd:harvest_resource';
+      kind: 'WOOD' | 'IRON';
+      amount: number;
+    }
+  | {
+      type: 'cmd:sell_resources';
+    }
+  | {
+      type: 'cmd:craft_repair_kit';
+    }
+  | {
+      type: 'cmd:use_repair_kit';
+    }
+  | {
+      type: 'cmd:fish_catch';
+      goldValue: number;
+    }
+  | {
+      type: 'cmd:adopt_pet';
+      petId: PetId;
+    }
+  | {
+      type: 'cmd:equip_pet';
+      petId: PetId | null;
+    }
+  | {
+      type: 'cmd:discover_log';
+      logId: string;
+    }
+  | {
+      type: 'cmd:emote';
+      emote: string;
+    }
+  | {
       type: 'cmd:chat';
       text: string;
+    }
+  | {
+      type: 'cmd:claim_cave_chest';
+      chestId: string;
+      goldValue: number;
+      weaponId?: WeaponId;
+      caveId?: string;
+      isBossOrFirstInCave?: boolean;
+    }
+  | {
+      type: 'cmd:arena_win';
+      rewardGold: number;
+      weaponId?: WeaponId;
+      unlockedWeapon?: WeaponId;
     }
   | {
       type: 'cmd:ping';
@@ -368,6 +458,10 @@ export type HostToClientMessage =
   | {
       type: 'player:profile_sync';
       profile: PlayerProfileLedger;
+    }
+  | {
+      type: 'voice:peers';
+      peers: VoicePeerInfo[];
     }
   | {
       type: 'pong';

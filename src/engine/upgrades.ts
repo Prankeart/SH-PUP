@@ -226,6 +226,15 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
       return `+%${Math.round((b.weaponDmgMult - 1) * 100)} silah · +${b.hpRegenPerSec.toFixed(1)} can/sn`;
     },
   },
+  {
+    key: 'repairShellsLevel',
+    title: 'Şifalı Toplar',
+    subtitle: 'Top atışları düşman gemisine isabet ettiğinde verilen hasarın bir kısmını gemine can olarak çevirir.',
+    maxLevel: 8,
+    baseCost: 125,
+    costMultiplier: 1.75,
+    statLabel: (lvl) => `+%${Math.round(getRepairShellHealRatio(lvl) * 100)} isabet onarımı`,
+  },
 ];
 
 export function getUpgradeCost(def: UpgradeDef, currentLevel: number): number {
@@ -288,3 +297,9 @@ export function getCrewSkillBonuses(crewSkillLevel = 1): {
     hpRegenPerSec: 0.4 + (lvl - 1) * 0.55,
   };
 }
+
+export function getRepairShellHealRatio(repairShellsLevel = 1): number {
+  const lvl = Math.max(1, repairShellsLevel);
+  return Math.min(0.35, 0.05 + (lvl - 1) * 0.04);
+}
+

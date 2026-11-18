@@ -604,3 +604,286 @@ export const TUTORIAL_STEPS: TutorialHintDef[] = [
     textEn: 'Press K to found your kingdom, recruit troops, and use Q for Tactical War Cry!',
   },
 ];
+
+export interface PetDef {
+  id: 'PARROT' | 'MONKEY' | 'TURTLE';
+  name: string;
+  nameEn: string;
+  cost: number;
+  color: string;
+  accentColor: string;
+  bonusLabel: string;
+  bonusLabelEn: string;
+  description: string;
+  descriptionEn: string;
+}
+
+export const PET_DEFS: PetDef[] = [
+  {
+    id: 'PARROT',
+    name: 'Kızıl Papağan',
+    nameEn: 'Scarlet Parrot',
+    cost: 240,
+    color: '#EF4444',
+    accentColor: '#FDE047',
+    bonusLabel: '+%25 Radar Menzili',
+    bonusLabelEn: '+25% Radar Range',
+    description: 'Gökyüzünden adaları tarayarak hazine radar menzilini %25 artırır.',
+    descriptionEn: 'Scouts from the sky, expanding treasure radar detection range by 25%.',
+  },
+  {
+    id: 'MONKEY',
+    name: 'Altın Maymun',
+    nameEn: 'Golden Monkey',
+    cost: 320,
+    color: '#D97706',
+    accentColor: '#FDE68A',
+    bonusLabel: '+85px Ganimet Çekimi & +%10 Altın',
+    bonusLabelEn: '+85px Loot Magnet & +10% Gold',
+    description: 'Kara ganimetlerini uzaktan toplar ve düşen altın miktarını %10 artırır.',
+    descriptionEn: 'Collects land loot from further away and boosts dropped gold by 10%.',
+  },
+  {
+    id: 'TURTLE',
+    name: 'Zırhlı Deniz Kaplumbağası',
+    nameEn: 'Armored Sea Turtle',
+    cost: 380,
+    color: '#10B981',
+    accentColor: '#6EE7B7',
+    bonusLabel: '+1.5 Gemi Can/sn & Fırtına Direnci',
+    bonusLabelEn: '+1.5 Boat HP/s & Storm Resistance',
+    description: 'Yelken açarken gövdeyi yavaşça onarır ve fırtına hasarını azaltır.',
+    descriptionEn: 'Passively repairs hull while sailing and softens storm damage.',
+  },
+];
+
+export interface FishTemplate {
+  id: string;
+  name: string;
+  nameEn: string;
+  goldValue: number;
+  rarityLabel: string;
+  rarityLabelEn: string;
+  color: string;
+  isRarePearl?: boolean;
+}
+
+export const FISH_TEMPLATES: FishTemplate[] = [
+  {
+    id: 'fish_anchovy',
+    name: 'Gümüş Sardalya',
+    nameEn: 'Silver Sardine',
+    goldValue: 18,
+    rarityLabel: 'Sıradan',
+    rarityLabelEn: 'Common',
+    color: '#94A3B8',
+  },
+  {
+    id: 'fish_snapper',
+    name: 'Mercan Çipura',
+    nameEn: 'Coral Snapper',
+    goldValue: 32,
+    rarityLabel: 'Sıradan',
+    rarityLabelEn: 'Common',
+    color: '#FB7185',
+  },
+  {
+    id: 'fish_tuna',
+    name: 'Mavi Yüzgeç Orkinos',
+    nameEn: 'Bluefin Tuna',
+    goldValue: 55,
+    rarityLabel: 'Nadir',
+    rarityLabelEn: 'Rare',
+    color: '#38BDF8',
+  },
+  {
+    id: 'fish_sword',
+    name: 'Kral Kılıçbalığı',
+    nameEn: 'Royal Swordfish',
+    goldValue: 90,
+    rarityLabel: 'Destansı',
+    rarityLabelEn: 'Epic',
+    color: '#A855F7',
+  },
+  {
+    id: 'fish_golden_carp',
+    name: 'Altın Lagün Balığı',
+    nameEn: 'Golden Lagoon Fish',
+    goldValue: 135,
+    rarityLabel: 'Efsanevi',
+    rarityLabelEn: 'Legendary',
+    color: '#FBBF24',
+  },
+  {
+    id: 'fish_pearl',
+    name: 'Nadir Altın İnci',
+    nameEn: 'Rare Golden Pearl',
+    goldValue: 210,
+    rarityLabel: 'Eşsiz İnci',
+    rarityLabelEn: 'Unique Pearl',
+    color: '#FDE047',
+    isRarePearl: true,
+  },
+];
+
+export function rollCatchFish(luckLevel = 1, boostActive = false): FishTemplate {
+  const luckBonus = Math.max(0, luckLevel - 1) * 0.04 + (boostActive ? 0.12 : 0);
+  const r = Math.random() - luckBonus * 0.45;
+  if (r < 0.06) return FISH_TEMPLATES[5]; // Golden Pearl
+  if (r < 0.16) return FISH_TEMPLATES[4]; // Golden Lagoon Fish
+  if (r < 0.34) return FISH_TEMPLATES[3]; // Swordfish
+  if (r < 0.58) return FISH_TEMPLATES[2]; // Tuna
+  if (r < 0.80) return FISH_TEMPLATES[1]; // Coral Snapper
+  return FISH_TEMPLATES[0]; // Silver Sardine
+}
+
+export interface CaptainLogDef {
+  id: string;
+  chapter: number;
+  title: string;
+  titleEn: string;
+  author: string;
+  excerpt: string;
+  excerptEn: string;
+  secretClue: string;
+  secretClueEn: string;
+  rewardGold: number;
+}
+
+export const CAPTAIN_LOGS: CaptainLogDef[] = [
+  {
+    id: 'log_01_karloff_start',
+    chapter: 1,
+    title: 'Kaptan Karloff’un İlk Pusulası',
+    titleEn: "Captain Karloff's First Compass",
+    author: 'Kaptan Karloff',
+    excerpt: 'Bu takımadalarda altın sadece kumun altında değil, mercan kayalıklarının gölgesinde saklanır. Sıcak-soğuk ibresi titrediğinde küreği derine vur.',
+    excerptEn: 'In these isles gold hides not only under sand, but in reef shadows. When the hot-cold needle quivers, dig deep.',
+    secretClue: 'Derin gömüler bazen 2–3 kürek darbesi gerektirir.',
+    secretClueEn: 'Deep chests sometimes require 2–3 shovel strikes.',
+    rewardGold: 35,
+  },
+  {
+    id: 'log_02_storm_wind',
+    chapter: 2,
+    title: 'Kış Fırtınalarının Sırrı',
+    titleEn: 'Secret of Winter Squalls',
+    author: 'Amiral Veysel',
+    excerpt: 'Kış ve sonbahar rüzgarları gülleleri saptırır; ancak cesur kaptanlar fırtınada batırdıkları gemilerden yarım kat daha fazla ganimet çıkarır.',
+    excerptEn: 'Winter and autumn gales bend cannon arcs, yet bold captains haul 50% richer bounty from ships sunk in storms.',
+    secretClue: 'Fırtınada borda ateşini rüzgar yönüne göre önden ver.',
+    secretClueEn: 'Lead broadsides slightly upwind during ocean storms.',
+    rewardGold: 40,
+  },
+  {
+    id: 'log_03_sun_temple',
+    chapter: 3,
+    title: 'Güneş Tapınağı Yazıtı',
+    titleEn: 'Sun Temple Inscription',
+    author: 'Altın Güneş Rahibi',
+    excerpt: 'Güneyin zümrüt vahalarında dikilen obeliskler, Antik Güneş Seti parçalarının gömülü olduğu kumsalları korur.',
+    excerptEn: 'Obelisks standing in southern oases guard beaches holding pieces of the Ancient Sun Set.',
+    secretClue: 'Kalıntılar ve Altın Güneş seti hazine değerini %20 artırır.',
+    secretClueEn: 'Completing the Ancient Sun Relics set boosts treasure value by +20%.',
+    rewardGold: 45,
+  },
+  {
+    id: 'log_04_healer_brig',
+    chapter: 4,
+    title: 'Şifacı Kalyonların Zaafı',
+    titleEn: 'Weakness of Repair Frigates',
+    author: 'İmparatorluk Mühendisi',
+    excerpt: 'Düşman filolarındaki yeşil haçlı tamir gemileri önce batırılmazsa, yaralı kalyonlar asla düşmez.',
+    excerptEn: 'Unless green-cross repair ships in enemy squadrons are sunk first, wounded galleons endure.',
+    secretClue: 'Önce yeşil haçlı şifacı gemiyi hedef al!',
+    secretClueEn: 'Focus fire on green-cross healer ships first!',
+    rewardGold: 45,
+  },
+  {
+    id: 'log_05_iron_coast',
+    chapter: 5,
+    title: 'Demir ve Kereste Rezervleri',
+    titleEn: 'Timber & Iron Deposits',
+    author: 'Usta Marangoz Halim',
+    excerpt: 'Her adadaki kütük ve demir yığınlarını kılıç veya kürekle topla. Bunlar açık denizde tamir kiti ve kale topu kulesi için paha biçilmezdir.',
+    excerptEn: 'Harvest timber and iron veins on every island. They forge Repair Kits and Fort Defense Turrets.',
+    secretClue: '2 Odun + 1 Demir ile ücretsiz Gemi Tamir Kiti üretebilirsin.',
+    secretClueEn: 'Craft Repair Kits with 2 Wood + 1 Iron at the Workshop.',
+    rewardGold: 50,
+  },
+  {
+    id: 'log_06_deep_lagoon',
+    chapter: 6,
+    title: 'Kara Lagün’ün Kayıp İncileri',
+    titleEn: 'Lost Pearls of Dark Lagoon',
+    author: 'Kaptan Elif',
+    excerpt: 'Kıyıda olta sallayan sabırlı denizciler, yalnızca balık değil; tüccarların servet ödediği Altın İnciler de yakalar.',
+    excerptEn: 'Patient mariners casting a line from shore hook not just fish, but Golden Pearls prized by merchants.',
+    secretClue: 'Şans seviyesi yükseldikçe olta nadir Altın İnci yakalar.',
+    secretClueEn: 'Higher Luck level raises Golden Pearl catch odds.',
+    rewardGold: 50,
+  },
+  {
+    id: 'log_07_fort_siege',
+    chapter: 7,
+    title: 'Kale Surları ve Humbaracılar',
+    titleEn: 'Fort Ramparts & Grenadiers',
+    author: 'Kuşatma Ustası Timur',
+    excerpt: 'Ağır Zırhlı Muhafızlar ve Humbaracılar rakip kalelerin taş surlarını hızla çökertir; ardından kale sancağını dikmek saniyeler sürer.',
+    excerptEn: 'Heavy Guards and Grenadiers shatter stone fortress walls swiftly, opening the ramparts to capture.',
+    secretClue: '[Q] Savaş Emri tüm asker sınıflarının özel yeteneklerini tetikler.',
+    secretClueEn: '[Q] War Cry triggers unique class ultimates for all soldiers.',
+    rewardGold: 55,
+  },
+  {
+    id: 'log_08_pet_bond',
+    chapter: 8,
+    title: 'Sadık Deniz Yoldaşları',
+    titleEn: 'Loyal Sea Companions',
+    author: 'Gezgin Botanist',
+    excerpt: 'Papağan ufku tarar, Altın Maymun dökülen altınları kapar, Zırhlı Kaplumbağa ise gövdeyi açık denizde tamir eder.',
+    excerptEn: 'Parrots widen radar sweeps, Golden Monkeys magnetize loot, and Armored Turtles mend your hull at sea.',
+    secretClue: 'Mağazadaki Evcil Hayvan sekmesinden görevine uygun yoldaşı seç.',
+    secretClueEn: 'Swap active pets anytime from the Pets tab in the Merchant Shop.',
+    rewardGold: 55,
+  },
+  {
+    id: 'log_09_minefields',
+    chapter: 9,
+    title: 'Serseri Deniz Mayınları',
+    titleEn: 'Rogue Sea Mines',
+    author: 'Korsan Gözcü',
+    excerpt: 'Açık denizdeki dikenli mayınlara çarpmadan önce yan toplarla onları patlat; sürüklenen variller ise her zaman bedava malzeme taşır.',
+    excerptEn: 'Detonate spiked sea mines from afar with broadside cannonballs; drifting barrels hold free supplies.',
+    secretClue: 'Top gülleleri temas ettiği deniz mayınlarını patlatır.',
+    secretClueEn: 'Cannonballs safely detonate sea mines on impact.',
+    rewardGold: 60,
+  },
+  {
+    id: 'log_10_karloff_crown',
+    chapter: 10,
+    title: 'Karloff’un Son Vasiyeti',
+    titleEn: "Karloff's Final Testament",
+    author: 'Kaptan Karloff',
+    excerpt: 'Beş adada sancağını dalgalandıran, Amiral Armadasını kuran ve yirmi beş sandık çıkaran kaptan gerçek Ada Sultanı unvanını taşır.',
+    excerptEn: 'The captain who flies banners over 5 isles, sails an Admiral Flagship, and digs 25 chests claims the Sultan crown.',
+    secretClue: 'Tüm Karloff sayfaları +20% Hazine Değeri ve +15% Şans kazandırır.',
+    secretClueEn: 'All 10 logs grant +20% Treasure Value and +15% Rare Find Luck.',
+    rewardGold: 100,
+  },
+];
+
+export function getCaptainLogBonuses(discoveredLogIds: string[]): {
+  count: number;
+  treasureValueMult: number;
+  rareLuckBonus: number;
+} {
+  const count = Math.min(CAPTAIN_LOGS.length, new Set(discoveredLogIds).size);
+  return {
+    count,
+    treasureValueMult: 1 + count * 0.02,
+    rareLuckBonus: count * 0.015,
+  };
+}
+
+
