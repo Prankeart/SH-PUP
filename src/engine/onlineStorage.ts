@@ -92,6 +92,8 @@ export function createProfileForSlot(
       radarLevel: 1,
       luckLevel: 1,
       cannonLevel: 1,
+      hullPlatingLevel: 1,
+      crewSkillLevel: 1,
     },
     kingdomFounded: false,
     kingdomName: `${identity.name} Devleti`,

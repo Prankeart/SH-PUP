@@ -1,6 +1,6 @@
 export type GamePhase = 'TITLE_MENU' | 'PLAYING';
 
-export type ActiveModal = 'NONE' | 'MAP' | 'SHOP' | 'SETTINGS' | 'KINGDOM';
+export type ActiveModal = 'NONE' | 'MAP' | 'SHOP' | 'SETTINGS' | 'KINGDOM' | 'JOURNAL';
 
 export type HeatTier = 'HOT' | 'WARM' | 'COOL' | 'COLD' | 'NONE';
 
@@ -9,6 +9,30 @@ export type EnemyFactionId = 'CORSAIR' | 'IMPERIAL' | 'SUN_CLAN';
 export type FactionId = 'NEUTRAL' | 'PLAYER' | EnemyFactionId;
 
 export type SoldierType = 'SWORDSMAN' | 'MUSKETEER' | 'HEAVY_GUARD' | 'GRENADIER';
+
+export type SeasonId = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
+
+export type WorldEventType = 'STORM' | 'TREASURE_TIDE' | 'BOUNTY_CONVOY' | 'FOG';
+
+export interface ActiveWorldEvent {
+  type: WorldEventType;
+  title: string;
+  description: string;
+  startedAt: number;
+  endsAt: number;
+}
+
+export interface KeybindingsConfig {
+  digOrFire: string;
+  attack: string;
+  boat: string;
+  radar: string;
+  ability: string;
+  map: string;
+  shop: string;
+  kingdom: string;
+  journal: string;
+}
 
 export interface Vec2 {
   x: number;
@@ -255,6 +279,8 @@ export interface Upgrades {
   radarLevel: number;
   luckLevel: number;
   cannonLevel: number;
+  hullPlatingLevel?: number;
+  crewSkillLevel?: number;
 }
 
 export interface KingdomState {
@@ -271,9 +297,15 @@ export interface KingdomState {
 
 export interface GameSettings {
   soundEnabled: boolean;
+  ambientEnabled: boolean;
   joystickMode: 'FIXED' | 'DYNAMIC';
   showWaves: boolean;
   touchControls: 'AUTO' | 'ALWAYS' | 'HIDDEN';
+  colorblindMode: boolean;
+  screenShakeIntensity: number;
+  showTutorialHints: boolean;
+  language: 'tr' | 'en';
+  keybindings: KeybindingsConfig;
 }
 
 export interface RadarReading {
@@ -333,6 +365,8 @@ export interface EnemyShip {
   broadsideSign: 1 | -1;
   goldBounty: number;
   tier: 1 | 2 | 3;
+  isEventBoss?: boolean;
+  lastSelfRepairTime?: number;
 }
 
 export interface Cannonball {
@@ -387,6 +421,13 @@ export interface SaveData {
   dugCraters: DigCrater[];
   openedTreasureIds: string[];
   discoveredIslandIds: string[];
+  playTimeSec?: number;
+  worldTimeSec?: number;
+  collectedRelicIds?: string[];
+  claimedMilestoneIds?: string[];
+  unlockedAchievementIds?: string[];
+  tutorialCompleted?: string[];
+  stormsSurvivedCount?: number;
   player: {
     x: number;
     y: number;

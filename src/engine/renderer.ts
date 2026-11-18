@@ -18,6 +18,7 @@ import {
   WaterRipple,
   WeaponId,
   WeaponPickup,
+  WorldEventType,
 } from '../types/game';
 import { OnlineProjectileSnapshot, RemotePlayerView } from '../types/online';
 import { RenderLod } from './perfGovernor';
@@ -86,6 +87,14 @@ export interface RenderState {
     accentColor: string;
   } | null;
   hasTouchControls?: boolean;
+  colorblindMode?: boolean;
+  screenShakeIntensity?: number;
+  worldCycle?: {
+    darknessAlpha: number;
+    tintColor: string;
+  };
+  activeWorldEventType?: WorldEventType | null;
+  abilityAuraUntilMs?: number;
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -93,6 +102,14 @@ const HEAT_COLORS: Record<HeatTier, string> = {
   WARM: '#F59E0B',
   COOL: '#38BDF8',
   COLD: '#93C5FD',
+  NONE: '#94A3B8',
+};
+
+const HEAT_COLORS_CB: Record<HeatTier, string> = {
+  HOT: '#EC4899',
+  WARM: '#F59E0B',
+  COOL: '#22D3EE',
+  COLD: '#E2E8F0',
   NONE: '#94A3B8',
 };
 
@@ -1768,7 +1785,13 @@ function drawSideCannons(
   portColor: string
 ) {
   const offsets =
-    countPerSide === 1 ? [0] : countPerSide === 2 ? [-9, 9] : [-13, 0, 13];
+    countPerSide >= 4
+      ? [-15, -5, 5, 15]
+      : countPerSide === 3
+      ? [-13, 0, 13]
+      : countPerSide === 2
+      ? [-9, 9]
+      : [0];
 
   offsets.forEach((ox) => {
     [-1, 1].forEach((side) => {
@@ -1984,6 +2007,14 @@ function drawEnemyShip(ctx: CanvasRenderingContext2D, enemy: EnemyShip, timeSec:
 
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
+  if (enemy.isEventBoss) {
+    const pulse = 1 + Math.sin(timeSec * 4.5) * 0.08;
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.78)';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, 44 * scale * 0.85 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.rotate(enemy.angle);
   ctx.scale(scale, scale);
 
@@ -2282,8 +2313,10 @@ export function renderGameFrame(
   ctx.fillStyle = '#0B4F6C';
   ctx.fillRect(0, 0, width, height);
 
-  const shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
-  const shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 2 : 0;
+  const shakeScale = clamp((state.screenShakeIntensity ?? 100) / 100, 0, 1);
+  const effShake = screenShake * shakeScale;
+  const shakeX = effShake > 0 ? (Math.random() - 0.5) * effShake * 2 : 0;
+  const shakeY = effShake > 0 ? (Math.random() - 0.5) * effShake * 2 : 0;
 
   ctx.save();
   ctx.translate(width / 2 + shakeX, height / 2 + shakeY);
@@ -3005,24 +3038,54 @@ export function renderGameFrame(
     }
   }
 
-  // Radar Pulses
+  // Tactical War Cry / Shield Wall Aura
   const nowMs = performance.now();
+  if (state.abilityAuraUntilMs && nowMs < state.abilityAuraUntilMs) {
+    const remRatio = clamp((state.abilityAuraUntilMs - nowMs) / 6000, 0, 1);
+    const ax = player.isSailing ? boat.x : player.x;
+    const ay = player.isSailing ? boat.y : player.y;
+    const auraR = (player.isSailing ? 75 : 58) + Math.sin(timeSec * 8) * 5;
+    ctx.save();
+    ctx.strokeStyle = `rgba(251, 191, 36, ${0.35 + remRatio * 0.45})`;
+    ctx.fillStyle = `rgba(16, 185, 129, ${0.08 + remRatio * 0.08})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(ax, ay, auraR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Radar Pulses
+  const activeHeatPalette = state.colorblindMode ? HEAT_COLORS_CB : HEAT_COLORS;
   for (const pulse of state.radarPulses) {
     const progress = (nowMs - pulse.startTime) / 900;
     if (progress < 0 || progress > 1) continue;
     const radius = 24 + progress * pulse.maxRadius;
     const alpha = (1 - progress) * 0.85;
-    const color = HEAT_COLORS[pulse.heat];
+    const color = activeHeatPalette[pulse.heat];
 
     ctx.save();
     ctx.strokeStyle = color;
     ctx.globalAlpha = alpha;
     ctx.lineWidth = 4 - progress * 2;
+    if (state.colorblindMode) {
+      if (pulse.heat === 'COOL') ctx.setLineDash([10, 6]);
+      else if (pulse.heat === 'COLD' || pulse.heat === 'NONE') ctx.setLineDash([4, 8]);
+    }
     ctx.beginPath();
     ctx.arc(pulse.x, pulse.y, radius, 0, Math.PI * 2);
     ctx.stroke();
 
+    if (state.colorblindMode && pulse.heat === 'HOT') {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, Math.max(8, radius * 0.72), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     if (pulse.showDirection && pulse.targetAngle !== null) {
+      ctx.setLineDash([]);
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.arc(pulse.x, pulse.y, Math.min(radius, 95), pulse.targetAngle - 0.32, pulse.targetAngle + 0.32);
@@ -3058,6 +3121,65 @@ export function renderGameFrame(
   ctx.globalAlpha = 1;
 
   ctx.restore();
+
+  // Day/Night & Seasonal Atmospheric Lighting + Lantern Glows (screen space)
+  const darkness = state.worldCycle?.darknessAlpha ?? 0;
+  if (darkness > 0.02) {
+    ctx.save();
+    ctx.fillStyle = state.worldCycle?.tintColor || `rgba(7, 20, 42, ${darkness})`;
+    ctx.fillRect(0, 0, width, height);
+
+    // Warm lantern glow centered around player/boat
+    const focusX = player.isSailing ? boat.x : player.x;
+    const focusY = player.isSailing ? boat.y : player.y;
+    const sx = width / 2 + (focusX - camera.x) * zoom;
+    const sy = height / 2 + (focusY - camera.y) * zoom;
+    const glowR = 230 * zoom;
+    const grad = ctx.createRadialGradient(sx, sy, 12, sx, sy, glowR);
+    grad.addColorStop(0, `rgba(253, 224, 71, ${(darkness * 0.42).toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(251, 146, 60, ${(darkness * 0.16).toFixed(3)})`);
+    grad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, glowR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Dynamic World Event Weather Overlays (Storm rain streaks or Tropical Fog)
+  if (state.activeWorldEventType === 'STORM') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.18)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.32)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    const dropCount = 75;
+    for (let i = 0; i < dropCount; i++) {
+      const rx = ((i * 173 + timeSec * 520) % (width + 120)) - 60;
+      const ry = ((i * 257 + timeSec * 820) % (height + 120)) - 60;
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 14, ry + 26);
+    }
+    ctx.stroke();
+    ctx.restore();
+  } else if (state.activeWorldEventType === 'FOG') {
+    ctx.save();
+    const fogGrad = ctx.createRadialGradient(
+      width / 2,
+      height / 2,
+      Math.min(width, height) * 0.18,
+      width / 2,
+      height / 2,
+      Math.max(width, height) * 0.72
+    );
+    fogGrad.addColorStop(0, 'rgba(226, 232, 240, 0.04)');
+    fogGrad.addColorStop(1, 'rgba(203, 213, 225, 0.34)');
+    ctx.fillStyle = fogGrad;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
 
   if (state.homeIsland) {
     drawHomeIslandCompass(ctx, width, height, state);

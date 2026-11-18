@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Backpack,
+  BookOpen,
   Coins,
   Crown,
   Map as MapIcon,
@@ -16,10 +17,14 @@ interface TopRightHudProps {
   nearDock: boolean;
   kingdomFounded: boolean;
   soldierCount: number;
+  journalBadgeCount?: number;
+  cycleLabel?: string;
+  language?: 'tr' | 'en';
   onOpenSettings: () => void;
   onOpenMap: () => void;
   onOpenShop: () => void;
   onOpenKingdom: () => void;
+  onOpenJournal: () => void;
 }
 
 export const TopRightHud: React.FC<TopRightHudProps> = ({
@@ -29,11 +34,16 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
   nearDock,
   kingdomFounded,
   soldierCount,
+  journalBadgeCount = 0,
+  cycleLabel,
+  language = 'tr',
   onOpenSettings,
   onOpenMap,
   onOpenShop,
   onOpenKingdom,
+  onOpenJournal,
 }) => {
+  const isEn = language === 'en';
   const [menuOpen, setMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,7 +151,27 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
                   className="w-full h-10 px-3 rounded-lg text-xs font-semibold text-slate-100 hover:bg-white/10 flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <MapIcon className="w-4 h-4 text-sky-300 shrink-0" />
-                  <span>Harita</span>
+                  <span>{isEn ? 'Map' : 'Harita'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenJournal();
+                  }}
+                  className="w-full h-10 px-3 rounded-lg text-xs font-semibold text-slate-100 hover:bg-white/10 flex items-center justify-between gap-2 transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>{isEn ? 'Journal' : 'Seyir Defteri'}</span>
+                  </span>
+                  {journalBadgeCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-bold font-mono-num">
+                      {journalBadgeCount}
+                    </span>
+                  )}
                 </button>
               </div>
             )}
@@ -192,8 +222,23 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
 
   return (
     <div className="pointer-events-none flex flex-col items-end gap-2 shrink-0">
-      {/* Row 1: Devlet Kur, Harita, Gold & Bag Bar (immediately left of Settings) + Settings Gear Button */}
+      {/* Row 1: Journal, Devlet Kur, Harita, Gold & Bag Bar + Settings Gear Button */}
       <div className="pointer-events-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpenJournal}
+          aria-label={isEn ? 'Journal (J)' : 'Seyir Defteri (J)'}
+          className="h-10 px-3 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-white/20 text-slate-100 text-xs font-semibold flex items-center gap-1.5 shadow-md transition-transform duration-100 active:scale-95 whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
+        >
+          <BookOpen className="w-4 h-4 text-amber-300 shrink-0" />
+          <span>{isEn ? 'Journal' : 'Defter'}</span>
+          {journalBadgeCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-bold font-mono-num">
+              {journalBadgeCount}
+            </span>
+          )}
+        </button>
+
         <button
           type="button"
           onClick={onOpenKingdom}
@@ -205,7 +250,13 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
           }`}
         >
           <Crown className="w-4 h-4 text-amber-300 shrink-0" />
-          <span>{kingdomFounded ? `Devlet (${soldierCount})` : 'Devlet Kur'}</span>
+          <span>
+            {kingdomFounded
+              ? `${isEn ? 'Nation' : 'Devlet'} (${soldierCount})`
+              : isEn
+              ? 'Found Nation'
+              : 'Devlet Kur'}
+          </span>
         </button>
 
         <button
@@ -215,13 +266,13 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
           className="h-10 px-4 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-white/20 text-slate-100 text-xs font-semibold flex items-center gap-2 shadow-md transition-transform duration-100 active:scale-95 whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
         >
           <MapIcon className="w-4 h-4 text-sky-300 shrink-0" />
-          <span>Harita</span>
+          <span>{isEn ? 'Map' : 'Harita'}</span>
         </button>
 
         <button
           type="button"
           onClick={onOpenShop}
-          title="Altın ve Çanta"
+          title={isEn ? 'Gold & Bag' : 'Altın ve Çanta'}
           className="h-10 px-3.5 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/35 flex items-center gap-2.5 shadow-md transition-colors cursor-pointer"
         >
           <Coins className="w-4 h-4 text-amber-400 shrink-0" />
@@ -244,27 +295,32 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
         <button
           type="button"
           onClick={onOpenSettings}
-          aria-label="Ayarlar"
-          title="Ayarlar"
+          aria-label={isEn ? 'Settings' : 'Ayarlar'}
+          title={isEn ? 'Settings' : 'Ayarlar'}
           className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-md transition-transform duration-100 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
         >
           <Settings className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Row 2: Contextual Tüccar button when docked */}
-      {nearDock && (
-        <div className="pointer-events-auto flex items-center gap-2">
+      {/* Row 2: Season/Day label + Contextual Tüccar button when docked */}
+      <div className="pointer-events-auto flex items-center gap-2">
+        {cycleLabel && (
+          <div className="h-8 px-3 rounded-lg bg-[#0F2936]/80 border border-white/10 text-[11px] font-medium text-slate-200 flex items-center shadow-sm whitespace-nowrap">
+            {cycleLabel}
+          </div>
+        )}
+        {nearDock && (
           <button
             type="button"
             onClick={onOpenShop}
             className="h-10 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 border border-amber-200 text-slate-950 font-semibold text-xs flex items-center gap-1.5 shadow-md transition-transform duration-100 active:scale-95 whitespace-nowrap cursor-pointer"
           >
             <Store className="w-4 h-4 shrink-0" />
-            <span>Tüccar</span>
+            <span>{isEn ? 'Trader' : 'Tüccar'}</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

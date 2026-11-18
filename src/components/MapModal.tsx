@@ -5,6 +5,8 @@ import { RemotePlayerSnapshot } from '../types/online';
 import { SECTOR_SIZE, WorldManager } from '../engine/worldGen';
 import { ENEMY_FACTION_LIST, getEffectiveIslandFaction, getFactionDisplay } from '../engine/factions';
 
+type MapFilter = 'ALL' | 'TREASURES' | 'FACTIONS' | 'TRADERS';
+
 interface MapModalProps {
   worldManager: WorldManager;
   discoveredIslandIds: string[];
@@ -17,6 +19,8 @@ interface MapModalProps {
   onlineMode?: boolean;
   onlinePlayers?: RemotePlayerSnapshot[];
   onlineIslandOwners?: Record<string, { shortName: string; color: string }>;
+  colorblindMode?: boolean;
+  language?: 'tr' | 'en';
   onClose: () => void;
 }
 
@@ -32,10 +36,15 @@ export const MapModal: React.FC<MapModalProps> = ({
   onlineMode = false,
   onlinePlayers = [],
   onlineIslandOwners = {},
+  colorblindMode = false,
+  language = 'tr',
   onClose,
 }) => {
+  const isEn = language === 'en';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [zoom, setZoom] = useState(0.085);
+  const [filter, setFilter] = useState<MapFilter>('ALL');
+  const [showRings, setShowRings] = useState(true);
   const [offset, setOffset] = useState<Vec2>({ x: playerPos.x, y: playerPos.y });
   const dragRef = useRef<{ active: boolean; lastX: number; lastY: number }>({
     active: false,
@@ -151,6 +160,18 @@ export const MapModal: React.FC<MapModalProps> = ({
         effFaction !== 'PLAYER' &&
         kingdom.atWarWith.includes(effFaction);
 
+      const remainingTreasures = island.treasures.filter((t) => !openedSet.has(t.id)).length;
+      const matchesFilter =
+        filter === 'ALL' ||
+        (filter === 'TREASURES' && discovered && remainingTreasures > 0) ||
+        (filter === 'FACTIONS' && isOwned) ||
+        (filter === 'TRADERS' && discovered && Boolean(island.traderDock));
+
+      ctx.save();
+      if (!matchesFilter) {
+        ctx.globalAlpha = 0.28;
+      }
+
       if (discovered) {
         // Shallow ring (tinted subtly by faction territory if claimed)
         ctx.fillStyle = !isOwned
@@ -204,7 +225,7 @@ export const MapModal: React.FC<MapModalProps> = ({
           ctx.fill();
         }
 
-        // Landmarks (Temples, Bastions, Towers, Villages, Camps, Obelisks, Ruins, Shipwrecks)
+        // Landmarks
         for (const lm of island.landmarks) {
           ctx.fillStyle =
             lm.type === 'TEMPLE' || lm.type === 'RUINS'
@@ -238,28 +259,45 @@ export const MapModal: React.FC<MapModalProps> = ({
           ctx.beginPath();
           ctx.arc(island.traderDock.x, island.traderDock.y, 6 / zoom, 0, Math.PI * 2);
           ctx.fill();
+          if (filter === 'TRADERS') {
+            ctx.strokeStyle = '#FDE047';
+            ctx.lineWidth = 2.2 / zoom;
+            ctx.beginPath();
+            ctx.arc(island.traderDock.x, island.traderDock.y, 12 / zoom, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        // Treasure filter highlight ring
+        if (filter === 'TREASURES' && remainingTreasures > 0) {
+          ctx.strokeStyle = colorblindMode ? '#22D3EE' : '#FBBF24';
+          ctx.lineWidth = 2.5 / zoom;
+          ctx.beginPath();
+          ctx.arc(island.centerX, island.centerY, island.maxRadius + 30, 0, Math.PI * 2);
+          ctx.stroke();
         }
 
         // Island label
-        const remainingTreasures = island.treasures.filter((t) => !openedSet.has(t.id)).length;
         ctx.fillStyle =
           effFaction === 'PLAYER' && !onlineOwner
             ? '#A7F3D0'
             : isAtWar
-            ? '#FCA5A5'
+            ? colorblindMode
+              ? '#F472B6'
+              : '#FCA5A5'
             : '#F8FAFC';
         ctx.font = `600 ${Math.round(11 / zoom)}px "Plus Jakarta Sans", sans-serif`;
         ctx.textAlign = 'center';
-        const ownerSuffix = !isOwned
-          ? ''
-          : ` · ${factionInfo.shortName}${isAtWar ? ' [Savaş]' : ''}`;
+        const warTag = isAtWar ? (isEn ? ' [War]' : ' [Savaş]') : '';
+        const cleanTag = isEn ? ' (Clear)' : ' (Temiz)';
+        const ownerSuffix = !isOwned ? '' : ` · ${factionInfo.shortName}${warTag}`;
         ctx.fillText(
-          `${island.name}${remainingTreasures === 0 ? ' (Temiz)' : ` (${remainingTreasures})`}${ownerSuffix}`,
+          `${island.name}${remainingTreasures === 0 ? cleanTag : ` (${remainingTreasures})`}${ownerSuffix}`,
           island.centerX,
           island.centerY - island.maxRadius - 14 / zoom
         );
       } else {
-        // Uncharted fogged silhouette (shows faint nation border if belonging to a major state!)
+        // Uncharted fogged silhouette
         ctx.fillStyle = 'rgba(15, 41, 54, 0.55)';
         ctx.strokeStyle = isOwned
           ? `${factionInfo.color}66`
@@ -270,6 +308,7 @@ export const MapModal: React.FC<MapModalProps> = ({
         ctx.fill();
         ctx.stroke();
       }
+      ctx.restore();
     }
 
     // Dug craters
@@ -278,6 +317,26 @@ export const MapModal: React.FC<MapModalProps> = ({
       ctx.beginPath();
       ctx.arc(c.x, c.y, Math.max(2.5 / zoom, 10), 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // Distance Rings around active player position (100m, 250m, 500m)
+    const centerPos = isSailing ? boatPos : playerPos;
+    if (showRings) {
+      ctx.save();
+      ctx.setLineDash([7 / zoom, 6 / zoom]);
+      ctx.lineWidth = 1.1 / zoom;
+      ctx.font = `600 ${Math.round(10 / zoom)}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      for (const distMeters of [100, 250, 500]) {
+        const r = distMeters * 10;
+        ctx.strokeStyle = 'rgba(125, 211, 252, 0.28)';
+        ctx.beginPath();
+        ctx.arc(centerPos.x, centerPos.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.65)';
+        ctx.fillText(`${distMeters}m`, centerPos.x, centerPos.y - r - 4 / zoom);
+      }
+      ctx.restore();
     }
 
     // Boat marker
@@ -291,7 +350,7 @@ export const MapModal: React.FC<MapModalProps> = ({
 
     // Player marker
     if (!isSailing) {
-      ctx.fillStyle = '#10B981';
+      ctx.fillStyle = colorblindMode ? '#22D3EE' : '#10B981';
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 2 / zoom;
       ctx.beginPath();
@@ -322,7 +381,25 @@ export const MapModal: React.FC<MapModalProps> = ({
     }
 
     ctx.restore();
-  }, [worldManager, discoveredIslandIds, openedTreasureIds, dugCraters, kingdom, playerPos, boatPos, isSailing, onlineMode, onlinePlayers, onlineIslandOwners, zoom, offset]);
+  }, [
+    worldManager,
+    discoveredIslandIds,
+    openedTreasureIds,
+    dugCraters,
+    kingdom,
+    playerPos,
+    boatPos,
+    isSailing,
+    onlineMode,
+    onlinePlayers,
+    onlineIslandOwners,
+    colorblindMode,
+    isEn,
+    filter,
+    showRings,
+    zoom,
+    offset,
+  ]);
 
   const discoveredCount = discoveredIslandIds.length;
   const totalOpened = openedTreasureIds.length;
@@ -332,28 +409,67 @@ export const MapModal: React.FC<MapModalProps> = ({
       className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label="Açık Dünya Haritası"
+      aria-label={isEn ? 'Open World Map' : 'Açık Dünya Haritası'}
     >
       <div className="w-full max-w-4xl h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Compass className="w-5 h-5 text-sky-300 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
-              Açık Dünya & Devletler Haritası
+              {isEn ? 'World & Nations Chart' : 'Açık Dünya & Devletler Haritası'}
             </h2>
-            <span className="hidden sm:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
-              {discoveredCount} Ada · {totalOpened} Hazine · {kingdom.conqueredIslandIds.length} Fetih
+            <span className="hidden md:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
+              {discoveredCount} {isEn ? 'Islands' : 'Ada'} · {totalOpened}{' '}
+              {isEn ? 'Treasures' : 'Hazine'} · {kingdom.conqueredIslandIds.length}{' '}
+              {isEn ? 'Conquered' : 'Fetih'}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Haritayı Kapat"
-            className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950/50 border border-white/10">
+              {(
+                [
+                  { id: 'ALL', label: isEn ? 'All' : 'Tümü' },
+                  { id: 'TREASURES', label: isEn ? 'Treasures' : 'Hazine' },
+                  { id: 'FACTIONS', label: isEn ? 'Nations' : 'Devletler' },
+                  { id: 'TRADERS', label: isEn ? 'Traders' : 'Tüccar' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFilter(f.id)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    filter === f.id
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRings((r) => !r)}
+              className={`hidden sm:inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                showRings
+                  ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
+                  : 'bg-white/5 border-white/10 text-slate-400'
+              }`}
+            >
+              {isEn ? 'Rings' : 'Mesafe'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={isEn ? 'Close Map' : 'Haritayı Kapat'}
+              className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Interactive Map Canvas */}
@@ -386,7 +502,7 @@ export const MapModal: React.FC<MapModalProps> = ({
             <button
               type="button"
               onClick={() => setZoom((z) => Math.min(0.24, z * 1.25))}
-              aria-label="Yakınlaştır"
+              aria-label={isEn ? 'Zoom In' : 'Yakınlaştır'}
               className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
             >
               <ZoomIn className="w-4 h-4" />
@@ -394,7 +510,7 @@ export const MapModal: React.FC<MapModalProps> = ({
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(0.03, z * 0.8))}
-              aria-label="Uzaklaştır"
+              aria-label={isEn ? 'Zoom Out' : 'Uzaklaştır'}
               className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
             >
               <ZoomOut className="w-4 h-4" />
@@ -402,8 +518,8 @@ export const MapModal: React.FC<MapModalProps> = ({
             <button
               type="button"
               onClick={() => setOffset({ x: playerPos.x, y: playerPos.y })}
-              aria-label="Konumuma Odaklan"
-              title="Konumuma Odaklan"
+              aria-label={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
+              title={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
               className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-200 text-slate-950 hover:bg-amber-400 flex items-center justify-center shadow-lg cursor-pointer"
             >
               <MapPin className="w-4 h-4" />
@@ -415,16 +531,20 @@ export const MapModal: React.FC<MapModalProps> = ({
         <div className="px-3.5 sm:px-5 py-2 sm:py-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[11px] sm:text-xs text-slate-300 max-h-24 overflow-y-auto shrink-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
-              Oyuncu
+              <span
+                className={`w-2.5 h-2.5 rounded-full inline-block ${
+                  colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
+                }`}
+              />
+              {isEn ? 'Player' : 'Oyuncu'}
             </span>
             <span className="flex items-center gap-1.5">
               <Ship className="w-3.5 h-3.5 text-sky-400" />
-              Tekne
+              {isEn ? 'Ship' : 'Tekne'}
             </span>
             <span className="flex items-center gap-1.5">
               <Store className="w-3.5 h-3.5 text-amber-400" />
-              Tüccar
+              {isEn ? 'Trader' : 'Tüccar'}
             </span>
             {kingdom.founded && (
               <span className="flex items-center gap-1.5">
@@ -455,9 +575,12 @@ export const MapModal: React.FC<MapModalProps> = ({
                   </span>
                 ))}
           </div>
-          <span className="text-slate-400">Haritayı sürükleyerek gezebilirsiniz</span>
+          <span className="text-slate-400">
+            {isEn ? 'Drag map to pan' : 'Haritayı sürükleyerek gezebilirsiniz'}
+          </span>
         </div>
       </div>
     </div>
   );
 };
+

@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, RotateCw, ShieldAlert, Store, Sword } from 'lucide-react';
+import {
+  CloudLightning,
+  Heart,
+  HelpCircle,
+  RotateCw,
+  ShieldAlert,
+  Sparkles,
+  Store,
+  Sword,
+  X as XIcon,
+} from 'lucide-react';
 import {
   ActiveModal,
+  ActiveWorldEvent,
   AllyShip,
   AllySoldier,
   Cannonball,
@@ -29,10 +40,13 @@ import {
 import {
   clearSaveData,
   createInitialSave,
+  loadFromSlot,
   loadSaveData,
   loadSettings,
+  normalizeSaveData,
   persistSaveData,
   persistSettings,
+  saveToSlot,
 } from './engine/storage';
 import {
   generateIslandGarrison,
@@ -44,6 +58,8 @@ import {
   getCannonCooldownMs,
   getCannonCountPerSide,
   getCannonDamage,
+  getCrewSkillBonuses,
+  getDamageReductionRatio,
   getDigCooldownMs,
   getDigRadius,
   getMaxBoatHp,
@@ -68,6 +84,15 @@ import {
   SOLDIER_SPECS,
 } from './engine/factions';
 import { pickStrongerWeapon, WEAPONS } from './engine/weapons';
+import {
+  ACHIEVEMENTS,
+  CAMPAIGN_MILESTONES,
+  CampaignStatsInput,
+  getRelicSetBonuses,
+  RELIC_DEFS,
+  TUTORIAL_STEPS,
+} from './engine/progression';
+import { createWorldEvent, getWorldCycleInfo } from './engine/worldEvents';
 import { renderGameFrame } from './engine/renderer';
 import { SpatialGrid } from './engine/spatialGrid';
 import { PerformanceGovernor } from './engine/perfGovernor';
@@ -96,12 +121,14 @@ import { TopRightHud } from './components/TopRightHud';
 import { MapModal } from './components/MapModal';
 import { ShopModal } from './components/ShopModal';
 import { KingdomModal } from './components/KingdomModal';
-import { SettingsModal } from './components/SettingsModal';
+import { formatKeyCode, SettingsModal } from './components/SettingsModal';
+import { JournalModal } from './components/JournalModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { OnlineLobbyModal } from './components/OnlineLobbyModal';
 
 const PLAYER_SPEED = 175;
 const MAX_PLAYER_HP = 100;
+const ABILITY_BASE_COOLDOWN_MS = 18000;
 const ENEMY_NAMES = ['Kızıl Kanca', 'Kara Fırtına', 'Gölge Pruva', 'Demir Borda', 'Korsan Yelkenci'];
 
 function buildInitialSoldiers(save: SaveData): AllySoldier[] {
@@ -207,8 +234,12 @@ export default function App() {
     cannonCooldownPct: 0,
     attackCooldownPct: 0,
     radarCooldownPct: 0,
+    abilityCooldownPct: 0,
+    cycleLabel: 'Gün 1 · İlkbahar · Gündüz',
   });
   const [lastRadar, setLastRadar] = useState<RadarReading | null>(null);
+  const [activeWorldEvent, setActiveWorldEvent] = useState<ActiveWorldEvent | null>(null);
+  const activeWorldEventRef = useRef<ActiveWorldEvent | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const saveRef = useRef<SaveData>(save);
@@ -279,6 +310,10 @@ export default function App() {
     lastCannonTime: 0,
     lastAttackTime: 0,
     lastRadarTime: 0,
+    lastAbilityTime: -30000,
+    abilityAuraUntilMs: 0,
+    lastPassiveRegenTime: 0,
+    nextWorldEventTime: performance.now() + 34000,
     cameraX: save.player.isSailing ? save.boat.x : save.player.x,
     cameraY: save.player.isSailing ? save.boat.y : save.player.y,
     zoom: 1,
@@ -347,6 +382,7 @@ export default function App() {
   useEffect(() => {
     settingsRef.current = settings;
     soundEngine.setEnabled(settings.soundEnabled);
+    soundEngine.setAmbientEnabled(settings.ambientEnabled);
     persistSettings(settings);
   }, [settings]);
 
@@ -504,6 +540,19 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const markTutorialStep = useCallback(
+    (stepId: string) => {
+      if (onlineActiveRef.current) return;
+      const done = saveRef.current.tutorialCompleted ?? [];
+      if (done.includes(stepId)) return;
+      commitSave((prev) => ({
+        ...prev,
+        tutorialCompleted: [...(prev.tutorialCompleted ?? []), stepId],
+      }));
+    },
+    [commitSave]
+  );
 
   const profileToSaveData = useCallback(
     (
@@ -1214,6 +1263,9 @@ export default function App() {
     sim.lastAttackTime = now;
     sim.attackAnimStart = now;
 
+    const crewBonuses = getCrewSkillBonuses(saveRef.current.upgrades.crewSkillLevel ?? 1);
+    const attackDamage = Math.round(def.damage * crewBonuses.weaponDmgMult);
+
     // SpatialGrid-accelerated soft-assist aim toward nearest island enemy
     let aimAngle = sim.playerAngle;
     let nearestDistSq = Infinity;
@@ -1288,7 +1340,7 @@ export default function App() {
           const toE = Math.atan2(dy, dx);
           const diff = Math.abs(Math.atan2(Math.sin(toE - aimAngle), Math.cos(toE - aimAngle)));
           if (diff <= 1.25 || dSq < 28 * 28) {
-            ie.hp -= def.damage;
+            ie.hp -= attackDamage;
             ie.hitFlashTime = now;
             ie.alerted = true;
             ensureWarWithFaction(ie.factionId);
@@ -1297,7 +1349,7 @@ export default function App() {
             hitCount++;
 
             spawnParticles(ie.x, ie.y, 7, '#F8FAFC', 'SPARK', 90, 3, true);
-            addFloatingText(ie.x, ie.y - 20, `-${def.damage}`, '#FDE047');
+            addFloatingText(ie.x, ie.y - 20, `-${attackDamage}`, '#FDE047');
 
             if (ie.hp <= 0) {
               recordEnemyDefeat(ie, now);
@@ -1346,7 +1398,7 @@ export default function App() {
           y: startY,
           vx: Math.cos(shotA) * def.projectileSpeed,
           vy: Math.sin(shotA) * def.projectileSpeed,
-          damage: def.damage,
+          damage: attackDamage,
           color: def.color,
           life: def.range / def.projectileSpeed,
         });
@@ -1495,7 +1547,8 @@ export default function App() {
     sim.screenShake = Math.max(sim.screenShake, 2.5);
 
     const countPerSide = getCannonCountPerSide(cannonLvl);
-    const damage = getCannonDamage(cannonLvl);
+    const relicBonuses = getRelicSetBonuses(saveRef.current.collectedRelicIds ?? []);
+    const damage = Math.round(getCannonDamage(cannonLvl) * relicBonuses.cannonDmgMult);
     const shipSpec = getShipClass(saveRef.current.upgrades.boatLevel);
     if (onlineActiveRef.current) {
       soundEngine.playCannonFire(true);
@@ -1521,7 +1574,7 @@ export default function App() {
     );
   }, [fireBroadside]);
 
-  // Realistic Multi-Stage Digging Physics (+ chance to unearth bonus weapons!)
+  // Realistic Multi-Stage Digging Physics (+ chance to unearth bonus weapons & relics!)
   const handleDig = useCallback(() => {
     if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
     const sim = simRef.current;
@@ -1573,8 +1626,14 @@ export default function App() {
     if (hitTreasure && newDepth >= requiredDepth) {
       soundEngine.playDig(true, false);
       spawnParticles(targetX, targetY, 24, '#FBBF24', 'GOLD', 145, 4.2, true);
+      markTutorialStep('tut_dig');
 
-      const valueMult = getValueMultiplier(saveRef.current.upgrades.luckLevel);
+      const relicBonuses = getRelicSetBonuses(saveRef.current.collectedRelicIds ?? []);
+      const cycleInfo = getWorldCycleInfo(saveRef.current.worldTimeSec ?? 36);
+      const valueMult =
+        getValueMultiplier(saveRef.current.upgrades.luckLevel) *
+        relicBonuses.treasureValueMult *
+        (1 + cycleInfo.treasureLuckBonus);
       const finalValue = Math.round((hitTreasure.template.baseValue * valueMult) / 5) * 5;
       const instantBonus = 25;
 
@@ -1585,6 +1644,32 @@ export default function App() {
         const candidate = pool[Math.floor(Math.random() * pool.length)];
         if (!saveRef.current.unlockedWeapons.includes(candidate)) {
           foundWeapon = candidate;
+        }
+      }
+
+      // Chance to unearth an undiscovered Relic (doubled during FOG or TREASURE_TIDE events!)
+      let foundRelicId: string | null = null;
+      if (!onlineActiveRef.current) {
+        const ownedRelics = new Set(saveRef.current.collectedRelicIds ?? []);
+        const missingRelics = RELIC_DEFS.filter((r) => !ownedRelics.has(r.id));
+        if (missingRelics.length > 0) {
+          const evType = activeWorldEventRef.current?.type;
+          const baseChance = island.isStarter ? 0.14 : 0.28;
+          const relicChance =
+            evType === 'FOG' || evType === 'TREASURE_TIDE' ? baseChance * 2 : baseChance;
+          if (Math.random() < relicChance) {
+            const pick = missingRelics[Math.floor(Math.random() * missingRelics.length)];
+            foundRelicId = pick.id;
+            soundEngine.playRelicFound();
+            addFloatingText(
+              targetX,
+              targetY - 46,
+              `Kalıntı Bulundu: ${
+                settingsRef.current.language === 'en' ? pick.nameEn : pick.name
+              }!`,
+              '#C084FC'
+            );
+          }
         }
       }
 
@@ -1647,6 +1732,11 @@ export default function App() {
           foundWeapon && !prev.unlockedWeapons.includes(foundWeapon)
             ? [...prev.unlockedWeapons, foundWeapon]
             : prev.unlockedWeapons;
+        const prevRelics = prev.collectedRelicIds ?? [];
+        const nextRelics =
+          foundRelicId && !prevRelics.includes(foundRelicId)
+            ? [...prevRelics, foundRelicId]
+            : prevRelics;
 
         return {
           ...prev,
@@ -1657,6 +1747,7 @@ export default function App() {
             ? pickStrongerWeapon(prev.equippedWeapon, foundWeapon)
             : prev.equippedWeapon,
           unlockedWeapons: nextUnlocked,
+          collectedRelicIds: nextRelics,
           openedTreasureIds: [...prev.openedTreasureIds, hitTreasure.id],
           dugCraters: updatedCraters,
           bag: [...prev.bag, bagItem],
@@ -1707,7 +1798,7 @@ export default function App() {
         return { ...prev, dugCraters: updatedCraters };
       });
     }
-  }, [addFloatingText, commitSave, findStandingIsland, spawnParticles]);
+  }, [addFloatingText, commitSave, findStandingIsland, markTutorialStep, spawnParticles]);
 
   const handleToggleBoat = useCallback(() => {
     if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
@@ -1723,6 +1814,7 @@ export default function App() {
         sim.playerX = sim.boatX;
         sim.playerY = sim.boatY;
         soundEngine.playBoatBoard(true);
+        markTutorialStep('tut_boat');
         addFloatingText(sim.boatX, sim.boatY - 26, `${shipSpec.name} · Yelken Açıldı`, '#6EE7B7');
         commitSave((prev) => ({
           ...prev,
@@ -1780,15 +1872,17 @@ export default function App() {
         });
       }
     }
-  }, [addFloatingText, commitSave, findNearestShoreIsland]);
+  }, [addFloatingText, commitSave, findNearestShoreIsland, markTutorialStep]);
 
   const handleRadar = useCallback(() => {
     if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
     const sim = simRef.current;
     const now = performance.now();
-    const cooldown = getRadarCooldownMs(saveRef.current.upgrades.radarLevel);
+    const relicBonuses = getRelicSetBonuses(saveRef.current.collectedRelicIds ?? []);
+    const cooldown = getRadarCooldownMs(saveRef.current.upgrades.radarLevel) * relicBonuses.cooldownMult;
     if (now - sim.lastRadarTime < cooldown) return;
     sim.lastRadarTime = now;
+    markTutorialStep('tut_radar');
 
     const px = sim.isSailing ? sim.boatX : sim.playerX;
     const py = sim.isSailing ? sim.boatY : sim.playerY;
@@ -1828,20 +1922,20 @@ export default function App() {
     }
 
     let heat: HeatTier = 'NONE';
-    let label = 'Yakında hazine yok';
+    let label = settingsRef.current.language === 'en' ? 'No treasure nearby' : 'Yakında hazine yok';
     if (closestAngle !== null) {
       if (closestDist <= 85) {
         heat = 'HOT';
-        label = 'Çok Sıcak! Burayı Kaz';
+        label = settingsRef.current.language === 'en' ? 'Very Hot! Dig Here' : 'Çok Sıcak! Burayı Kaz';
       } else if (closestDist <= 220) {
         heat = 'WARM';
-        label = 'Sıcak';
+        label = settingsRef.current.language === 'en' ? 'Warm' : 'Sıcak';
       } else if (closestDist <= 460) {
         heat = 'COOL';
-        label = 'Ilık';
+        label = settingsRef.current.language === 'en' ? 'Cool' : 'Ilık';
       } else {
         heat = 'COLD';
-        label = 'Soğuk';
+        label = settingsRef.current.language === 'en' ? 'Cold' : 'Soğuk';
       }
     }
 
@@ -1863,11 +1957,257 @@ export default function App() {
       angle: closestAngle,
       timestamp: Date.now(),
     });
-  }, [findStandingIsland]);
+  }, [findStandingIsland, markTutorialStep]);
+
+  const handleTriggerAbility = useCallback(() => {
+    if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
+    const sim = simRef.current;
+    const now = performance.now();
+    const relicBonuses = getRelicSetBonuses(saveRef.current.collectedRelicIds ?? []);
+    const cd = ABILITY_BASE_COOLDOWN_MS * relicBonuses.cooldownMult;
+    if (now - sim.lastAbilityTime < cd) return;
+
+    sim.lastAbilityTime = now;
+    sim.abilityAuraUntilMs = now + 6000;
+    sim.screenShake = Math.max(sim.screenShake, 2.5);
+    soundEngine.playAbilityOrder();
+
+    const isEn = settingsRef.current.language === 'en';
+    if (sim.isSailing) {
+      const maxHp = getMaxBoatHp(saveRef.current.upgrades.boatLevel);
+      sim.boatHp = Math.min(maxHp, sim.boatHp + 28);
+      sim.boatVx += Math.cos(sim.boatAngle) * 145;
+      sim.boatVy += Math.sin(sim.boatAngle) * 145;
+      spawnParticles(sim.boatX, sim.boatY, 16, '#38BDF8', 'WATER', 130, 4, true);
+      addFloatingText(
+        sim.boatX,
+        sim.boatY - 30,
+        isEn ? 'Full Speed & Repairs!' : 'Tam Yol & Hızlı Onarım!',
+        '#6EE7B7'
+      );
+    } else {
+      const maxCapHp = MAX_PLAYER_HP + relicBonuses.extraPlayerMaxHp;
+      sim.playerHp = Math.min(maxCapHp, sim.playerHp + 20);
+      for (const sol of sim.allySoldiers) {
+        if (sol.hp > 0) sol.hp = Math.min(sol.maxHp, sol.hp + sol.maxHp * 0.25);
+      }
+      spawnParticles(sim.playerX, sim.playerY, 20, '#FBBF24', 'GOLD', 140, 3.8, true);
+
+      // Shockwave area damage around Captain
+      const shockDmg = 28 + (saveRef.current.upgrades.crewSkillLevel ?? 1) * 4;
+      const nearby = enemyCombatGridRef.current.queryRadius(
+        sim.playerX,
+        sim.playerY,
+        150,
+        enemyQueryBufRef.current
+      );
+      for (let i = 0; i < nearby.length; i++) {
+        const ie = nearby[i];
+        if (ie.hp <= 0) continue;
+        const dx = ie.x - sim.playerX;
+        const dy = ie.y - sim.playerY;
+        const d = Math.hypot(dx, dy);
+        if (d <= 150) {
+          ie.hp -= shockDmg;
+          ie.hitFlashTime = now;
+          ie.alerted = true;
+          ensureWarWithFaction(ie.factionId);
+          if (d > 1) {
+            ie.x += (dx / d) * 28;
+            ie.y += (dy / d) * 28;
+          }
+          addFloatingText(ie.x, ie.y - 20, `-${shockDmg}`, '#FDE047', false);
+          if (ie.hp <= 0) recordEnemyDefeat(ie, now);
+        }
+      }
+      for (let i = sim.islandEnemies.length - 1; i >= 0; i--) {
+        if (sim.islandEnemies[i].hp <= 0) {
+          sim.islandEnemies[i] = sim.islandEnemies[sim.islandEnemies.length - 1];
+          sim.islandEnemies.pop();
+        }
+      }
+      addFloatingText(
+        sim.playerX,
+        sim.playerY - 32,
+        isEn ? 'War Cry! Troops Boosted!' : 'Savaş Emri! Ordu Güçlendi!',
+        '#FDE047'
+      );
+    }
+  }, [addFloatingText, ensureWarWithFaction, recordEnemyDefeat, spawnParticles]);
+
+  const handleClaimMilestone = useCallback(
+    (milestoneId: string) => {
+      if (onlineActiveRef.current) return;
+      const ms = CAMPAIGN_MILESTONES.find((m) => m.id === milestoneId);
+      if (!ms) return;
+      const s = saveRef.current;
+      if ((s.claimedMilestoneIds ?? []).includes(milestoneId)) return;
+      const statsInput: CampaignStatsInput = {
+        treasuresFoundCount: s.treasuresFoundCount,
+        enemiesSunkCount: s.enemiesSunkCount,
+        landEnemiesDefeated: s.landEnemiesDefeated,
+        discoveredIslandsCount: s.discoveredIslandIds.length,
+        conqueredIslandsCount: s.kingdom.conqueredIslandIds.length,
+        kingdomFounded: s.kingdom.founded,
+        boatLevel: s.upgrades.boatLevel,
+        collectedRelicsCount: (s.collectedRelicIds ?? []).length,
+        totalGoldEarned: s.totalGoldEarned,
+        stormsSurvivedCount: s.stormsSurvivedCount ?? 0,
+        soldiersCount: s.kingdom.soldiers.length,
+        escortShipCount: s.kingdom.escortShipCount,
+      };
+      if (!ms.isComplete(statsInput)) return;
+
+      soundEngine.playUpgrade();
+      commitSave((prev) => ({
+        ...prev,
+        gold: prev.gold + ms.rewardGold,
+        totalGoldEarned: prev.totalGoldEarned + ms.rewardGold,
+        claimedMilestoneIds: [...(prev.claimedMilestoneIds ?? []), milestoneId],
+      }));
+    },
+    [commitSave]
+  );
+
+  const buildSyncedOfflineSave = useCallback((): SaveData => {
+    const sim = simRef.current;
+    return {
+      ...saveRef.current,
+      boatHp: Math.round(sim.boatHp),
+      playerHp: Math.round(sim.playerHp),
+      kingdom: {
+        ...saveRef.current.kingdom,
+        soldiers: sim.allySoldiers.map((sol) => ({
+          id: sol.id,
+          type: sol.type,
+          hp: Math.max(1, Math.round(sol.hp)),
+          maxHp: sol.maxHp,
+        })),
+        escortShipCount: sim.allyShips.length,
+      },
+      player: {
+        x: sim.playerX,
+        y: sim.playerY,
+        angle: sim.playerAngle,
+        isSailing: sim.isSailing,
+      },
+      boat: {
+        x: sim.boatX,
+        y: sim.boatY,
+        angle: sim.boatAngle,
+      },
+    };
+  }, []);
+
+  const handleQuickSave = useCallback(() => {
+    if (onlineActiveRef.current) return;
+    const snap = buildSyncedOfflineSave();
+    saveRef.current = snap;
+    setSave(snap);
+    persistSaveData(snap);
+    saveToSlot(1, snap);
+    soundEngine.playSellCoins();
+    const sim = simRef.current;
+    addFloatingText(
+      sim.isSailing ? sim.boatX : sim.playerX,
+      (sim.isSailing ? sim.boatY : sim.playerY) - 34,
+      settingsRef.current.language === 'en' ? 'Quick Saved!' : 'Hızlı Kayıt Alındı!',
+      '#6EE7B7'
+    );
+  }, [addFloatingText, buildSyncedOfflineSave]);
+
+  const handleSaveToSlot = useCallback(
+    (slot: number) => {
+      if (onlineActiveRef.current) return;
+      const snap = buildSyncedOfflineSave();
+      saveRef.current = snap;
+      setSave(snap);
+      persistSaveData(snap);
+      saveToSlot(slot, snap);
+      soundEngine.playSellCoins();
+    },
+    [buildSyncedOfflineSave]
+  );
+
+  const applyOfflineLoadedSave = useCallback(
+    (loaded: SaveData) => {
+      worldManagerRef.current.setOnlineMode(false);
+      worldManagerRef.current.setSeed(loaded.worldSeed);
+      worldManagerRef.current.setLuckLevel(loaded.upgrades.luckLevel);
+      saveRef.current = loaded;
+      setSave(loaded);
+      persistSaveData(loaded);
+      setHasSavedProgress(true);
+      applySaveSnapshotToSim(loaded, true);
+      activeWorldEventRef.current = null;
+      setActiveWorldEvent(null);
+      setLastRadar(null);
+    },
+    [applySaveSnapshotToSim]
+  );
+
+  const handleLoadFromSlot = useCallback(
+    (slot: number) => {
+      if (onlineActiveRef.current) return;
+      const loaded = loadFromSlot(slot);
+      if (!loaded) return;
+      applyOfflineLoadedSave(loaded);
+      soundEngine.playUpgrade();
+      setActiveModal('NONE');
+    },
+    [applyOfflineLoadedSave]
+  );
+
+  const handleStartWithSeed = useCallback(
+    (seed: number) => {
+      if (onlineActiveRef.current) return;
+      const fresh = createInitialSave(seed);
+      worldManagerRef.current.setOnlineMode(false);
+      worldManagerRef.current.setSeed(fresh.worldSeed);
+      worldManagerRef.current.setLuckLevel(1);
+      const starter = worldManagerRef.current.getIslandAtSector(0, 0);
+      if (starter) {
+        const coastR = getIslandRadiusAtAngle(starter, 0.12);
+        fresh.player.x = Math.cos(0.12) * (coastR * 0.45);
+        fresh.player.y = Math.sin(0.12) * (coastR * 0.45);
+        fresh.boat.x = Math.cos(0.12) * (coastR + 36);
+        fresh.boat.y = Math.sin(0.12) * (coastR + 36);
+      }
+      applyOfflineLoadedSave(fresh);
+      setActiveModal('NONE');
+    },
+    [applyOfflineLoadedSave]
+  );
+
+  const handleExportSave = useCallback(() => {
+    const snap = buildSyncedOfflineSave();
+    return JSON.stringify(snap, null, 2);
+  }, [buildSyncedOfflineSave]);
+
+  const handleImportSave = useCallback(
+    (jsonStr: string): boolean => {
+      if (onlineActiveRef.current) return false;
+      try {
+        const parsed = normalizeSaveData(JSON.parse(jsonStr));
+        if (!parsed) return false;
+        applyOfflineLoadedSave(parsed);
+        soundEngine.playUpgrade();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [applyOfflineLoadedSave]
+  );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const code = e.code;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
       simRef.current.keys.add(code);
 
       if (code === 'Escape' && activeModal !== 'NONE') {
@@ -1876,30 +2216,43 @@ export default function App() {
       }
       if (phaseRef.current !== 'PLAYING') return;
 
-      if (code === 'KeyM') {
+      if (code === 'F5' && !onlineActiveRef.current) {
+        e.preventDefault();
+        handleQuickSave();
+        return;
+      }
+
+      const kb = settingsRef.current.keybindings;
+      if (code === kb.map) {
         setActiveModal((prev) => (prev === 'MAP' ? 'NONE' : 'MAP'));
         return;
       }
-      if (code === 'KeyT') {
+      if (code === kb.shop) {
         setActiveModal((prev) => (prev === 'SHOP' ? 'NONE' : 'SHOP'));
         return;
       }
-      if (code === 'KeyK') {
+      if (code === kb.kingdom) {
         setActiveModal((prev) => (prev === 'KINGDOM' ? 'NONE' : 'KINGDOM'));
+        return;
+      }
+      if (code === kb.journal) {
+        setActiveModal((prev) => (prev === 'JOURNAL' ? 'NONE' : 'JOURNAL'));
         return;
       }
       if (modalRef.current !== 'NONE') return;
 
-      if (code === 'Space') {
+      if (code === kb.digOrFire || code === 'Space') {
         e.preventDefault();
         if (simRef.current.isSailing) handleFireCannons();
         else handleDig();
-      } else if (code === 'KeyF') {
+      } else if (code === kb.attack) {
         handleAttackLand();
-      } else if (code === 'KeyE') {
+      } else if (code === kb.boat) {
         handleToggleBoat();
-      } else if (code === 'KeyR') {
+      } else if (code === kb.radar) {
         handleRadar();
+      } else if (code === kb.ability) {
+        handleTriggerAbility();
       }
     };
 
@@ -1913,7 +2266,16 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [activeModal, handleAttackLand, handleDig, handleFireCannons, handleRadar, handleToggleBoat]);
+  }, [
+    activeModal,
+    handleAttackLand,
+    handleDig,
+    handleFireCannons,
+    handleQuickSave,
+    handleRadar,
+    handleToggleBoat,
+    handleTriggerAbility,
+  ]);
 
   // Main 60fps Loop
   useEffect(() => {
@@ -1961,6 +2323,96 @@ export default function App() {
       const activeCenterY = sim.isSailing ? sim.boatY : sim.playerY;
       const visibleIslands = worldManagerRef.current.getVisibleIslands(activeCenterX, activeCenterY, 2);
 
+      const relicBonuses = getRelicSetBonuses(currentSave.collectedRelicIds ?? []);
+      const crewBonuses = getCrewSkillBonuses(currentSave.upgrades.crewSkillLevel ?? 1);
+      const totalArmorReduction = Math.min(
+        0.6,
+        getDamageReductionRatio(currentSave.upgrades.hullPlatingLevel ?? 1) +
+          relicBonuses.extraArmorReduction
+      );
+      const effectiveMaxPlayerHp = MAX_PLAYER_HP + relicBonuses.extraPlayerMaxHp;
+
+      if (isPlaying && !onlineActiveRef.current) {
+        saveRef.current.playTimeSec = (saveRef.current.playTimeSec ?? 0) + dt;
+        saveRef.current.worldTimeSec = (saveRef.current.worldTimeSec ?? 36) + dt;
+      }
+      const cycleInfo = getWorldCycleInfo(saveRef.current.worldTimeSec ?? 36);
+
+      // Random World Events Scheduler (Offline)
+      if (isPlaying && !onlineActiveRef.current) {
+        const curEv = activeWorldEventRef.current;
+        if (curEv && now >= curEv.endsAt) {
+          const endedType = curEv.type;
+          activeWorldEventRef.current = null;
+          setActiveWorldEvent(null);
+          if (endedType === 'STORM') {
+            addFloatingText(
+              activeCenterX,
+              activeCenterY - 40,
+              currentSettings.language === 'en' ? 'Storm Cleared!' : 'Fırtına Dindi!',
+              '#7DD3FC'
+            );
+            commitSave((prev) => ({
+              ...prev,
+              stormsSurvivedCount: (prev.stormsSurvivedCount ?? 0) + 1,
+            }));
+          }
+        } else if (!curEv && now >= sim.nextWorldEventTime) {
+          sim.nextWorldEventTime = now + 52000 + Math.random() * 28000;
+          const ev = createWorldEvent(cycleInfo.season, now);
+          activeWorldEventRef.current = ev;
+          setActiveWorldEvent(ev);
+          addFloatingText(activeCenterX, activeCenterY - 48, ev.title, '#FDE047');
+
+          if (ev.type === 'STORM') {
+            soundEngine.playStormThunder();
+          } else if (ev.type === 'TREASURE_TIDE') {
+            for (let k = 0; k < 4; k++) {
+              const a = Math.random() * Math.PI * 2;
+              const r = 240 + Math.random() * 240;
+              const lx = activeCenterX + Math.cos(a) * r;
+              const ly = activeCenterY + Math.sin(a) * r;
+              if (!visibleIslands.some((isl) => isPointOnIsland(isl, lx, ly, 20))) {
+                sim.floatingLoot.push({
+                  id: `tide_${Date.now()}_${k}`,
+                  x: lx,
+                  y: ly,
+                  goldValue: 55 + Math.floor(Math.random() * 45),
+                  bobOffset: Math.random() * Math.PI * 2,
+                  life: 45,
+                });
+              }
+            }
+          } else if (ev.type === 'BOUNTY_CONVOY') {
+            const ba = Math.random() * Math.PI * 2;
+            const bx = activeCenterX + Math.cos(ba) * 680;
+            const by = activeCenterY + Math.sin(ba) * 680;
+            if (!visibleIslands.some((isl) => isPointOnIsland(isl, bx, by, 50))) {
+              const spec = getEnemyShipSpec(3);
+              sim.enemies.push({
+                id: `bounty_${Date.now()}`,
+                name: 'Kraliyet Hazine Kalyonu (Ödül)',
+                factionId: 'CORSAIR',
+                x: bx,
+                y: by,
+                angle: Math.atan2(activeCenterY - by, activeCenterX - bx),
+                speed: spec.speed * 0.92,
+                hp: Math.round(spec.maxHp * 1.4),
+                maxHp: Math.round(spec.maxHp * 1.4),
+                lastFireTime: now,
+                hitFlashTime: -1000,
+                patrolAngle: Math.random() * Math.PI * 2,
+                broadsideSign: 1,
+                goldBounty: spec.bounty * 2,
+                tier: 3,
+                isEventBoss: true,
+              });
+              soundEngine.playWarHorn();
+            }
+          }
+        }
+      }
+
       // Lazily populate island enemies & refresh garrison when island ownership changes
       for (const isl of visibleIslands) {
         const effFaction = getEffectiveIslandFaction(
@@ -2003,12 +2455,15 @@ export default function App() {
       }
 
       // Player & Realistic Hydrodynamic Boat Movement
+      const abilityActive = now < sim.abilityAuraUntilMs;
+      const shipSpeedMult = relicBonuses.shipSpeedMult * (abilityActive ? 1.2 : 1);
+      const effectiveMaxBoatSpeed = activeShipSpec.maxSpeed * shipSpeedMult;
       if (sim.isSailing) {
         if (isPlaying) {
           const curCos = Math.cos(sim.boatAngle);
           const curSin = Math.sin(sim.boatAngle);
           const curForward = sim.boatVx * curCos + sim.boatVy * curSin;
-          const speedFactor = clamp(Math.abs(curForward) / activeShipSpec.maxSpeed, 0, 1);
+          const speedFactor = clamp(Math.abs(curForward) / effectiveMaxBoatSpeed, 0, 1);
 
           if (inputMag > 0.05) {
             const targetAngle = Math.atan2(iy, ix);
@@ -2025,8 +2480,8 @@ export default function App() {
             const alignFactor = clamp((Math.cos(angleDiff) + 1) * 0.5, 0.24, 1);
             const bowX = Math.cos(sim.boatAngle);
             const bowY = Math.sin(sim.boatAngle);
-            sim.boatVx += bowX * activeShipSpec.accel * inputMag * alignFactor * dt;
-            sim.boatVy += bowY * activeShipSpec.accel * inputMag * alignFactor * dt;
+            sim.boatVx += bowX * activeShipSpec.accel * shipSpeedMult * inputMag * alignFactor * dt;
+            sim.boatVy += bowY * activeShipSpec.accel * shipSpeedMult * inputMag * alignFactor * dt;
           }
 
           // Decompose velocity into forward & lateral components for keel carving & water drag
@@ -2043,7 +2498,7 @@ export default function App() {
           // Hydrodynamic hull drag (higher coasting resistance when sails are slackened)
           const coastFactor = inputMag > 0.05 ? 1 : 1.25;
           fwd *= Math.exp(-activeShipSpec.waterDrag * coastFactor * dt);
-          fwd = clamp(fwd, -activeShipSpec.maxSpeed * 0.35, activeShipSpec.maxSpeed);
+          fwd = clamp(fwd, -effectiveMaxBoatSpeed * 0.35, effectiveMaxBoatSpeed);
 
           if (inputMag <= 0.05 && Math.hypot(fwd, lat) < 3) {
             fwd = 0;
@@ -2083,7 +2538,7 @@ export default function App() {
           sim.playerY = nextY;
 
           const totalSpeed = Math.hypot(sim.boatVx, sim.boatVy);
-          sim.boatSpeedRatio = clamp(totalSpeed / activeShipSpec.maxSpeed, 0, 1);
+          sim.boatSpeedRatio = clamp(totalSpeed / effectiveMaxBoatSpeed, 0, 1);
 
           if (
             sim.boatSpeedRatio > 0.08 &&
@@ -2141,8 +2596,9 @@ export default function App() {
           sim.playerAngle = lerpAngle(sim.playerAngle, targetAngle, Math.min(1, dt * 14));
           sim.walkPhase += dt * 13 * Math.min(1, inputMag);
 
-          let nextX = sim.playerX + ix * PLAYER_SPEED * dt;
-          let nextY = sim.playerY + iy * PLAYER_SPEED * dt;
+          const footSpeed = PLAYER_SPEED * crewBonuses.footSpeedMult * (abilityActive ? 1.15 : 1);
+          let nextX = sim.playerX + ix * footSpeed * dt;
+          let nextY = sim.playerY + iy * footSpeed * dt;
 
           const currentIsland = findStandingIsland(sim.playerX, sim.playerY);
           if (currentIsland) {
@@ -2487,7 +2943,13 @@ export default function App() {
 
           if (hasTarget) {
             moveSpeed = stats.moveSpeed;
-            if (ie.combatStyle === 'MELEE') {
+            const lowHpRetreat = ie.hp < ie.maxHp * 0.28 && (ie.combatStyle === 'RANGED' || ie.tier === 1);
+            if (lowHpRetreat) {
+              const awayA = Math.atan2(ie.y - targetEntityY, ie.x - targetEntityX);
+              targetX = ie.x + Math.cos(awayA) * 90;
+              targetY = ie.y + Math.sin(awayA) * 90;
+              moveSpeed = stats.moveSpeed * 1.08;
+            } else if (ie.combatStyle === 'MELEE') {
               const flankAngle =
                 ie.role === 'FLANKER' ? (ei % 2 === 0 ? 0.55 : -0.55) : 0;
               const approachA =
@@ -2600,10 +3062,14 @@ export default function App() {
                     addFloatingText(targetAlly.x, targetAlly.y - 26, 'Asker Düştü!', '#F87171', false);
                   }
                 } else if (targetKind === 'PLAYER') {
-                  sim.playerHp = Math.max(0, sim.playerHp - dmg);
+                  const reducedDmg = Math.max(
+                    1,
+                    Math.round(dmg * cycleInfo.enemyPowerMult * (1 - totalArmorReduction))
+                  );
+                  sim.playerHp = Math.max(0, sim.playerHp - reducedDmg);
                   sim.playerHitFlashUntil = now + 150;
                   sim.screenShake = Math.max(sim.screenShake, 3);
-                  addFloatingText(sim.playerX, sim.playerY - 22, `-${dmg}`, '#F87171', false);
+                  addFloatingText(sim.playerX, sim.playerY - 22, `-${reducedDmg}`, '#F87171', false);
                 }
               } else if (
                 ie.combatStyle === 'RANGED' &&
@@ -2669,7 +3135,8 @@ export default function App() {
           }
 
           const spec = SOLDIER_SPECS[sol.type] ?? SOLDIER_SPECS.SWORDSMAN;
-          const effectiveDmg = Math.round(spec.damage * dmgMult);
+          const abilityBoostMult = abilityActive ? 1.25 : 1;
+          const effectiveDmg = Math.round(spec.damage * dmgMult * abilityBoostMult);
 
           // 1. Staggered target acquisition via coarse combat SpatialGrid
           let nearestEnemy: IslandEnemy | null =
@@ -3039,14 +3506,18 @@ export default function App() {
             const pdx = lp.x - sim.playerX;
             const pdy = lp.y - sim.playerY;
             if (pdx * pdx + pdy * pdy <= 196) {
-              sim.playerHp = Math.max(0, sim.playerHp - lp.damage);
+              const reducedDmg = Math.max(
+                1,
+                Math.round(lp.damage * cycleInfo.enemyPowerMult * (1 - totalArmorReduction))
+              );
+              sim.playerHp = Math.max(0, sim.playerHp - reducedDmg);
               sim.playerHitFlashUntil = now + 150;
               sim.screenShake = Math.max(sim.screenShake, 2.8);
               if (now - sim.lastSoldierSfxTime > 95) {
                 sim.lastSoldierSfxTime = now;
                 soundEngine.playCannonHit();
               }
-              addFloatingText(sim.playerX, sim.playerY - 22, `-${lp.damage}`, '#F87171', false);
+              addFloatingText(sim.playerX, sim.playerY - 22, `-${reducedDmg}`, '#F87171', false);
               hit = true;
             } else {
               allyCombatGrid.queryRadius(lp.x, lp.y, 20, allyQueryBuf);
@@ -3162,7 +3633,7 @@ export default function App() {
         }));
       }
 
-      // Gentle player & soldier heal on Starter Capital or Conquered Islands
+      // Gentle player & soldier heal on Starter Capital / Conquered Islands + passive Crew regen
       if (isPlaying && !sim.isSailing) {
         const standing = findStandingIsland(sim.playerX, sim.playerY);
         const isOwnStarter =
@@ -3173,14 +3644,19 @@ export default function App() {
           standing &&
           (isOwnStarter || currentSave.kingdom.conqueredIslandIds.includes(standing.id));
         if (isFriendlyTerritory) {
-          if (sim.playerHp < MAX_PLAYER_HP) {
-            sim.playerHp = Math.min(MAX_PLAYER_HP, sim.playerHp + 14 * dt);
+          if (sim.playerHp < effectiveMaxPlayerHp) {
+            sim.playerHp = Math.min(effectiveMaxPlayerHp, sim.playerHp + 14 * dt);
           }
           for (const sol of sim.allySoldiers) {
             if (sol.hp < sol.maxHp) {
               sol.hp = Math.min(sol.maxHp, sol.hp + 10 * dt);
             }
           }
+        } else if (now - sim.playerHitFlashUntil > 4500 && sim.playerHp < effectiveMaxPlayerHp) {
+          sim.playerHp = Math.min(
+            effectiveMaxPlayerHp,
+            sim.playerHp + crewBonuses.hpRegenPerSec * relicBonuses.regenMult * dt
+          );
         }
       }
 
@@ -3538,6 +4014,13 @@ export default function App() {
         for (let ei = 0; ei < sim.enemies.length; ei++) {
           const enemy = sim.enemies[ei];
           if (enemy.hp <= 0) continue;
+          if (
+            enemy.tier === 3 &&
+            enemy.hp < enemy.maxHp * 0.85 &&
+            now - enemy.hitFlashTime > 6500
+          ) {
+            enemy.hp = Math.min(enemy.maxHp, enemy.hp + 7 * dt);
+          }
           const shipSpec = getEnemyShipSpec(enemy.tier);
           const atWarWithPlayer =
             currentSave.kingdom.atWarWith.includes(enemy.factionId) ||
@@ -3666,8 +4149,13 @@ export default function App() {
       // Cannonballs Ballistics (SpatialGrid + swap-and-pop)
       if (isPlaying) {
         let playerPulledToDock = false;
+        const isStormActive = activeWorldEventRef.current?.type === 'STORM';
         for (let i = sim.cannonballs.length - 1; i >= 0; i--) {
           const cb = sim.cannonballs[i];
+          if (isStormActive) {
+            cb.vx += Math.sin(now * 0.001) * 32 * dt;
+            cb.vy += 24 * dt;
+          }
           cb.x += cb.vx * dt;
           cb.y += cb.vy * dt;
           cb.z += cb.vz * dt;
@@ -3723,7 +4211,7 @@ export default function App() {
                       id: `loot_${Date.now()}_${Math.random()}`,
                       x: enemy.x,
                       y: enemy.y,
-                      goldValue: enemy.goldBounty,
+                      goldValue: isStormActive ? Math.round(enemy.goldBounty * 1.5) : enemy.goldBounty,
                       bobOffset: Math.random() * Math.PI * 2,
                       life: 45,
                     });
@@ -3810,12 +4298,16 @@ export default function App() {
               sim.isSailing &&
               dist(cb.x, cb.y, sim.boatX, sim.boatY) <= activeShipSpec.hullRadius + 3
             ) {
-              sim.boatHp = Math.max(0, sim.boatHp - cb.damage);
+              const reducedDmg = Math.max(
+                1,
+                Math.round(cb.damage * cycleInfo.enemyPowerMult * (1 - totalArmorReduction))
+              );
+              sim.boatHp = Math.max(0, sim.boatHp - reducedDmg);
               sim.boatHitFlashUntil = now + 150;
               sim.screenShake = Math.max(sim.screenShake, 4.5);
               soundEngine.playCannonHit();
               spawnParticles(cb.x, cb.y, 8, '#B45309', 'SPLINTER', 110, 3.4, true);
-              addFloatingText(sim.boatX, sim.boatY - 26, `-${cb.damage} Gövde`, '#F87171');
+              addFloatingText(sim.boatX, sim.boatY - 26, `-${reducedDmg} Gövde`, '#F87171');
 
               if (sim.boatHp <= 0) {
                 const starter = worldManagerRef.current.getIslandAtSector(0, 0);
@@ -4614,6 +5106,14 @@ export default function App() {
                 }
               : null,
             hasTouchControls: hasTouchControlsRef.current,
+            colorblindMode: currentSettings.colorblindMode,
+            screenShakeIntensity: currentSettings.screenShakeIntensity,
+            worldCycle: {
+              darknessAlpha: cycleInfo.darknessAlpha,
+              tintColor: cycleInfo.tintColor,
+            },
+            activeWorldEventType: activeWorldEventRef.current?.type ?? null,
+            abilityAuraUntilMs: sim.abilityAuraUntilMs,
           });
         }
       }
@@ -4622,7 +5122,9 @@ export default function App() {
         lastHudSync = now;
         const digCd = getDigCooldownMs(currentSave.upgrades.shovelLevel);
         const cannonCd = getCannonCooldownMs(currentSave.upgrades.cannonLevel);
-        const radarCd = getRadarCooldownMs(currentSave.upgrades.radarLevel);
+        const radarCd =
+          getRadarCooldownMs(currentSave.upgrades.radarLevel) * relicBonuses.cooldownMult;
+        const abilityCd = ABILITY_BASE_COOLDOWN_MS * relicBonuses.cooldownMult;
         const attackCd = currentSave.equippedWeapon
           ? WEAPONS[currentSave.equippedWeapon].cooldownMs
           : 400;
@@ -4643,6 +5145,11 @@ export default function App() {
           if (dx * dx + dy * dy < 420 * 420) nearbyLandEnemies++;
         }
 
+        const isEn = currentSettings.language === 'en';
+        const cLabel = isEn
+          ? `Day ${cycleInfo.dayNumber} · ${cycleInfo.seasonLabelEn} · ${cycleInfo.periodLabelEn}`
+          : `Gün ${cycleInfo.dayNumber} · ${cycleInfo.seasonLabel} · ${cycleInfo.periodLabel}`;
+
         setHudState({
           canBoard: nearBoat,
           canDisembark: Boolean(nearShore),
@@ -4659,11 +5166,15 @@ export default function App() {
             ? postStandingIsl.name
             : nearShore
             ? `${nearShore.name} Açıkları`
+            : isEn
+            ? 'Open Sea'
             : 'Açık Deniz',
           digCooldownPct: clamp(1 - (now - sim.lastDigTime) / digCd, 0, 1),
           cannonCooldownPct: clamp(1 - (now - sim.lastCannonTime) / cannonCd, 0, 1),
           attackCooldownPct: clamp(1 - (now - sim.lastAttackTime) / attackCd, 0, 1),
           radarCooldownPct: clamp(1 - (now - sim.lastRadarTime) / radarCd, 0, 1),
+          abilityCooldownPct: clamp(1 - (now - sim.lastAbilityTime) / abilityCd, 0, 1),
+          cycleLabel: cLabel,
         });
       }
 
@@ -4707,6 +5218,7 @@ export default function App() {
     if (!hudState.nearDock || saveRef.current.bag.length === 0) return;
     const total = saveRef.current.bag.reduce((sum, i) => sum + i.value, 0);
     soundEngine.playSellCoins();
+    markTutorialStep('tut_shop');
     if (onlineActiveRef.current) {
       onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:sell_all' });
       return;
@@ -4717,19 +5229,20 @@ export default function App() {
       totalGoldEarned: prev.totalGoldEarned + total,
       bag: [],
     }));
-  }, [commitSave, hudState.nearDock]);
+  }, [commitSave, hudState.nearDock, markTutorialStep]);
 
   const handleBuyUpgrade = useCallback(
     (key: UpgradeKey) => {
       if (!hudState.nearDock) return;
       const def = UPGRADE_DEFS.find((d) => d.key === key);
       if (!def) return;
-      const currentLvl = saveRef.current.upgrades[key];
+      const currentLvl = saveRef.current.upgrades[key] ?? 1;
       if (currentLvl >= def.maxLevel) return;
       const cost = getUpgradeCost(def, currentLvl);
       if (saveRef.current.gold < cost) return;
 
       soundEngine.playUpgrade();
+      markTutorialStep('tut_shop');
       if (onlineActiveRef.current) {
         onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:buy_upgrade', key });
         return;
@@ -4749,13 +5262,14 @@ export default function App() {
         upgrades: nextUpgrades,
       }));
     },
-    [commitSave, hudState.nearDock]
+    [commitSave, hudState.nearDock, markTutorialStep]
   );
 
   const handleFoundKingdom = useCallback(
     (name: string, bannerColor: string) => {
       if (saveRef.current.gold < KINGDOM_COSTS.FOUND_KINGDOM) return;
       soundEngine.playConquestFanfare();
+      markTutorialStep('tut_kingdom');
       addFloatingText(
         simRef.current.isSailing ? simRef.current.boatX : simRef.current.playerX,
         (simRef.current.isSailing ? simRef.current.boatY : simRef.current.playerY) - 34,
@@ -4781,7 +5295,7 @@ export default function App() {
         },
       }));
     },
-    [addFloatingText, commitSave]
+    [addFloatingText, commitSave, markTutorialStep]
   );
 
   const handleRecruitSoldier = useCallback(
@@ -5108,8 +5622,104 @@ export default function App() {
     onlineOwnersForRenderRef.current = onlineIslandOwnersForDisplay;
   }, [onlineIslandOwnersForDisplay]);
 
+  // Automatic Offline Achievement Unlocker
+  useEffect(() => {
+    if (onlineActive || phase !== 'PLAYING') return;
+    const stats: CampaignStatsInput = {
+      treasuresFoundCount: save.treasuresFoundCount,
+      enemiesSunkCount: save.enemiesSunkCount,
+      landEnemiesDefeated: save.landEnemiesDefeated,
+      discoveredIslandsCount: save.discoveredIslandIds.length,
+      conqueredIslandsCount: save.kingdom.conqueredIslandIds.length,
+      kingdomFounded: save.kingdom.founded,
+      boatLevel: save.upgrades.boatLevel,
+      collectedRelicsCount: (save.collectedRelicIds ?? []).length,
+      totalGoldEarned: save.totalGoldEarned,
+      stormsSurvivedCount: save.stormsSurvivedCount ?? 0,
+      soldiersCount: save.kingdom.soldiers.length,
+      escortShipCount: save.kingdom.escortShipCount,
+    };
+    const already = new Set(save.unlockedAchievementIds ?? []);
+    const newlyUnlocked = ACHIEVEMENTS.filter((a) => !already.has(a.id) && a.check(stats));
+    if (newlyUnlocked.length === 0) return;
+
+    const totalBonus = newlyUnlocked.reduce((sum, a) => sum + a.rewardGold, 0);
+    soundEngine.playAchievement();
+    const sim = simRef.current;
+    const first = newlyUnlocked[0];
+    const title = settings.language === 'en' ? first.titleEn : first.title;
+    addFloatingText(
+      sim.isSailing ? sim.boatX : sim.playerX,
+      (sim.isSailing ? sim.boatY : sim.playerY) - 52,
+      `${settings.language === 'en' ? 'Achievement' : 'Başarım'}: ${title} (+${totalBonus}G)`,
+      '#FDE047'
+    );
+    commitSave((prev) => ({
+      ...prev,
+      gold: prev.gold + totalBonus,
+      totalGoldEarned: prev.totalGoldEarned + totalBonus,
+      unlockedAchievementIds: [
+        ...(prev.unlockedAchievementIds ?? []),
+        ...newlyUnlocked.map((a) => a.id),
+      ],
+    }));
+  }, [
+    onlineActive,
+    phase,
+    save.treasuresFoundCount,
+    save.enemiesSunkCount,
+    save.landEnemiesDefeated,
+    save.discoveredIslandIds.length,
+    save.kingdom.conqueredIslandIds.length,
+    save.kingdom.founded,
+    save.upgrades.boatLevel,
+    save.collectedRelicIds,
+    save.totalGoldEarned,
+    save.stormsSurvivedCount,
+    save.kingdom.soldiers.length,
+    save.kingdom.escortShipCount,
+    save.unlockedAchievementIds,
+    settings.language,
+    addFloatingText,
+    commitSave,
+  ]);
+
+  const claimableMilestoneCount = useMemo(() => {
+    if (onlineActive) return 0;
+    const stats: CampaignStatsInput = {
+      treasuresFoundCount: save.treasuresFoundCount,
+      enemiesSunkCount: save.enemiesSunkCount,
+      landEnemiesDefeated: save.landEnemiesDefeated,
+      discoveredIslandsCount: save.discoveredIslandIds.length,
+      conqueredIslandsCount: save.kingdom.conqueredIslandIds.length,
+      kingdomFounded: save.kingdom.founded,
+      boatLevel: save.upgrades.boatLevel,
+      collectedRelicsCount: (save.collectedRelicIds ?? []).length,
+      totalGoldEarned: save.totalGoldEarned,
+      stormsSurvivedCount: save.stormsSurvivedCount ?? 0,
+      soldiersCount: save.kingdom.soldiers.length,
+      escortShipCount: save.kingdom.escortShipCount,
+    };
+    const claimed = new Set(save.claimedMilestoneIds ?? []);
+    return CAMPAIGN_MILESTONES.filter((m) => !claimed.has(m.id) && m.isComplete(stats)).length;
+  }, [onlineActive, save]);
+
+  const nextTutorialStep = useMemo(() => {
+    if (onlineActive || !settings.showTutorialHints || phase !== 'PLAYING' || activeModal !== 'NONE') {
+      return null;
+    }
+    const done = new Set(save.tutorialCompleted ?? []);
+    return TUTORIAL_STEPS.find((step) => !done.has(step.id)) ?? null;
+  }, [onlineActive, settings.showTutorialHints, phase, activeModal, save.tutorialCompleted]);
+
+  const relicBonusesUi = useMemo(
+    () => getRelicSetBonuses(save.collectedRelicIds ?? []),
+    [save.collectedRelicIds]
+  );
+  const effectiveMaxPlayerHpUi = MAX_PLAYER_HP + relicBonusesUi.extraPlayerMaxHp;
+
   const activeHp = hudState.isSailing ? hudState.boatHp : hudState.playerHp;
-  const activeMaxHp = hudState.isSailing ? hudState.maxBoatHp : MAX_PLAYER_HP;
+  const activeMaxHp = hudState.isSailing ? hudState.maxBoatHp : effectiveMaxPlayerHpUi;
   const hpPct = clamp((activeHp / Math.max(1, activeMaxHp)) * 100, 0, 100);
   const weaponDef = hudState.equippedWeapon ? WEAPONS[hudState.equippedWeapon] : null;
   const isCompactHud = isCoarseDevice || isNarrowViewport;
@@ -5139,13 +5749,16 @@ export default function App() {
           savedGold={save.gold}
           discoveredCount={save.discoveredIslandIds.length}
           inviteRoomCode={inviteRoomCode}
+          language={settings.language}
           onStart={() => {
+            soundEngine.ensureAmbientOcean();
             onlineActiveRef.current = false;
             setOnlineActive(false);
             worldManagerRef.current.setOnlineMode(false);
             setPhase('PLAYING');
           }}
           onOpenOnline={() => {
+            soundEngine.ensureAmbientOcean();
             ensureOnlineManager();
             setShowOnlineLobby(true);
           }}
@@ -5191,6 +5804,21 @@ export default function App() {
 
       {phase === 'PLAYING' && (
         <div className="pointer-events-none fixed inset-0 z-20 pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-5 flex flex-col justify-between">
+          {/* Active World Event Banner (Top-Center) */}
+          {activeWorldEvent && !onlineActive && (
+            <div className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F2936]/90 border border-amber-400/45 text-xs text-amber-200 shadow-lg max-w-md">
+              {activeWorldEvent.type === 'STORM' ? (
+                <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              )}
+              <span className="font-semibold truncate">{activeWorldEvent.title}</span>
+              <span className="text-[11px] text-slate-300 truncate">
+                {activeWorldEvent.description}
+              </span>
+            </div>
+          )}
+
           {/* Top Row */}
           <div className="flex items-start justify-between gap-2 sm:gap-4">
             <div
@@ -5269,7 +5897,11 @@ export default function App() {
                   className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
                 >
                   <Store className="w-4 h-4" />
-                  <span>Tüccar İskelesi Açık (T)</span>
+                  <span>
+                    {settings.language === 'en'
+                      ? 'Merchant Dock Open (T)'
+                      : 'Tüccar İskelesi Açık (T)'}
+                  </span>
                 </button>
               )}
             </div>
@@ -5281,12 +5913,39 @@ export default function App() {
               nearDock={hudState.nearDock}
               kingdomFounded={save.kingdom.founded}
               soldierCount={save.kingdom.soldiers.length}
+              journalBadgeCount={claimableMilestoneCount}
+              cycleLabel={!onlineActive ? hudState.cycleLabel : undefined}
+              language={settings.language}
               onOpenSettings={() => setActiveModal('SETTINGS')}
               onOpenMap={() => setActiveModal('MAP')}
               onOpenShop={() => setActiveModal('SHOP')}
               onOpenKingdom={() => setActiveModal('KINGDOM')}
+              onOpenJournal={() => setActiveModal('JOURNAL')}
             />
           </div>
+
+          {/* Contextual Onboarding Hint Bar */}
+          {nextTutorialStep && (
+            <div className="pointer-events-auto self-center mb-1 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl max-w-lg">
+              <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
+              <div className="min-w-0">
+                <span className="font-bold text-amber-200 mr-1.5">
+                  {settings.language === 'en' ? nextTutorialStep.titleEn : nextTutorialStep.title}:
+                </span>
+                <span className="text-slate-200">
+                  {settings.language === 'en' ? nextTutorialStep.textEn : nextTutorialStep.text}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => markTutorialStep(nextTutorialStep.id)}
+                aria-label="Dismiss hint"
+                className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-white shrink-0 cursor-pointer"
+              >
+                <XIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Bottom Row */}
           <div className="flex items-end justify-between gap-2 sm:gap-4">
@@ -5312,12 +5971,17 @@ export default function App() {
               cannonCooldownPct={hudState.cannonCooldownPct}
               attackCooldownPct={hudState.attackCooldownPct}
               radarCooldownPct={hudState.radarCooldownPct}
+              abilityCooldownPct={hudState.abilityCooldownPct}
               lastRadar={lastRadar}
+              colorblindMode={settings.colorblindMode}
+              language={settings.language}
+              abilityKeyLabel={formatKeyCode(settings.keybindings.ability)}
               onDig={handleDig}
               onFireCannons={handleFireCannons}
               onAttackLand={handleAttackLand}
               onToggleBoat={handleToggleBoat}
               onRadar={handleRadar}
+              onTriggerAbility={handleTriggerAbility}
             />
           </div>
         </div>
@@ -5350,6 +6014,8 @@ export default function App() {
           onlineMode={onlineActive}
           onlinePlayers={onlineLobbyPlayers.filter((p) => p.id !== identity.playerId)}
           onlineIslandOwners={onlineIslandOwnersForDisplay}
+          colorblindMode={settings.colorblindMode}
+          language={settings.language}
           onClose={() => setActiveModal('NONE')}
         />
       )}
@@ -5388,13 +6054,29 @@ export default function App() {
         />
       )}
 
+      {activeModal === 'JOURNAL' && (
+        <JournalModal
+          save={save}
+          language={settings.language}
+          onClaimMilestone={handleClaimMilestone}
+          onClose={() => setActiveModal('NONE')}
+        />
+      )}
+
       {activeModal === 'SETTINGS' && (
         <SettingsModal
           settings={settings}
+          worldSeed={save.worldSeed}
           onlineMode={onlineActive}
           onlineRoomId={onlineRoomInfo?.roomId}
           onUpdateSettings={setSettings}
           onResetSave={handleResetSave}
+          onQuickSave={handleQuickSave}
+          onSaveToSlot={handleSaveToSlot}
+          onLoadFromSlot={handleLoadFromSlot}
+          onStartWithSeed={handleStartWithSeed}
+          onExportSave={handleExportSave}
+          onImportSave={handleImportSave}
           onLeaveToMenu={handleLeaveToMenu}
           onClose={() => setActiveModal('NONE')}
         />

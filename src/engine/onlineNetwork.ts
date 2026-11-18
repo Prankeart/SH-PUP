@@ -748,7 +748,7 @@ export class OnlineSessionManager {
     if (msg.type === 'cmd:buy_upgrade') {
       const def = UPGRADE_DEFS.find((d) => d.key === msg.key);
       if (!def) return;
-      const curLvl = prof.upgrades[msg.key as UpgradeKey];
+      const curLvl = prof.upgrades[msg.key as UpgradeKey] ?? 1;
       if (curLvl >= def.maxLevel) return;
       const cost = getUpgradeCost(def, curLvl);
       if (prof.gold < cost) return;

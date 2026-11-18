@@ -1,5 +1,17 @@
 import React from 'react';
-import { Backpack, Coins, Compass, Crosshair, Pickaxe, Ship, Sparkles, Store, X } from 'lucide-react';
+import {
+  Backpack,
+  Coins,
+  Compass,
+  Crosshair,
+  Pickaxe,
+  Shield,
+  Ship,
+  Sparkles,
+  Store,
+  Users,
+  X,
+} from 'lucide-react';
 import { BagItem, Upgrades } from '../types/game';
 import { getUpgradeCost, UPGRADE_DEFS, UpgradeKey } from '../engine/upgrades';
 
@@ -20,6 +32,8 @@ const UPGRADE_ICONS: Record<UpgradeKey, React.ReactNode> = {
   cannonLevel: <Crosshair className="w-5 h-5 text-red-400" />,
   radarLevel: <Compass className="w-5 h-5 text-emerald-300" />,
   luckLevel: <Sparkles className="w-5 h-5 text-yellow-300" />,
+  hullPlatingLevel: <Shield className="w-5 h-5 text-cyan-300" />,
+  crewSkillLevel: <Users className="w-5 h-5 text-purple-300" />,
 };
 
 const RARITY_LABELS: Record<BagItem['rarity'], string> = {
@@ -150,7 +164,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
             </h3>
             <div className="flex flex-col gap-2.5">
               {UPGRADE_DEFS.map((def) => {
-                const level = upgrades[def.key];
+                const level = upgrades[def.key] ?? 1;
                 const isMax = level >= def.maxLevel;
                 const cost = getUpgradeCost(def, level);
                 const canAfford = gold >= cost;
