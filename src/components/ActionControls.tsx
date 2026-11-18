@@ -37,6 +37,7 @@ const COMPACT_CONTAINER = { w: 176, h: 160, pad: 8 };
 const FULL_CONTAINER = { w: 224, h: 192, pad: 20 };
 
 const COMPACT_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
+  stance: { left: 56, top: -48, w: 44, h: 44 },
   fish: { left: 124, top: -48, w: 44, h: 44 },
   ability: { left: 48, top: 0, w: 44, h: 44 },
   attack: { left: 0, top: 48, w: 48, h: 48 },
@@ -46,6 +47,7 @@ const COMPACT_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
 };
 
 const FULL_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
+  stance: { left: 104, top: -52, w: 48, h: 48 },
   fish: { left: 172, top: -48, w: 44, h: 44 },
   ability: { left: 64, top: 0, w: 56, h: 56 },
   attack: { left: 4, top: 56, w: 60, h: 60 },
@@ -511,12 +513,14 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         : 'outline-dashed outline-2 outline-sky-300/75 cursor-move'
       : '';
 
+  const showStanceBtn = isEditingLayout || Boolean(onCycleStance && hasSoldiers && !isSailing);
   const showFishBtn = isEditingLayout || Boolean(onFish && (canFish || isFishing));
   const showAttackBtn = isEditingLayout || (!isSailing && Boolean(weaponDef));
 
   // Dynamically compute the top edge of all currently visible touch buttons so the Radar toast
-  // always appears cleanly ABOVE Olta / Radar / any customized button without overlapping!
+  // always appears cleanly ABOVE Olta / Ordu Düzeni / Radar / any customized button without overlapping!
   const visibleKeys: ActionButtonKey[] = ['ability', 'radar', 'boatOrInteract', 'digOrFire'];
+  if (showStanceBtn) visibleKeys.push('stance');
   if (showFishBtn) visibleKeys.push('fish');
   if (showAttackBtn) visibleKeys.push('attack');
 
@@ -533,6 +537,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   const toastTopCandidate = minVisibleTop - 40;
   const toastFitsAbove = containerScreenTop + toastTopCandidate >= 48;
 
+  const stanceGeom = getBtnGeom('stance');
   const fishGeom = getBtnGeom('fish');
   const abilityGeom = getBtnGeom('ability');
   const attackGeom = getBtnGeom('attack');
@@ -559,6 +564,55 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         style={{ width: `${container.w}px`, height: `${container.h}px` }}
         className="pointer-events-none relative touch-none"
       >
+        {/* Contextual Army Stance button (V key equivalent) on Touch HUD */}
+        {showStanceBtn && (
+          <button
+            type="button"
+            onPointerDown={
+              isEditingLayout
+                ? makeDragHandlers('stance').onPointerDown
+                : (e) => {
+                    e.preventDefault();
+                    onCycleStance?.();
+                  }
+            }
+            onPointerMove={makeDragHandlers('stance').onPointerMove}
+            onPointerUp={makeDragHandlers('stance').onPointerUp}
+            onPointerCancel={makeDragHandlers('stance').onPointerCancel}
+            aria-label={isEn ? 'Cycle Army Stance (V)' : 'Ordu Düzenini Değiştir (V)'}
+            title={isEn ? 'Cycle Army Stance (V)' : 'Ordu Düzenini Değiştir (V)'}
+            style={{
+              left: `${stanceGeom.r.left}px`,
+              top: `${stanceGeom.r.top}px`,
+              width: `${stanceGeom.r.w}px`,
+              height: `${stanceGeom.r.h}px`,
+              transform: `translate(${stanceGeom.t.dx}px, ${stanceGeom.t.dy}px) scale(${stanceGeom.t.scale})`,
+            }}
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
+              armyStance === 'FOLLOW'
+                ? 'bg-sky-600/90 border-sky-300/65 text-white hover:bg-sky-500'
+                : armyStance === 'DEFEND'
+                ? 'bg-emerald-600/90 border-emerald-300/65 text-white hover:bg-emerald-500'
+                : 'bg-rose-600/90 border-rose-300/65 text-white hover:bg-rose-500'
+            } ${editRingClass('stance')}`}
+          >
+            <Shield className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+            <span className="text-[8px] font-bold whitespace-nowrap">
+              {armyStance === 'FOLLOW'
+                ? isEn
+                  ? 'Follow'
+                  : 'Takip'
+                : armyStance === 'DEFEND'
+                ? isEn
+                  ? 'Defend'
+                  : 'Savun'
+                : isEn
+                ? 'Charge'
+                : 'Saldır'}
+            </span>
+          </button>
+        )}
+
         {/* Contextual Fishing button on Touch HUD */}
         {showFishBtn && (
           <button

@@ -8562,6 +8562,10 @@ export default function App() {
                             ? settings.language === 'en'
                               ? 'Fishing'
                               : 'Olta'
+                            : selectedTouchButton === 'stance'
+                            ? settings.language === 'en'
+                              ? 'Army Stance (V)'
+                              : 'Ordu Düzeni (V)'
                             : settings.language === 'en'
                             ? 'Move Joystick'
                             : 'Hareket Joystick'}

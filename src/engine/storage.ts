@@ -328,6 +328,7 @@ const VALID_TOUCH_BUTTON_IDS: TouchButtonId[] = [
   'radar',
   'ability',
   'fish',
+  'stance',
   'joystick',
 ];
 

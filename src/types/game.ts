@@ -531,6 +531,7 @@ export type TouchButtonId =
   | 'radar'
   | 'ability'
   | 'fish'
+  | 'stance'
   | 'joystick';
 
 export interface TouchButtonTransform {
