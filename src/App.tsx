@@ -538,6 +538,71 @@ export default function App() {
   }, [settings.autoFullscreen]);
 
   useEffect(() => {
+    let lastTouchEndAt = 0;
+
+    const preventIosGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (phaseRef.current !== 'PLAYING') return;
+      if (e.touches.length > 1 && modalRef.current === 'NONE') {
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest('button, a, input, textarea, select')) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (phaseRef.current !== 'PLAYING') return;
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (phaseRef.current !== 'PLAYING') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select')) return;
+
+      const now = Date.now();
+      if (now - lastTouchEndAt <= 350) {
+        // Prevent iOS Safari double-tap-to-zoom while keeping ActionControls/Joystick pointerdown instant
+        if (modalRef.current === 'NONE' || target?.tagName === 'CANVAS') {
+          e.preventDefault();
+        }
+      }
+      lastTouchEndAt = now;
+    };
+
+    const handleDblClick = (e: MouseEvent) => {
+      if (phaseRef.current !== 'PLAYING') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select')) return;
+      e.preventDefault();
+    };
+
+    document.addEventListener('gesturestart', preventIosGesture, { passive: false });
+    document.addEventListener('gesturechange', preventIosGesture, { passive: false });
+    document.addEventListener('gestureend', preventIosGesture, { passive: false });
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('dblclick', handleDblClick, { passive: false });
+
+    return () => {
+      document.removeEventListener('gesturestart', preventIosGesture);
+      document.removeEventListener('gesturechange', preventIosGesture);
+      document.removeEventListener('gestureend', preventIosGesture);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('dblclick', handleDblClick);
+    };
+  }, []);
+
+  useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
 
@@ -7807,8 +7872,8 @@ export default function App() {
   }, [controlsDisplayMode]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#07364B]">
-      <canvas ref={canvasRef} className="block w-full h-full" />
+    <div className="relative w-full h-full overflow-hidden bg-[#07364B] touch-none select-none">
+      <canvas ref={canvasRef} className="block w-full h-full touch-none select-none" />
 
       {phase === 'TITLE_MENU' && !showOnlineLobby && (
         <TitleOverlay
