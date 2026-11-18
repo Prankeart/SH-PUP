@@ -1,5 +1,6 @@
 import {
   CaveEntrance,
+  CaveTheme,
   EnemyFactionId,
   FactionId,
   InlandLake,
@@ -594,7 +595,7 @@ export function generateSectorIsland(
     !isStarter &&
     specialZone !== 'CITY' &&
     specialZone !== 'ARENA' &&
-    (isGuaranteedCave || specialZone === 'SECRET' || (isLarge && rng() < 0.65) || rng() < 0.35);
+    (isGuaranteedCave || specialZone === 'SECRET' || (isLarge && rng() < 0.68) || rng() < 0.38);
   if (wantCave) {
     const caveId = `${islandId}_cave_0`;
     if (tryPlaceLandmark(`${caveId}_lm`, 'CAVE_ENTRANCE', 30, 0.35, 0.65)) {
@@ -602,18 +603,34 @@ export function generateSectorIsland(
       const sectorTier = Math.hypot(sx, sy);
       const tier: 1 | 2 | 3 =
         specialZone === 'SECRET' || sectorTier >= 2.8 ? 3 : isLarge || sectorTier >= 1.5 ? 2 : 1;
+      const themePool: CaveTheme[] =
+        biome === 'VOLCANIC'
+          ? ['VOLCANIC_CALDERA', 'CRYSTAL_GROTTO', 'ANCIENT_TOMB']
+          : biome === 'RUINS' || biome === 'OASIS'
+          ? ['ANCIENT_TOMB', 'CRYSTAL_GROTTO', 'SMUGGLER_COVE']
+          : biome === 'JUNGLE' || biome === 'DARK_LAGOON'
+          ? ['FUNGAL_ABYSS', 'SMUGGLER_COVE', 'VOLCANIC_CALDERA']
+          : ['SMUGGLER_COVE', 'CRYSTAL_GROTTO', 'FUNGAL_ABYSS'];
+      const theme = themePool[Math.floor(rng() * themePool.length)];
+      const themeSuffix =
+        theme === 'VOLCANIC_CALDERA'
+          ? 'Volkan Kalderası'
+          : theme === 'ANCIENT_TOMB'
+          ? 'Kadim Tapınağı'
+          : theme === 'SMUGGLER_COVE'
+          ? 'Korsan Sığınağı'
+          : theme === 'FUNGAL_ABYSS'
+          ? 'Parlak Mantar Mağarası'
+          : 'Kristal Mağarası';
       caves.push({
         id: caveId,
         islandId,
         x: caveLm.x,
         y: caveLm.y,
-        name:
-          tier === 3
-            ? `${rawBaseName} Kristal Mağarası`
-            : tier === 2
-            ? `${rawBaseName} Derin Mağara`
-            : `${rawBaseName} Mağarası`,
+        name: `${rawBaseName} ${themeSuffix}`,
         tier,
+        theme,
+        biome,
       });
     }
   }

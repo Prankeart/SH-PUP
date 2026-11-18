@@ -3,6 +3,7 @@ import { WeaponId } from '../types/game';
 export interface WeaponDef {
   id: WeaponId;
   name: string;
+  nameEn: string;
   kind: 'MELEE' | 'RANGED';
   tier: number;
   damage: number;
@@ -12,12 +13,18 @@ export interface WeaponDef {
   spreadRad: number;
   projectileSpeed: number;
   color: string;
+  splashRadius?: number;
+  lifesteal?: number;
+  shopCost?: number;
+  description: string;
+  descriptionEn: string;
 }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   CUTLASS: {
     id: 'CUTLASS',
     name: 'Korsan Palası',
+    nameEn: 'Pirate Cutlass',
     kind: 'MELEE',
     tier: 1,
     damage: 34,
@@ -27,10 +34,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0,
     projectileSpeed: 0,
     color: '#CBD5E1',
+    description: 'Yakın mesafede hızlı ve güvenilir klasik korsan kılıcı.',
+    descriptionEn: 'Fast and reliable classic pirate cutlass for close combat.',
   },
   PISTOL: {
     id: 'PISTOL',
     name: 'Çakmaklı Tabanca',
+    nameEn: 'Flintlock Pistol',
     kind: 'RANGED',
     tier: 2,
     damage: 38,
@@ -40,10 +50,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0.04,
     projectileSpeed: 540,
     color: '#F59E0B',
+    shopCost: 140,
+    description: 'Tek atışta isabetli orta menzilli denizci tabancası.',
+    descriptionEn: 'Accurate mid-range single-shot naval flintlock.',
   },
   MUSKET: {
     id: 'MUSKET',
     name: 'Korsan Tüfeği',
+    nameEn: 'Pirate Musket',
     kind: 'RANGED',
     tier: 3,
     damage: 24,
@@ -53,10 +67,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0.24,
     projectileSpeed: 510,
     color: '#38BDF8',
+    shopCost: 260,
+    description: 'Üçlü saçma atarak düşman gruplarını dağıtan tüfek.',
+    descriptionEn: 'Fires a 3-pellet spread ideal for breaking groups.',
   },
   DUAL_PISTOL: {
     id: 'DUAL_PISTOL',
     name: 'Altın Çift Tabanca',
+    nameEn: 'Golden Dual Pistols',
     kind: 'RANGED',
     tier: 4,
     damage: 34,
@@ -66,10 +84,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0.12,
     projectileSpeed: 590,
     color: '#FDE047',
+    shopCost: 420,
+    description: 'Çok hızlı çift mermi atan altın işlemeli tabanca çifti.',
+    descriptionEn: 'Rapid-firing twin golden flintlocks.',
   },
   OBSIDIAN_BLADE: {
     id: 'OBSIDIAN_BLADE',
     name: 'Obsidyen Kılıcı',
+    nameEn: 'Obsidian Blade',
     kind: 'MELEE',
     tier: 4,
     damage: 58,
@@ -79,10 +101,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0,
     projectileSpeed: 0,
     color: '#C084FC',
+    description: 'Mağara sunaklarından çıkarılan keskin volkanik kılıç.',
+    descriptionEn: 'Razor-sharp volcanic blade forged in subterranean altars.',
   },
   CRYSTAL_BLUNDERBUSS: {
     id: 'CRYSTAL_BLUNDERBUSS',
     name: 'Kristal Karabina',
+    nameEn: 'Crystal Blunderbuss',
     kind: 'RANGED',
     tier: 5,
     damage: 28,
@@ -92,10 +117,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0.34,
     projectileSpeed: 570,
     color: '#22D3EE',
+    description: '5 kristal parçacığı fırlatan yüksek hasarlı karabina.',
+    descriptionEn: 'Shatters foes with a 5-shard crystal blast.',
   },
   ANCIENT_HARPOON: {
     id: 'ANCIENT_HARPOON',
     name: 'Kadim Zıpkın Tüfeği',
+    nameEn: 'Ancient Harpoon',
     kind: 'RANGED',
     tier: 5,
     damage: 74,
@@ -105,8 +133,81 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadRad: 0.02,
     projectileSpeed: 720,
     color: '#FB923C',
+    description: 'Uzun menzilli yüksek hızlı delici arena zıpkını.',
+    descriptionEn: 'Long-range high-velocity arena harpoon rifle.',
+  },
+  SHADOW_SCYTHE: {
+    id: 'SHADOW_SCYTHE',
+    name: 'Gölge Tırpanı',
+    nameEn: 'Shadow Scythe',
+    kind: 'MELEE',
+    tier: 5,
+    damage: 68,
+    range: 98,
+    cooldownMs: 350,
+    pellets: 1,
+    spreadRad: 0,
+    projectileSpeed: 0,
+    color: '#A855F7',
+    lifesteal: 5,
+    shopCost: 680,
+    description: 'Geniş biçme alanı ve isabette +5 Can çalma özelliğine sahip tırpan.',
+    descriptionEn: 'Wide sweeping reaper blade that drains +5 HP on hit.',
+  },
+  MAGMA_CANNON: {
+    id: 'MAGMA_CANNON',
+    name: 'Volkan Topu',
+    nameEn: 'Magma Hand-Cannon',
+    kind: 'RANGED',
+    tier: 6,
+    damage: 78,
+    range: 380,
+    cooldownMs: 620,
+    pellets: 1,
+    spreadRad: 0.03,
+    projectileSpeed: 460,
+    color: '#F97316',
+    splashRadius: 68,
+    shopCost: 860,
+    description: 'Çarptığı alanda patlayarak yakındaki tüm düşmanlara alan hasarı verir.',
+    descriptionEn: 'Launches unstable magma shells that explode on impact.',
+  },
+  STORM_TRIDENT: {
+    id: 'STORM_TRIDENT',
+    name: 'Fırtına Mızrağı',
+    nameEn: 'Storm Trident',
+    kind: 'RANGED',
+    tier: 6,
+    damage: 42,
+    range: 430,
+    cooldownMs: 390,
+    pellets: 3,
+    spreadRad: 0.16,
+    projectileSpeed: 680,
+    color: '#38BDF8',
+    description: 'Üçlü yıldırım mızrağı fırlatan kadim deniz silahı.',
+    descriptionEn: 'Unleashes three crackling lightning bolts per volley.',
+  },
+  PHANTOM_REPEATER: {
+    id: 'PHANTOM_REPEATER',
+    name: 'Hayalet Arbaleti',
+    nameEn: 'Phantom Repeater',
+    kind: 'RANGED',
+    tier: 6,
+    damage: 52,
+    range: 460,
+    cooldownMs: 230,
+    pellets: 1,
+    spreadRad: 0.03,
+    projectileSpeed: 740,
+    color: '#10B981',
+    shopCost: 920,
+    description: 'Seri atışlı hayalet enerjisi oku fırlatan yüksek tempolu arbalet.',
+    descriptionEn: 'Ultra-rapid phantom bolt repeater with long range.',
   },
 };
+
+export const WEAPON_LIST: WeaponDef[] = Object.values(WEAPONS);
 
 export function pickStrongerWeapon(current: WeaponId | null, candidate: WeaponId): WeaponId {
   if (!current) return candidate;

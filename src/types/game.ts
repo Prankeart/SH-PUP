@@ -87,6 +87,13 @@ export type LandmarkType =
 
 export type SpecialZoneType = 'CITY' | 'ARENA' | 'SECRET';
 
+export type CaveTheme =
+  | 'CRYSTAL_GROTTO'
+  | 'VOLCANIC_CALDERA'
+  | 'SMUGGLER_COVE'
+  | 'ANCIENT_TOMB'
+  | 'FUNGAL_ABYSS';
+
 export interface CaveEntrance {
   id: string;
   islandId: string;
@@ -94,9 +101,18 @@ export interface CaveEntrance {
   y: number;
   name: string;
   tier: 1 | 2 | 3;
+  theme?: CaveTheme;
+  biome?: IslandBiome;
 }
 
-export type CaveEnemyKind = 'CRAB' | 'BAT' | 'SCORPION' | 'CRYSTAL_GOLEM';
+export type CaveEnemyKind =
+  | 'CRAB'
+  | 'BAT'
+  | 'SCORPION'
+  | 'SPIDER'
+  | 'CRYSTAL_GOLEM'
+  | 'LAVA_ELEMENTAL'
+  | 'TOMB_GUARDIAN';
 
 export interface CaveEnemy {
   id: string;
@@ -140,12 +156,50 @@ export interface CaveChamber {
   cy: number;
   rx: number;
   ry: number;
+  rockPoly: Vec2[];
+  kind?: 'ENTRY' | 'HUB' | 'ALCOVE' | 'BOSS';
 }
 
 export interface CaveWallPillar {
   x: number;
   y: number;
   radius: number;
+  jaggedPoly?: Vec2[];
+}
+
+export interface CaveCorridor {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  width: number;
+}
+
+export interface CavePool {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  kind: 'WATER' | 'LAVA' | 'SPORE';
+  points?: Vec2[];
+}
+
+export interface CaveBridge {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  width: number;
+  material: 'WOOD' | 'STONE';
+}
+
+export interface CaveProp {
+  x: number;
+  y: number;
+  kind: 'MUSHROOM' | 'CRATE' | 'RUNE_CIRCLE' | 'BONES' | 'SHIP_RIB' | 'STALAGMITE';
+  size: number;
+  angle: number;
+  color: string;
 }
 
 export interface CaveInterior {
@@ -153,14 +207,17 @@ export interface CaveInterior {
   islandId: string;
   name: string;
   tier: 1 | 2 | 3;
+  theme: CaveTheme;
   width: number;
   height: number;
   chambers: CaveChamber[];
-  corridors: Array<{ x1: number; y1: number; x2: number; y2: number; width: number }>;
+  corridors: CaveCorridor[];
   pillars: CaveWallPillar[];
-  pools: Array<{ x: number; y: number; rx: number; ry: number }>;
+  pools: CavePool[];
+  bridges: CaveBridge[];
+  props: CaveProp[];
   crystals: Array<{ x: number; y: number; size: number; color: string; angle: number }>;
-  torches: Array<{ x: number; y: number; phase: number }>;
+  torches: Array<{ x: number; y: number; phase: number; color?: string }>;
   entryPos: Vec2;
   exitPos: Vec2;
   chests: CaveChest[];
@@ -177,7 +234,15 @@ export interface ActiveCaveState {
   playerX: number;
   playerY: number;
   playerAngle: number;
+  cameraX: number;
+  cameraY: number;
   bossDefeated: boolean;
+}
+
+export interface MapWaypoint {
+  x: number;
+  y: number;
+  label: string;
 }
 
 export type IslandBiome =
@@ -252,7 +317,11 @@ export type WeaponId =
   | 'DUAL_PISTOL'
   | 'OBSIDIAN_BLADE'
   | 'CRYSTAL_BLUNDERBUSS'
-  | 'ANCIENT_HARPOON';
+  | 'ANCIENT_HARPOON'
+  | 'SHADOW_SCYTHE'
+  | 'MAGMA_CANNON'
+  | 'STORM_TRIDENT'
+  | 'PHANTOM_REPEATER';
 
 export interface WeaponPickup {
   id: string;
@@ -600,6 +669,7 @@ export interface SaveData {
   clearedCaveIds?: string[];
   arenaWinsCount?: number;
   cavesExploredCount?: number;
+  mapPin?: MapWaypoint | null;
   player: {
     x: number;
     y: number;

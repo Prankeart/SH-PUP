@@ -112,6 +112,7 @@ export interface RenderState {
   fortTurretIslandIds?: Set<string>;
   harvestedNodeIds?: Set<string>;
   interactionHint?: { x: number; y: number; label: string; color?: string } | null;
+  mapWaypoint?: { x: number; y: number; label: string } | null;
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -2567,37 +2568,75 @@ function drawPlayer(
         attackAnimProgress > 0 ? -1.1 + attackAnimProgress * 2.2 : -0.35;
       ctx.save();
       ctx.rotate(swingAngle);
-      ctx.strokeStyle = '#E2E8F0';
-      ctx.lineWidth = 3.2;
+      ctx.strokeStyle =
+        equippedWeapon === 'SHADOW_SCYTHE'
+          ? '#C084FC'
+          : equippedWeapon === 'OBSIDIAN_BLADE'
+          ? '#A855F7'
+          : '#E2E8F0';
+      ctx.lineWidth = equippedWeapon === 'SHADOW_SCYTHE' ? 3.8 : 3.2;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(6, 7);
-      ctx.lineTo(24, 3);
+      ctx.lineTo(equippedWeapon === 'SHADOW_SCYTHE' ? 29 : 24, 3);
       ctx.stroke();
-      ctx.strokeStyle = '#F59E0B';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(8, 4);
-      ctx.lineTo(10, 9);
-      ctx.stroke();
+
+      if (equippedWeapon === 'SHADOW_SCYTHE') {
+        ctx.strokeStyle = '#E879F9';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(26, 2, 8, -0.6, 1.3);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = equippedWeapon === 'OBSIDIAN_BLADE' ? '#F472B6' : '#F59E0B';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(8, 4);
+        ctx.lineTo(10, 9);
+        ctx.stroke();
+      }
       ctx.restore();
 
       // Crescent slash trail during attack
       if (attackAnimProgress > 0 && attackAnimProgress < 0.85) {
-        ctx.strokeStyle = 'rgba(248, 250, 252, 0.72)';
+        ctx.strokeStyle =
+          equippedWeapon === 'SHADOW_SCYTHE'
+            ? 'rgba(192, 132, 252, 0.78)'
+            : 'rgba(248, 250, 252, 0.72)';
         ctx.lineWidth = 5 * (1 - attackAnimProgress);
         ctx.beginPath();
-        ctx.arc(4, 0, 36, -0.95, 0.95);
+        ctx.arc(4, 0, equippedWeapon === 'SHADOW_SCYTHE' ? 44 : 36, -0.95, 0.95);
         ctx.stroke();
       }
     } else {
-      // Pistol / Musket / Dual Pistols
-      ctx.strokeStyle = equippedWeapon === 'DUAL_PISTOL' ? '#FDE047' : '#334155';
-      ctx.lineWidth = 3.2;
+      // Firearms / Trident / Repeater / Magma Cannon
+      ctx.strokeStyle =
+        equippedWeapon === 'DUAL_PISTOL'
+          ? '#FDE047'
+          : equippedWeapon === 'MAGMA_CANNON'
+          ? '#F97316'
+          : equippedWeapon === 'STORM_TRIDENT'
+          ? '#38BDF8'
+          : equippedWeapon === 'PHANTOM_REPEATER'
+          ? '#10B981'
+          : equippedWeapon === 'CRYSTAL_BLUNDERBUSS'
+          ? '#22D3EE'
+          : equippedWeapon === 'ANCIENT_HARPOON'
+          ? '#FB923C'
+          : '#334155';
+      ctx.lineWidth = equippedWeapon === 'MAGMA_CANNON' ? 5 : 3.2;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(6, 6);
-      ctx.lineTo(equippedWeapon === 'MUSKET' ? 24 : 18, 5);
+      ctx.lineTo(
+        equippedWeapon === 'MUSKET' ||
+          equippedWeapon === 'STORM_TRIDENT' ||
+          equippedWeapon === 'PHANTOM_REPEATER' ||
+          equippedWeapon === 'ANCIENT_HARPOON'
+          ? 25
+          : 19,
+        5
+      );
       ctx.stroke();
       if (equippedWeapon === 'DUAL_PISTOL') {
         ctx.beginPath();
@@ -3751,6 +3790,49 @@ export function renderGameFrame(
     }
   }
 
+  if (state.mapWaypoint) {
+    const wp = state.mapWaypoint;
+    const pulse = 18 + Math.sin(timeSec * 4.5) * 4;
+    ctx.save();
+    ctx.translate(wp.x, wp.y);
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.75)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, pulse, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, pulse * 1.45, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Flag / Pin post
+    ctx.strokeStyle = '#F8FAFC';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(0, 4);
+    ctx.lineTo(0, -24);
+    ctx.stroke();
+
+    ctx.fillStyle = '#F43F5E';
+    ctx.beginPath();
+    ctx.moveTo(0, -24);
+    ctx.lineTo(16, -18 + Math.sin(timeSec * 5) * 1.5);
+    ctx.lineTo(0, -11);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.font = '700 11px "Outfit", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(2, 6, 23, 0.85)';
+    ctx.strokeText(wp.label, 0, -31);
+    ctx.fillStyle = '#FDA4AF';
+    ctx.fillText(wp.label, 0, -31);
+    ctx.restore();
+  }
+
   if (state.interactionHint) {
     const hint = state.interactionHint;
     ctx.save();
@@ -3852,6 +3934,9 @@ export function renderGameFrame(
 
   if (state.homeIsland) {
     drawHomeIslandCompass(ctx, width, height, state);
+  }
+  if (state.mapWaypoint) {
+    drawMapWaypointCompass(ctx, width, height, state);
   }
 }
 
@@ -4093,6 +4178,194 @@ function drawHomeIslandCompass(
   ctx.stroke();
 
   ctx.fillStyle = '#FEF3C7';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(labelText, pillX, pillY + 0.5);
+
+  ctx.restore();
+}
+
+function drawMapWaypointCompass(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  state: RenderState
+) {
+  const wp = state.mapWaypoint;
+  if (!wp || width <= 0 || height <= 0) return;
+
+  const { camera, zoom, timeSec } = state;
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  const sx = cx + (wp.x - camera.x) * zoom;
+  const sy = cy + (wp.y - camera.y) * zoom;
+
+  // Hide while waypoint beacon is clearly visible inside viewport
+  const margin = 24;
+  const overLeft = Math.max(0, -margin - sx);
+  const overRight = Math.max(0, sx - (width + margin));
+  const overTop = Math.max(0, -margin - sy);
+  const overBottom = Math.max(0, sy - (height + margin));
+  const maxOver = Math.max(overLeft, overRight, overTop, overBottom);
+  if (maxOver <= 0) return;
+
+  const fadeAlpha = clamp(maxOver / 70, 0.3, 1);
+
+  const dx = sx - cx;
+  const dy = sy - cy;
+  const screenDist = Math.hypot(dx, dy);
+  if (screenDist < 1) return;
+  const ux = dx / screenDist;
+  const uy = dy / screenDist;
+
+  const isCompact = width < 640 || height < 500;
+  const padX = isCompact ? 38 : 54;
+  const padY = isCompact ? 42 : 56;
+  const rx = Math.max(48, cx - padX);
+  const ry = Math.max(40, cy - padY);
+
+  const denom = Math.pow(
+    Math.pow(Math.abs(ux) / rx, 3.2) + Math.pow(Math.abs(uy) / ry, 3.2),
+    1 / 3.2
+  );
+  const t = denom > 0 ? 1 / denom : 0;
+  let px = cx + ux * t;
+  let py = cy + uy * t;
+
+  const tlRight = isCompact ? 185 : 230;
+  const tlBottom = isCompact ? 115 : 140;
+  if (px < tlRight && py < tlBottom) {
+    if (Math.abs(uy) > Math.abs(ux)) px = tlRight;
+    else py = tlBottom;
+  }
+  const trLeft = width - (isCompact ? 205 : 370);
+  const trBottom = isCompact ? 68 : 82;
+  if (px > trLeft && py < trBottom) {
+    if (Math.abs(uy) > Math.abs(ux)) px = trLeft;
+    else py = trBottom;
+  }
+  if (state.hasTouchControls || isCompact) {
+    const blRight = isCompact ? 148 : 165;
+    const blTop = height - (isCompact ? 148 : 165);
+    if (px < blRight && py > blTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = blRight;
+      else py = blTop;
+    }
+    const brLeft = width - (isCompact ? 185 : 210);
+    const brTop = height - (isCompact ? 155 : 175);
+    if (px > brLeft && py > brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = brLeft;
+      else py = brTop;
+    }
+  } else {
+    const brLeft = width - 255;
+    const brTop = height - 92;
+    if (px > brLeft && py > brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = brLeft;
+      else py = brTop;
+    }
+  }
+
+  px = clamp(px, 34, width - 34);
+  py = clamp(py, 34, height - 34);
+
+  const pointerAngle = Math.atan2(sy - py, sx - px);
+  const r = isCompact ? 16 : 19;
+  const pulse = 0.5 + 0.5 * Math.sin(timeSec * 4.8);
+
+  const worldDistPx = Math.hypot(wp.x - camera.x, wp.y - camera.y);
+  const meters = Math.max(0, Math.round(worldDistPx / 10));
+  const distText =
+    meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${meters} m`;
+  const shortName = wp.label.length > 14 ? `${wp.label.slice(0, 12)}…` : wp.label;
+  const labelText = `${shortName} · ${distText}`;
+
+  ctx.save();
+  ctx.globalAlpha = fadeAlpha;
+
+  ctx.fillStyle = 'rgba(4, 15, 22, 0.48)';
+  ctx.beginPath();
+  ctx.arc(px, py + 2.5, r + 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Directional arrow pointing to waypoint
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(pointerAngle);
+  const tipDist = r + (isCompact ? 11.5 : 13.5) + pulse * 1.5;
+  const baseDist = r + 1.5;
+  const halfSpread = isCompact ? 7 : 8;
+
+  ctx.fillStyle = 'rgba(244, 63, 94, 0.28)';
+  ctx.beginPath();
+  ctx.moveTo(tipDist + 3, 0);
+  ctx.lineTo(baseDist - 1, -halfSpread - 2);
+  ctx.lineTo(baseDist + 2, 0);
+  ctx.lineTo(baseDist - 1, halfSpread + 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#F43F5E';
+  ctx.strokeStyle = '#071E2A';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tipDist, 0);
+  ctx.lineTo(baseDist, -halfSpread);
+  ctx.lineTo(baseDist + 3, 0);
+  ctx.lineTo(baseDist, halfSpread);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Medallion body
+  ctx.fillStyle = 'rgba(11, 32, 44, 0.94)';
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#F43F5E';
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  // Pin icon inside medallion
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.fillStyle = '#FB7185';
+  ctx.beginPath();
+  ctx.arc(0, -3, 5.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-4.5, -1);
+  ctx.lineTo(4.5, -1);
+  ctx.lineTo(0, 8.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#FFF1F2';
+  ctx.beginPath();
+  ctx.arc(0, -3, 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Distance pill
+  ctx.font = isCompact
+    ? '600 10px "Outfit", system-ui, sans-serif'
+    : '600 11px "Outfit", system-ui, sans-serif';
+  const textW = ctx.measureText(labelText).width;
+  const pillW = textW + 14;
+  const pillH = isCompact ? 18 : 20;
+  const placeAbove = py > height - (isCompact ? 76 : 88);
+  const pillY = placeAbove ? py - r - 17 : py + r + 17;
+  const pillX = clamp(px, pillW * 0.5 + 8, width - pillW * 0.5 - 8);
+
+  drawRoundedPill(ctx, pillX, pillY, pillW, pillH, 9);
+  ctx.fillStyle = 'rgba(11, 32, 44, 0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(244, 63, 94, 0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#FFE4E6';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(labelText, pillX, pillY + 0.5);

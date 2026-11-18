@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Compass, Flag, MapPin, Ship, Store, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { DigCrater, Island, KingdomState, Vec2 } from '../types/game';
+import { Compass, Flag, MapPin, Ship, Store, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { DigCrater, Island, KingdomState, MapWaypoint, Vec2 } from '../types/game';
 import { RemotePlayerSnapshot } from '../types/online';
 import { SECTOR_SIZE, WorldManager } from '../engine/worldGen';
 import { ENEMY_FACTION_LIST, getEffectiveIslandFaction, getFactionDisplay } from '../engine/factions';
@@ -16,11 +16,13 @@ interface MapModalProps {
   playerPos: Vec2;
   boatPos: Vec2;
   isSailing: boolean;
+  mapPin?: MapWaypoint | null;
   onlineMode?: boolean;
   onlinePlayers?: RemotePlayerSnapshot[];
   onlineIslandOwners?: Record<string, { shortName: string; color: string }>;
   colorblindMode?: boolean;
   language?: 'tr' | 'en';
+  onSetMapPin?: (pin: MapWaypoint | null) => void;
   onClose: () => void;
 }
 
@@ -33,11 +35,13 @@ export const MapModal: React.FC<MapModalProps> = ({
   playerPos,
   boatPos,
   isSailing,
+  mapPin = null,
   onlineMode = false,
   onlinePlayers = [],
   onlineIslandOwners = {},
   colorblindMode = false,
   language = 'tr',
+  onSetMapPin,
   onClose,
 }) => {
   const isEn = language === 'en';
@@ -46,10 +50,20 @@ export const MapModal: React.FC<MapModalProps> = ({
   const [filter, setFilter] = useState<MapFilter>('ALL');
   const [showRings, setShowRings] = useState(true);
   const [offset, setOffset] = useState<Vec2>({ x: playerPos.x, y: playerPos.y });
-  const dragRef = useRef<{ active: boolean; lastX: number; lastY: number }>({
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+  }>({
     active: false,
+    startX: 0,
+    startY: 0,
     lastX: 0,
     lastY: 0,
+    moved: false,
   });
 
   useEffect(() => {
@@ -431,6 +445,42 @@ export const MapModal: React.FC<MapModalProps> = ({
       }
     }
 
+    // Custom User Waypoint Pin + dashed route line
+    if (mapPin) {
+      ctx.save();
+      ctx.setLineDash([8 / zoom, 7 / zoom]);
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.72)';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(centerPos.x, centerPos.y);
+      ctx.lineTo(mapPin.x, mapPin.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Target rings
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.55)';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.arc(mapPin.x, mapPin.y, 16 / zoom, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Pin marker
+      ctx.fillStyle = '#F43F5E';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.arc(mapPin.x, mapPin.y, 8 / zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      const distM = Math.round(Math.hypot(mapPin.x - centerPos.x, mapPin.y - centerPos.y) / 10);
+      ctx.font = `700 ${Math.round(12 / zoom)}px "Outfit", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#FFE4E6';
+      ctx.fillText(`${mapPin.label} (${distM}m)`, mapPin.x, mapPin.y - 18 / zoom);
+      ctx.restore();
+    }
+
     ctx.restore();
   }, [
     worldManager,
@@ -441,6 +491,7 @@ export const MapModal: React.FC<MapModalProps> = ({
     playerPos,
     boatPos,
     isSailing,
+    mapPin,
     onlineMode,
     onlinePlayers,
     onlineIslandOwners,
@@ -528,25 +579,87 @@ export const MapModal: React.FC<MapModalProps> = ({
           <canvas
             ref={canvasRef}
             onPointerDown={(e) => {
-              dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
+              dragRef.current = {
+                active: true,
+                startX: e.clientX,
+                startY: e.clientY,
+                lastX: e.clientX,
+                lastY: e.clientY,
+                moved: false,
+              };
               e.currentTarget.setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => {
               if (!dragRef.current.active) return;
+              if (
+                Math.hypot(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY) >
+                6
+              ) {
+                dragRef.current.moved = true;
+              }
               const dx = (e.clientX - dragRef.current.lastX) / zoom;
               const dy = (e.clientY - dragRef.current.lastY) / zoom;
               dragRef.current.lastX = e.clientX;
               dragRef.current.lastY = e.clientY;
               setOffset((prev) => ({ x: prev.x - dx, y: prev.y - dy }));
             }}
-            onPointerUp={() => {
+            onPointerUp={(e) => {
+              const wasClick = dragRef.current.active && !dragRef.current.moved;
               dragRef.current.active = false;
+              if (wasClick && onSetMapPin && canvasRef.current) {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const wx = offset.x + (sx - rect.width / 2) / zoom;
+                const wy = offset.y + (sy - rect.height / 2) / zoom;
+
+                // Clicking existing pin toggles/removes it
+                if (mapPin && Math.hypot(wx - mapPin.x, wy - mapPin.y) <= 22 / zoom) {
+                  onSetMapPin(null);
+                  return;
+                }
+
+                // Auto-label with discovered nearby island name if close
+                let label = isEn ? 'Waypoint' : 'İşaret';
+                const discoveredSet = new Set(discoveredIslandIds);
+                const nearIsl = worldManager
+                  .getVisibleIslands(wx, wy, 1)
+                  .find(
+                    (isl) =>
+                      discoveredSet.has(isl.id) &&
+                      Math.hypot(wx - isl.centerX, wy - isl.centerY) <= isl.maxRadius + 160
+                  );
+                if (nearIsl) {
+                  label = nearIsl.name;
+                }
+                onSetMapPin({ x: Math.round(wx), y: Math.round(wy), label });
+              }
             }}
             onPointerCancel={() => {
               dragRef.current.active = false;
             }}
-            className="w-full h-full cursor-grab active:cursor-grabbing touch-none"
+            className="w-full h-full cursor-crosshair active:cursor-grabbing touch-none"
           />
+
+          {/* Active Waypoint Quick Bar */}
+          {mapPin && (
+            <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/92 border border-rose-400/45 shadow-lg text-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+              <span className="font-semibold text-rose-100 truncate max-w-[160px]">
+                {mapPin.label}
+              </span>
+              {onSetMapPin && (
+                <button
+                  type="button"
+                  onClick={() => onSetMapPin(null)}
+                  className="ml-1 p-1 rounded-md bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 cursor-pointer"
+                  title={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Zoom & Center Controls */}
           <div className="absolute bottom-4 right-4 flex flex-col gap-2">
@@ -639,7 +752,9 @@ export const MapModal: React.FC<MapModalProps> = ({
                 ))}
           </div>
           <span className="text-slate-400">
-            {isEn ? 'Drag map to pan' : 'Haritayı sürükleyerek gezebilirsiniz'}
+            {isEn
+              ? 'Click to place/remove waypoint · Drag to pan'
+              : 'Tıklayarak konum işareti koyabilir · Sürükleyerek gezebilirsiniz'}
           </span>
         </div>
       </div>

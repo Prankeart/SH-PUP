@@ -1,7 +1,9 @@
 import {
   AllySoldierRosterItem,
   BagItem,
+  CaveTheme,
   DigCrater,
+  IslandBiome,
   PetId,
   SoldierType,
   Upgrades,
@@ -140,8 +142,39 @@ export interface RemotePlayerSnapshot {
   starterSlotIndex: number;
   conqueredCount: number;
   inCaveId?: string | null;
+  caveX?: number;
+  caveY?: number;
+  caveAngle?: number;
   soldiers?: RemoteSoldierSnapshot[];
   ships?: RemoteEscortShipSnapshot[];
+}
+
+export interface OnlineCaveEnemySnapshot {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+  walkPhase: number;
+  hitFlash: boolean;
+}
+
+export interface OnlineCaveProjectileSnapshot {
+  id: string;
+  ownerId: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+export interface OnlineCaveSnapshot {
+  caveId: string;
+  enemies: OnlineCaveEnemySnapshot[];
+  projectiles: OnlineCaveProjectileSnapshot[];
+  openedChestIds: string[];
+  altarClaimed: boolean;
+  bossDefeated: boolean;
 }
 
 export interface VoicePeerInfo {
@@ -250,6 +283,9 @@ export type ClientToHostMessage =
       digAnimProgress: number;
       attackAnimProgress: number;
       inCaveId?: string | null;
+      caveX?: number;
+      caveY?: number;
+      caveAngle?: number;
       soldiers?: Array<{ id: string; x: number; y: number; angle: number; swinging?: boolean }>;
       ships?: Array<{ id: string; x: number; y: number; angle: number }>;
     }
@@ -409,6 +445,52 @@ export type ClientToHostMessage =
       unlockedWeapon?: WeaponId;
     }
   | {
+      type: 'cmd:enter_cave';
+      caveId: string;
+      islandId: string;
+      entranceName: string;
+      entranceX: number;
+      entranceY: number;
+      tier: 1 | 2 | 3;
+      theme?: CaveTheme;
+      biome?: IslandBiome;
+    }
+  | {
+      type: 'cmd:exit_cave';
+      caveId: string;
+    }
+  | {
+      type: 'cmd:cave_attack';
+      caveId: string;
+      x: number;
+      y: number;
+      angle: number;
+      weaponId: WeaponId | null;
+      damage: number;
+      range: number;
+      isRanged: boolean;
+      splashRadius?: number;
+      projectileSpeed?: number;
+      pellets?: number;
+      spreadRad?: number;
+      projColor?: string;
+      lifesteal?: number;
+    }
+  | {
+      type: 'cmd:cave_interact';
+      caveId: string;
+      targetKind: 'CHEST' | 'ALTAR';
+      targetId: string;
+    }
+  | {
+      type: 'cmd:equip_weapon';
+      weaponId: WeaponId;
+    }
+  | {
+      type: 'cmd:buy_weapon';
+      weaponId: WeaponId;
+    }
+  | {
       type: 'cmd:ping';
       ts: number;
     };
@@ -462,6 +544,10 @@ export type HostToClientMessage =
   | {
       type: 'voice:peers';
       peers: VoicePeerInfo[];
+    }
+  | {
+      type: 'cave:snapshot';
+      snapshot: OnlineCaveSnapshot;
     }
   | {
       type: 'pong';

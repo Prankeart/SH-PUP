@@ -83,6 +83,7 @@ export function createInitialSave(worldSeed?: number): SaveData {
     clearedCaveIds: [],
     arenaWinsCount: 0,
     cavesExploredCount: 0,
+    mapPin: null,
     player: {
       x: 110,
       y: 25,
@@ -210,6 +211,19 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
       arenaWinsCount: typeof parsed.arenaWinsCount === 'number' ? parsed.arenaWinsCount : 0,
       cavesExploredCount:
         typeof parsed.cavesExploredCount === 'number' ? parsed.cavesExploredCount : 0,
+      mapPin:
+        parsed.mapPin &&
+        typeof parsed.mapPin.x === 'number' &&
+        typeof parsed.mapPin.y === 'number'
+          ? {
+              x: parsed.mapPin.x,
+              y: parsed.mapPin.y,
+              label:
+                typeof parsed.mapPin.label === 'string' && parsed.mapPin.label.trim()
+                  ? parsed.mapPin.label
+                  : 'Harita İşareti',
+            }
+          : null,
       player: parsed.player,
       boat: parsed.boat,
     };

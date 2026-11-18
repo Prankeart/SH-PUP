@@ -13,16 +13,18 @@ import {
   Ship,
   Sparkles,
   Store,
+  Swords,
   Trees,
   Users,
   Wrench,
   X,
 } from 'lucide-react';
-import { BagItem, PetId, Upgrades } from '../types/game';
+import { BagItem, PetId, Upgrades, WeaponId } from '../types/game';
 import { getUpgradeCost, UPGRADE_DEFS, UpgradeKey } from '../engine/upgrades';
 import { PET_DEFS } from '../engine/progression';
+import { WEAPON_LIST } from '../engine/weapons';
 
-type ShopTab = 'TRADE' | 'WORKSHOP' | 'PETS';
+type ShopTab = 'TRADE' | 'ARSENAL' | 'WORKSHOP' | 'PETS';
 
 interface ShopModalProps {
   gold: number;
@@ -35,11 +37,15 @@ interface ShopModalProps {
   caughtFishCount?: number;
   ownedPets?: PetId[];
   activePet?: PetId | null;
+  unlockedWeapons?: WeaponId[];
+  equippedWeapon?: WeaponId | null;
   language?: 'tr' | 'en';
   onlineMode?: boolean;
   onSellAll: () => void;
   onSellItem: (uid: string) => void;
   onBuyUpgrade: (key: UpgradeKey) => void;
+  onEquipWeapon?: (weaponId: WeaponId) => void;
+  onBuyWeapon?: (weaponId: WeaponId) => void;
   onSellResources?: () => void;
   onCraftRepairKit?: () => void;
   onUseRepairKit?: () => void;
@@ -77,10 +83,14 @@ export const ShopModal: React.FC<ShopModalProps> = ({
   caughtFishCount = 0,
   ownedPets = [],
   activePet = null,
+  unlockedWeapons = [],
+  equippedWeapon = null,
   language = 'tr',
   onSellAll,
   onSellItem,
   onBuyUpgrade,
+  onEquipWeapon,
+  onBuyWeapon,
   onSellResources,
   onCraftRepairKit,
   onUseRepairKit,
@@ -138,6 +148,18 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           >
             <Store className="w-3.5 h-3.5" />
             <span>{isEn ? 'Trade & Upgrades' : 'Tüccar & Yükseltme'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('ARSENAL')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+              tab === 'ARSENAL'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-white/5 text-slate-300 hover:bg-white/10'
+            }`}
+          >
+            <Swords className="w-3.5 h-3.5" />
+            <span>{isEn ? 'Weapons & Arsenal' : 'Silahlar & Cephanelik'}</span>
           </button>
           <button
             type="button"
@@ -296,6 +318,96 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   })}
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === 'ARSENAL' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {WEAPON_LIST.map((w) => {
+                const unlocked = unlockedWeapons.includes(w.id);
+                const equipped = equippedWeapon === w.id;
+                const canBuy = Boolean(w.shopCost && gold >= w.shopCost);
+                return (
+                  <div
+                    key={w.id}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 ${
+                      equipped
+                        ? 'bg-emerald-950/35 border-emerald-400/55'
+                        : 'bg-slate-950/35 border-white/10'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0"
+                            style={{ backgroundColor: w.color }}
+                          />
+                          <span className="text-sm font-bold text-slate-100 truncate">
+                            {isEn ? w.nameEn : w.name}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono-num text-amber-300 shrink-0">
+                          {isEn ? `Tier ${w.tier}` : `Sv.${w.tier}`} · {w.kind === 'MELEE' ? (isEn ? 'Melee' : 'Yakın') : (isEn ? 'Ranged' : 'Menzilli')}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                        {isEn ? w.descriptionEn : w.description}
+                      </p>
+                      <div className="text-[11px] text-sky-300 font-mono-num mt-1.5">
+                        {isEn ? 'Dmg' : 'Hasar'}: {w.damage}
+                        {w.pellets > 1 ? `×${w.pellets}` : ''} · {isEn ? 'Range' : 'Menzil'}: {w.range}
+                        {w.splashRadius ? (isEn ? ' · AoE Blast' : ' · Alan Patlaması') : ''}
+                        {w.lifesteal ? ` · +${w.lifesteal} HP` : ''}
+                      </div>
+                    </div>
+
+                    {unlocked ? (
+                      <button
+                        type="button"
+                        disabled={equipped}
+                        onClick={() => onEquipWeapon?.(w.id)}
+                        className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                          equipped
+                            ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 cursor-default'
+                            : 'bg-sky-500 hover:bg-sky-400 text-slate-950'
+                        }`}
+                      >
+                        {equipped
+                          ? isEn
+                            ? 'Equipped'
+                            : 'Kuşanıldı'
+                          : isEn
+                          ? 'Equip Weapon'
+                          : 'Kuşan'}
+                      </button>
+                    ) : w.shopCost ? (
+                      <button
+                        type="button"
+                        disabled={!canBuy}
+                        onClick={() => onBuyWeapon?.(w.id)}
+                        className={`w-full py-2 px-3 rounded-lg text-xs font-bold font-mono-num transition-colors ${
+                          canBuy
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
+                            : 'bg-white/10 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isEn ? `Buy (${w.shopCost} Gold)` : `Satın Al (${w.shopCost} Altın)`}
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 px-3 rounded-lg bg-white/5 border border-white/10 text-[11px] text-slate-400 text-center">
+                        {w.id === 'ANCIENT_HARPOON'
+                          ? isEn
+                            ? 'Reward: Win Battle Arena'
+                            : 'Ödül: Savaş Arenasını Kazan'
+                          : isEn
+                          ? 'Found in Cave Altars / Islands'
+                          : 'Mağara Sunaklarından / Adalardan Bulunur'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
