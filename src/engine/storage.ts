@@ -1,4 +1,10 @@
-import { GameSettings, KeybindingsConfig, SaveData } from '../types/game';
+import {
+  GameSettings,
+  KeybindingsConfig,
+  SaveData,
+  TouchButtonId,
+  TouchLayoutConfig,
+} from '../types/game';
 import { getMaxBoatHp } from './upgrades';
 
 const SAVE_KEY = 'tropik_ada_save_v1';
@@ -315,12 +321,50 @@ export function listSaveSlots(): Array<SaveSlotSummary | null> {
   });
 }
 
+const VALID_TOUCH_BUTTON_IDS: TouchButtonId[] = [
+  'digOrFire',
+  'boatOrInteract',
+  'attack',
+  'radar',
+  'ability',
+  'fish',
+  'joystick',
+];
+
+function normalizeTouchLayout(raw: unknown): TouchLayoutConfig {
+  if (!raw || typeof raw !== 'object') return {};
+  const record = raw as Record<string, unknown>;
+  const clean: TouchLayoutConfig = {};
+  for (const id of VALID_TOUCH_BUTTON_IDS) {
+    const entry = record[id];
+    if (!entry || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    const dx = typeof obj.dx === 'number' && Number.isFinite(obj.dx) ? obj.dx : 0;
+    const dy = typeof obj.dy === 'number' && Number.isFinite(obj.dy) ? obj.dy : 0;
+    const rawScale = typeof obj.scale === 'number' && Number.isFinite(obj.scale) ? obj.scale : 1;
+    const scale = Math.max(0.75, Math.min(1.35, rawScale));
+    if (dx !== 0 || dy !== 0 || scale !== 1) {
+      clean[id] = { dx, dy, scale };
+    }
+  }
+  return clean;
+}
+
+function clampVolume(raw: unknown, fallback: number): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
 export const DEFAULT_SETTINGS: GameSettings = {
   soundEnabled: true,
   ambientEnabled: true,
+  masterVolume: 100,
+  sfxVolume: 100,
+  ambientVolume: 80,
   joystickMode: 'FIXED',
   showWaves: true,
   touchControls: 'AUTO',
+  touchLayout: {},
   colorblindMode: false,
   screenShakeIntensity: 100,
   showTutorialHints: true,
@@ -331,17 +375,27 @@ export const DEFAULT_SETTINGS: GameSettings = {
 export function loadSettings(): GameSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS, keybindings: { ...DEFAULT_KEYBINDINGS } };
+    if (!raw) {
+      return {
+        ...DEFAULT_SETTINGS,
+        touchLayout: {},
+        keybindings: { ...DEFAULT_KEYBINDINGS },
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<GameSettings>;
     return {
       soundEnabled: parsed.soundEnabled ?? true,
       ambientEnabled: parsed.ambientEnabled ?? true,
+      masterVolume: clampVolume(parsed.masterVolume, 100),
+      sfxVolume: clampVolume(parsed.sfxVolume, 100),
+      ambientVolume: clampVolume(parsed.ambientVolume, 80),
       joystickMode: parsed.joystickMode === 'DYNAMIC' ? 'DYNAMIC' : 'FIXED',
       showWaves: parsed.showWaves ?? true,
       touchControls:
         parsed.touchControls === 'ALWAYS' || parsed.touchControls === 'HIDDEN'
           ? parsed.touchControls
           : 'AUTO',
+      touchLayout: normalizeTouchLayout(parsed.touchLayout),
       colorblindMode: parsed.colorblindMode ?? false,
       screenShakeIntensity:
         typeof parsed.screenShakeIntensity === 'number'
@@ -355,7 +409,11 @@ export function loadSettings(): GameSettings {
       },
     };
   } catch {
-    return { ...DEFAULT_SETTINGS, keybindings: { ...DEFAULT_KEYBINDINGS } };
+    return {
+      ...DEFAULT_SETTINGS,
+      touchLayout: {},
+      keybindings: { ...DEFAULT_KEYBINDINGS },
+    };
   }
 }
 

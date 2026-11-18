@@ -1,6 +1,13 @@
 export type GamePhase = 'TITLE_MENU' | 'PLAYING';
 
-export type ActiveModal = 'NONE' | 'MAP' | 'SHOP' | 'SETTINGS' | 'KINGDOM' | 'JOURNAL';
+export type ActiveModal =
+  | 'NONE'
+  | 'MAP'
+  | 'SHOP'
+  | 'SETTINGS'
+  | 'KINGDOM'
+  | 'JOURNAL'
+  | 'LAYOUT_EDIT';
 
 export type HeatTier = 'HOT' | 'WARM' | 'COOL' | 'COLD' | 'NONE';
 
@@ -517,12 +524,33 @@ export interface KingdomState {
   escortShipCount: number;
 }
 
+export type TouchButtonId =
+  | 'digOrFire'
+  | 'boatOrInteract'
+  | 'attack'
+  | 'radar'
+  | 'ability'
+  | 'fish'
+  | 'joystick';
+
+export interface TouchButtonTransform {
+  dx: number;
+  dy: number;
+  scale?: number;
+}
+
+export type TouchLayoutConfig = Partial<Record<TouchButtonId, TouchButtonTransform>>;
+
 export interface GameSettings {
   soundEnabled: boolean;
   ambientEnabled: boolean;
+  masterVolume: number;
+  sfxVolume: number;
+  ambientVolume: number;
   joystickMode: 'FIXED' | 'DYNAMIC';
   showWaves: boolean;
   touchControls: 'AUTO' | 'ALWAYS' | 'HIDDEN';
+  touchLayout?: TouchLayoutConfig;
   colorblindMode: boolean;
   screenShakeIntensity: number;
   showTutorialHints: boolean;

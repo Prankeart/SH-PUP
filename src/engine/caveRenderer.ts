@@ -443,10 +443,11 @@ function drawCaveMinimap(
   const { activeCave } = state;
   const cave = activeCave.cave;
   const palette = THEME_PALETTES[cave.theme];
-  const mapW = viewportW < 640 ? 116 : 148;
+  const isShort = viewportH < 540;
+  const mapW = viewportW < 640 ? 108 : isShort ? 120 : 148;
   const mapH = Math.round(mapW * (cave.height / cave.width));
-  const mx = viewportW - mapW - 14;
-  const my = viewportH < 520 ? 52 : 66;
+  const mx = viewportW - mapW - (isShort || viewportW < 640 ? 10 : 14);
+  const my = isShort || viewportW < 640 ? 50 : 66;
   const scale = mapW / cave.width;
 
   ctx.save();
@@ -1016,34 +1017,52 @@ export function renderCaveFrame(
   ctx.fillStyle = lanternGrad;
   ctx.fillRect(0, 0, viewportW, viewportH);
 
-  // Subtle Cave Exploration Status Top Center
+  // Subtle Cave Exploration Status Top Center (compact on mobile so it never overlaps HUD badges)
   const chestsOpen = cave.chests.filter((c) => c.opened).length;
   const mobsLeft = cave.enemies.filter((e) => e.hp > 0).length;
   const alliesCount = (state.remoteCavePlayers ?? []).filter(
     (rp) => rp.connected && rp.inCaveId === cave.caveId
   ).length;
   const dExit = dist(activeCave.playerX, activeCave.playerY, cave.exitPos.x, cave.exitPos.y);
+  const isCompactView = viewportW < 920 || viewportH < 540;
   const allyPart =
     alliesCount > 0 ? ` · ${alliesCount + 1} ${isEn ? 'Explorers' : 'Kâşif'}` : '';
-  const summary = isEn
+  const summary = isCompactView
+    ? isEn
+      ? `Chests ${chestsOpen}/${cave.chests.length} · Foes ${mobsLeft}${allyPart}${dExit > 150 ? ' · Exit ←' : ''}`
+      : `Sandık ${chestsOpen}/${cave.chests.length} · Yaratık ${mobsLeft}${allyPart}${dExit > 150 ? ' · Çıkış ←' : ''}`
+    : isEn
     ? `${cave.name} · Chests ${chestsOpen}/${cave.chests.length} · Foes ${mobsLeft}${allyPart}${dExit > 150 ? ' · Exit West' : ''}`
     : `${cave.name} · Sandık ${chestsOpen}/${cave.chests.length} · Yaratık ${mobsLeft}${allyPart}${dExit > 150 ? ' · Çıkış Batıda' : ''}`;
+
+  // Branching Cave Minimap
+  drawCaveMinimap(ctx, viewportW, viewportH, state);
+
   ctx.save();
-  ctx.font = '600 12px "Plus Jakarta Sans", system-ui, sans-serif';
-  const tw = ctx.measureText(summary).width + 26;
+  ctx.font = isCompactView
+    ? '600 11px "Plus Jakarta Sans", system-ui, sans-serif'
+    : '600 12px "Plus Jakarta Sans", system-ui, sans-serif';
+  const tw = ctx.measureText(summary).width + (isCompactView ? 20 : 26);
+  const pillH = isCompactView ? 24 : 28;
+  const isTinyPortrait = viewportW < 560;
+  const isShort = viewportH < 540;
+  const mapW = viewportW < 640 ? 108 : isShort ? 120 : 148;
+  const mapH = Math.round(mapW * (cave.height / cave.width));
+  const mapRight = viewportW - (isShort || viewportW < 640 ? 10 : 14);
+  const mapTop = isShort || viewportW < 640 ? 50 : 66;
+  const pillX = isTinyPortrait ? mapRight - tw : viewportW / 2 - tw / 2;
+  const pillY = isTinyPortrait ? mapTop + mapH + 8 : isCompactView ? 10 : 14;
+
   ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
   ctx.strokeStyle = `${palette.accentColor}88`;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.roundRect(viewportW / 2 - tw / 2, 14, tw, 28, 14);
+  ctx.roundRect(pillX, pillY, tw, pillH, pillH / 2);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = '#F8FAFC';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(summary, viewportW / 2, 28);
+  ctx.fillText(summary, pillX + tw / 2, pillY + pillH / 2);
   ctx.restore();
-
-  // Branching Cave Minimap
-  drawCaveMinimap(ctx, viewportW, viewportH, state);
 }

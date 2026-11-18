@@ -4,13 +4,17 @@ import {
   Copy,
   Download,
   Eye,
+  Gamepad2,
+  HardDrive,
   HelpCircle,
   Keyboard,
   Languages,
   LogOut,
+  Move,
   RotateCcw,
   Save,
   Settings,
+  Sliders,
   Sparkles,
   Upload,
   Volume2,
@@ -20,6 +24,7 @@ import {
 } from 'lucide-react';
 import { GameSettings, KeybindingsConfig } from '../types/game';
 import { DEFAULT_KEYBINDINGS, listSaveSlots, SaveSlotSummary } from '../engine/storage';
+import { soundEngine } from '../engine/audio';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -35,8 +40,11 @@ interface SettingsModalProps {
   onExportSave: () => string;
   onImportSave: (jsonStr: string) => boolean;
   onLeaveToMenu?: () => void;
+  onOpenLayoutEditor?: () => void;
   onClose: () => void;
 }
+
+type SettingsTab = 'GENERAL' | 'AUDIO' | 'CONTROLS' | 'SAVE';
 
 const KEY_LABELS_TR: Array<{ key: keyof KeybindingsConfig; label: string }> = [
   { key: 'digOrFire', label: 'Kazı Yap / Top At' },
@@ -87,9 +95,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onExportSave,
   onImportSave,
   onLeaveToMenu,
+  onOpenLayoutEditor,
   onClose,
 }) => {
   const isEn = settings.language === 'en';
+  const [activeTab, setActiveTab] = useState<SettingsTab>('GENERAL');
   const [confirmReset, setConfirmReset] = useState(false);
   const [listeningKey, setListeningKey] = useState<keyof KeybindingsConfig | null>(null);
   const [slots, setSlots] = useState<Array<SaveSlotSummary | null>>(() => listSaveSlots());
@@ -101,6 +111,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     setSeedInput(String(worldSeed));
   }, [worldSeed]);
+
+  useEffect(() => {
+    if (onlineMode && activeTab === 'SAVE') {
+      setActiveTab('GENERAL');
+    }
+  }, [onlineMode, activeTab]);
 
   useEffect(() => {
     if (!listeningKey) return;
@@ -126,7 +142,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const showToast = (msg: string) => {
     setStatusMsg(msg);
-    setTimeout(() => setStatusMsg(null), 2600);
+    window.setTimeout(() => setStatusMsg(null), 2600);
   };
 
   const handleCopySeed = () => {
@@ -134,7 +150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       void navigator.clipboard.writeText(String(worldSeed));
     }
     setCopiedSeed(true);
-    setTimeout(() => setCopiedSeed(false), 1800);
+    window.setTimeout(() => setCopiedSeed(false), 1800);
   };
 
   const handleDownloadJson = () => {
@@ -174,23 +190,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const keyLabels = isEn ? KEY_LABELS_EN : KEY_LABELS_TR;
 
+  const tabs: Array<{
+    id: SettingsTab;
+    label: string;
+    shortLabel: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      id: 'GENERAL',
+      label: isEn ? 'General & Display' : 'Genel & Görüntü',
+      shortLabel: isEn ? 'General' : 'Genel',
+      icon: <Sliders className="w-4 h-4 shrink-0" />,
+    },
+    {
+      id: 'AUDIO',
+      label: isEn ? 'Audio Settings' : 'Ses Ayarları',
+      shortLabel: isEn ? 'Audio' : 'Ses',
+      icon: <Volume2 className="w-4 h-4 shrink-0" />,
+    },
+    {
+      id: 'CONTROLS',
+      label: isEn ? 'Controls' : 'Kontroller',
+      shortLabel: isEn ? 'Controls' : 'Kontroller',
+      icon: <Gamepad2 className="w-4 h-4 shrink-0" />,
+    },
+    ...(!onlineMode
+      ? [
+          {
+            id: 'SAVE' as const,
+            label: isEn ? 'Saves & World' : 'Kayıt & Dünya',
+            shortLabel: isEn ? 'Saves' : 'Kayıt',
+            icon: <HardDrive className="w-4 h-4 shrink-0" />,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Game Settings' : 'Oyun Ayarları'}
     >
-      <div className="w-full max-w-2xl max-h-[92dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <Settings className="w-5 h-5 text-slate-200" />
-            <h2 className="font-display text-lg font-bold text-slate-50">
-              {isEn ? 'Settings & Saves' : 'Ayarlar & Kayıt Yönetimi'}
+      <div className="w-full max-w-3xl max-h-[92dvh] bg-[#0B2330] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        {/* Top Modal Header */}
+        <div className="px-4 sm:px-5 py-3 border-b border-white/10 flex items-center justify-between gap-3 shrink-0 bg-[#081A24]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Settings className="w-5 h-5 text-amber-300 shrink-0" />
+            <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
+              {isEn ? 'Settings' : 'Ayarlar'}
             </h2>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 shrink-0">
             {statusMsg && (
               <span className="text-xs font-semibold text-emerald-300 bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-1 rounded-lg">
                 {statusMsg}
@@ -200,575 +253,843 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={isEn ? 'Close Settings' : 'Ayarları Kapat'}
-              className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-4">
-          {/* Language Toggle */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Languages className="w-5 h-5 text-amber-300 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Language / Dil' : 'Oyun Dili / Language'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn ? 'Switch interface text between Turkish & English' : 'Arayüz dilini seçin'}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 p-1 bg-slate-950/40 rounded-lg border border-white/10 shrink-0">
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ ...settings, language: 'tr' })}
-                className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer ${
-                  settings.language === 'tr'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                Türkçe
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ ...settings, language: 'en' })}
-                className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer ${
-                  settings.language === 'en'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                English
-              </button>
-            </div>
-          </div>
-
-          {/* Sound FX Toggle */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              {settings.soundEnabled ? (
-                <Volume2 className="w-5 h-5 text-emerald-300 shrink-0" />
-              ) : (
-                <VolumeX className="w-5 h-5 text-slate-400 shrink-0" />
-              )}
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Sound Effects' : 'Ses Efektleri'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn
-                    ? 'Digging, radar pings, cannon & combat audio'
-                    : 'Kazı, radar sinyali, top ve savaş sesleri'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ ...settings, soundEnabled: !settings.soundEnabled })
-              }
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
-                settings.soundEnabled
-                  ? 'bg-emerald-500 text-slate-950'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              {settings.soundEnabled ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
-            </button>
-          </div>
-
-          {/* Ambient Ocean Audio */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Waves className="w-5 h-5 text-cyan-300 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Ocean Surf Ambience' : 'Okyanus Dalga Sesi (Ambiyans)'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn
-                    ? 'Gentle synthesized ocean waves background sound'
-                    : 'Arka planda sakin dalga ve rüzgar sesi'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ ...settings, ambientEnabled: !settings.ambientEnabled })
-              }
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
-                settings.ambientEnabled
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              {settings.ambientEnabled ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
-            </button>
-          </div>
-
-          {/* Ocean Waves Visual Toggle */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Sparkles className="w-5 h-5 text-sky-300 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Waves & Shore Foam' : 'Dalga ve Kıyı Köpüğü'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn ? 'Ocean surface animation detail' : 'Okyanus animasyon detayı'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ ...settings, showWaves: !settings.showWaves })
-              }
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
-                settings.showWaves
-                  ? 'bg-sky-500 text-slate-950'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              {settings.showWaves ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
-            </button>
-          </div>
-
-          {/* Colorblind Mode */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Eye className="w-5 h-5 text-pink-300 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Colorblind Friendly Radar' : 'Renk Körü Dostu Radar'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn
-                    ? 'High-contrast colors & distinct ring patterns'
-                    : 'Yüksek kontrastlı palet ve belirgin halka desenleri'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ ...settings, colorblindMode: !settings.colorblindMode })
-              }
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
-                settings.colorblindMode
-                  ? 'bg-pink-400 text-slate-950'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              {settings.colorblindMode ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
-            </button>
-          </div>
-
-          {/* Tutorial Hints */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <HelpCircle className="w-5 h-5 text-amber-300 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-100">
-                  {isEn ? 'Onboarding Tutorial Hints' : 'Eğitim İpuçları'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {isEn ? 'Show step-by-step guidance banner' : 'Adım adım başlangıç rehberi çubuğu'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdateSettings({ ...settings, showTutorialHints: !settings.showTutorialHints })
-              }
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
-                settings.showTutorialHints
-                  ? 'bg-amber-500 text-slate-950'
-                  : 'bg-white/10 text-slate-300'
-              }`}
-            >
-              {settings.showTutorialHints ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
-            </button>
-          </div>
-
-          {/* Screen Shake Intensity */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div>
-              <div className="text-sm font-semibold text-slate-100">
-                {isEn ? 'Screen Shake Intensity' : 'Ekran Sarsıntı Şiddeti'}
-              </div>
-              <div className="text-xs text-slate-400">
-                {isEn
-                  ? 'Reduce or disable camera shake on cannon hits'
-                  : 'Top ve kazı sarsıntılarını azaltın veya kapatın'}
-              </div>
-            </div>
-            <div className="flex items-center gap-2.5 shrink-0">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={10}
-                value={settings.screenShakeIntensity}
-                onChange={(e) =>
-                  onUpdateSettings({
-                    ...settings,
-                    screenShakeIntensity: Number(e.target.value),
-                  })
-                }
-                className="w-28 accent-amber-400 cursor-pointer"
-              />
-              <span className="font-mono-num text-xs font-semibold text-slate-200 w-10 text-right">
-                %{settings.screenShakeIntensity}
-              </span>
-            </div>
-          </div>
-
-          {/* Touch / Mobile Controls Visibility */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-100">
-                {isEn ? 'On-Screen Touch Controls' : 'Ekrandaki Mobil Tuşlar'}
-              </div>
-              <div className="text-xs text-slate-400">
-                {isEn
-                  ? 'Hide joystick and touch buttons on desktop'
-                  : 'Bilgisayarda joystick ve dokunmatik tuşları gizleyebilirsiniz'}
-              </div>
-            </div>
-            <div className="flex items-center gap-1 p-1 bg-slate-950/40 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
-              {(
-                [
-                  { id: 'AUTO', label: isEn ? 'Auto' : 'Otomatik' },
-                  { id: 'ALWAYS', label: isEn ? 'Show' : 'Göster' },
-                  { id: 'HIDDEN', label: isEn ? 'Hide' : 'Gizle' },
-                ] as const
-              ).map((opt) => (
+        {/* Categorized Body: Mobile top tabs + Desktop/Tablet/Landscape left sidebar */}
+        <div className="flex-1 min-h-0 flex flex-col sm:flex-row overflow-hidden">
+          {/* Category Navigation */}
+          <nav
+            aria-label={isEn ? 'Settings categories' : 'Ayar kategorileri'}
+            className={`shrink-0 bg-[#081C27] border-b sm:border-b-0 sm:border-r border-white/10 p-2 sm:p-3 sm:w-48 grid ${
+              tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
+            } sm:flex sm:flex-col gap-1.5`}
+          >
+            {tabs.map((item) => {
+              const active = activeTab === item.id;
+              return (
                 <button
-                  key={opt.id}
+                  key={item.id}
                   type="button"
-                  onClick={() => onUpdateSettings({ ...settings, touchControls: opt.id })}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                    settings.touchControls === opt.id
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'text-slate-300 hover:text-white'
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setListeningKey(null);
+                  }}
+                  aria-current={active ? 'page' : undefined}
+                  className={`min-h-[40px] sm:min-h-[44px] px-2 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400 ${
+                    active
+                      ? 'bg-amber-500 text-slate-950 shadow'
+                      : 'text-slate-300 hover:bg-white/10 hover:text-white'
                   }`}
                 >
-                  {opt.label}
+                  {item.icon}
+                  <span className="sm:hidden text-[11px] leading-none truncate">
+                    {item.shortLabel}
+                  </span>
+                  <span className="hidden sm:inline truncate">{item.label}</span>
                 </button>
-              ))}
-            </div>
-          </div>
+              );
+            })}
+          </nav>
 
-          {/* Joystick Mode */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-100">
-                {isEn ? 'Joystick Mode' : 'Joystick Modu'}
-              </div>
-              <div className="text-xs text-slate-400">
-                {isEn ? 'Touch thumbstick center behavior' : 'Dokunmatik kontrol merkezi davranışı'}
-              </div>
-            </div>
-            <div className="flex items-center gap-1 p-1 bg-slate-950/40 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ ...settings, joystickMode: 'FIXED' })}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  settings.joystickMode === 'FIXED'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                {isEn ? 'Fixed' : 'Sabit'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ ...settings, joystickMode: 'DYNAMIC' })}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  settings.joystickMode === 'DYNAMIC'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                {isEn ? 'Dynamic' : 'Dinamik'}
-              </button>
-            </div>
-          </div>
-
-          {/* Remappable Keybindings */}
-          <div className="pt-3 border-t border-white/10 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-100">
-                <Keyboard className="w-4 h-4 text-sky-300" />
-                <span>
-                  {isEn
-                    ? 'Keybindings (WASD / Arrows move · F5 QuickSave)'
-                    : 'Klavye Tuşları (WASD/Yön Hareket · F5 Hızlı Kayıt)'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  onUpdateSettings({
-                    ...settings,
-                    keybindings: { ...DEFAULT_KEYBINDINGS },
-                  })
-                }
-                className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer"
-              >
-                {isEn ? 'Reset Keys' : 'Varsayılanlar'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {keyLabels.map((item) => {
-                const active = listeningKey === item.key;
-                return (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-950/40 border border-white/10 text-xs"
-                  >
-                    <span className="text-slate-300 truncate">{item.label}</span>
-                    <button
-                      type="button"
-                      onClick={() => setListeningKey(active ? null : item.key)}
-                      className={`px-2 py-0.5 rounded font-mono-num text-[11px] font-bold cursor-pointer ${
-                        active
-                          ? 'bg-amber-500 text-slate-950 animate-pulse'
-                          : 'bg-white/10 hover:bg-white/20 text-amber-200'
-                      }`}
-                    >
-                      {active
-                        ? isEn
-                          ? 'Press key...'
-                          : 'Tuşa bas...'
-                        : formatKeyCode(settings.keybindings[item.key])}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Offline Save Slots, World Seed & Export/Import */}
-          {!onlineMode && (
-            <div className="pt-3 border-t border-white/10 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-100">
-                  {isEn ? 'Save Slots & World Seed' : 'Kayıt Yuvaları & Dünya Tohumu (Seed)'}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onQuickSave();
-                      showToast(isEn ? 'Quick saved!' : 'Hızlı kayıt alındı!');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Save className="w-3 h-3" />
-                    <span>{isEn ? 'QuickSave (F5)' : 'Hızlı Kayıt (F5)'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadJson}
-                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Download className="w-3 h-3" />
-                    <span>JSON</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>{isEn ? 'Import' : 'Yükle'}</span>
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/json"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-                </div>
-              </div>
-
-              {/* World Seed box */}
-              <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-950/40 border border-white/10 text-xs">
-                <span className="text-slate-400">Seed:</span>
-                <span className="font-mono-num font-bold text-amber-300">{worldSeed}</span>
-                <button
-                  type="button"
-                  onClick={handleCopySeed}
-                  className="p-1 rounded bg-white/10 hover:bg-white/20 text-slate-200 cursor-pointer"
-                  title={isEn ? 'Copy Seed' : 'Tohumu Kopyala'}
-                >
-                  {copiedSeed ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <input
-                    type="number"
-                    value={seedInput}
-                    onChange={(e) => setSeedInput(e.target.value)}
-                    className="w-24 px-2 py-1 rounded-md bg-slate-900 border border-white/15 text-slate-100 font-mono-num text-xs"
-                    placeholder="123456"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const n = parseInt(seedInput, 10);
-                      if (!Number.isNaN(n) && n > 0) {
-                        onStartWithSeed(n);
-                        showToast(isEn ? `New world #${n}` : `Yeni dünya #${n} oluşturuldu!`);
-                      }
-                    }}
-                    className="px-2.5 py-1 rounded-md bg-sky-500/25 hover:bg-sky-500/35 border border-sky-400/40 text-sky-200 text-[11px] font-semibold cursor-pointer"
-                  >
-                    {isEn ? 'Launch Seed' : 'Tohumla Başla'}
-                  </button>
-                </div>
-              </div>
-
-              {/* 3 Save Slots */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {[1, 2, 3].map((slotNum) => {
-                  const summary = slots[slotNum - 1];
-                  return (
-                    <div
-                      key={slotNum}
-                      className="p-2.5 rounded-xl bg-slate-950/40 border border-white/10 flex flex-col justify-between gap-2 text-xs"
-                    >
-                      <div>
-                        <div className="font-semibold text-slate-100">
-                          {isEn ? `Slot ${slotNum}` : `Yuva ${slotNum}`}
-                        </div>
-                        {summary ? (
-                          <div className="text-[11px] text-slate-400 font-mono-num mt-0.5">
-                            {summary.gold}G · {summary.discoveredCount} {isEn ? 'Isl' : 'Ada'} · Sv.
-                            {summary.boatLevel}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            {isEn ? 'Empty' : 'Boş'}
-                          </div>
-                        )}
+          {/* Active Tab Content */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3.5">
+            {/* TAB 1: GENERAL & DISPLAY */}
+            {activeTab === 'GENERAL' && (
+              <>
+                {/* Language Toggle */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Languages className="w-5 h-5 text-amber-300 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn ? 'Language / Dil' : 'Oyun Dili / Language'}
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSaveToSlot(slotNum);
-                            setSlots(listSaveSlots());
-                            showToast(
-                              isEn ? `Saved to Slot ${slotNum}` : `Yuva ${slotNum}'e kaydedildi!`
-                            );
-                          }}
-                          className="flex-1 py-1 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/40 text-amber-200 text-[11px] font-semibold cursor-pointer"
-                        >
-                          {isEn ? 'Save' : 'Kaydet'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!summary}
-                          onClick={() => {
-                            onLoadFromSlot(slotNum);
-                            showToast(
-                              isEn ? `Loaded Slot ${slotNum}` : `Yuva ${slotNum} yüklendi!`
-                            );
-                          }}
-                          className={`flex-1 py-1 rounded text-[11px] font-semibold border ${
-                            summary
-                              ? 'bg-sky-500/20 hover:bg-sky-500/35 border-sky-400/40 text-sky-200 cursor-pointer'
-                              : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed'
-                          }`}
-                        >
-                          {isEn ? 'Load' : 'Yükle'}
-                        </button>
+                      <div className="text-xs text-slate-400">
+                        {isEn ? 'Interface text language' : 'Arayüz dilini seçin'}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Return to Title / Leave Online Room + Offline Reset Save */}
-          <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-            {onLeaveToMenu && (
-              <button
-                type="button"
-                onClick={onLeaveToMenu}
-                className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>
-                  {onlineMode && onlineRoomId
-                    ? isEn
-                      ? `Leave Room (${onlineRoomId})`
-                      : `Odadan Ayrıl (${onlineRoomId})`
-                    : isEn
-                    ? 'Main Menu'
-                    : 'Ana Menüye Dön'}
-                </span>
-              </button>
-            )}
-
-            {!onlineMode &&
-              (!confirmReset ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmReset(true)}
-                  className="px-3.5 py-2 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-400/30 text-red-300 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{isEn ? 'Reset Progress' : 'İlerlemeyi Sıfırla'}</span>
-                </button>
-              ) : (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full justify-between">
-                  <span className="text-xs text-red-300">
-                    {isEn
-                      ? 'Reset progress with a brand new random world?'
-                      : 'Yeni rastgele ada haritasıyla sıfırlansın mı?'}
-                  </span>
-                  <div className="flex items-center gap-2 shrink-0">
+                  </div>
+                  <div className="flex items-center gap-1 p-1 bg-slate-950/60 rounded-lg border border-white/10 shrink-0">
                     <button
                       type="button"
-                      onClick={() => setConfirmReset(false)}
-                      className="px-3 py-1.5 rounded-lg bg-white/10 text-xs text-slate-200 cursor-pointer"
+                      onClick={() => onUpdateSettings({ ...settings, language: 'tr' })}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer ${
+                        settings.language === 'tr'
+                          ? 'bg-amber-500 text-slate-950'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
                     >
-                      {isEn ? 'Cancel' : 'Vazgeç'}
+                      Türkçe
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateSettings({ ...settings, language: 'en' })}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer ${
+                        settings.language === 'en'
+                          ? 'bg-amber-500 text-slate-950'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      English
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ocean Waves Visual Toggle */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Sparkles className="w-5 h-5 text-sky-300 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn ? 'Waves & Shore Foam' : 'Dalga ve Kıyı Köpüğü'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {isEn ? 'Ocean surface animation detail' : 'Okyanus animasyon detayı'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({ ...settings, showWaves: !settings.showWaves })
+                    }
+                    className={`min-w-[72px] px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                      settings.showWaves
+                        ? 'bg-sky-500 text-slate-950'
+                        : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {settings.showWaves ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
+                  </button>
+                </div>
+
+                {/* Colorblind Mode */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Eye className="w-5 h-5 text-pink-300 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn ? 'Colorblind Friendly Radar' : 'Renk Körü Dostu Radar'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {isEn
+                          ? 'High-contrast colors & distinct ring patterns'
+                          : 'Yüksek kontrastlı palet ve belirgin halka desenleri'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({
+                        ...settings,
+                        colorblindMode: !settings.colorblindMode,
+                      })
+                    }
+                    className={`min-w-[72px] px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                      settings.colorblindMode
+                        ? 'bg-pink-400 text-slate-950'
+                        : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {settings.colorblindMode ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
+                  </button>
+                </div>
+
+                {/* Tutorial Hints */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <HelpCircle className="w-5 h-5 text-amber-300 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn ? 'Onboarding Tutorial Hints' : 'Eğitim İpuçları'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {isEn ? 'Show step-by-step guidance banner' : 'Adım adım başlangıç rehberi'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({
+                        ...settings,
+                        showTutorialHints: !settings.showTutorialHints,
+                      })
+                    }
+                    className={`min-w-[72px] px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                      settings.showTutorialHints
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {settings.showTutorialHints ? (isEn ? 'On' : 'Açık') : isEn ? 'Off' : 'Kapalı'}
+                  </button>
+                </div>
+
+                {/* Screen Shake Intensity */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {isEn ? 'Screen Shake Intensity' : 'Ekran Sarsıntı Şiddeti'}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {isEn
+                        ? 'Reduce or disable camera shake on cannon hits'
+                        : 'Top ve kazı sarsıntılarını ayarlayın'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={10}
+                      value={settings.screenShakeIntensity}
+                      onChange={(e) =>
+                        onUpdateSettings({
+                          ...settings,
+                          screenShakeIntensity: Number(e.target.value),
+                        })
+                      }
+                      className="w-32 accent-amber-400 cursor-pointer"
+                    />
+                    <span className="font-mono-num text-xs font-semibold text-slate-200 w-10 text-right">
+                      %{settings.screenShakeIntensity}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* TAB 2: AUDIO SETTINGS */}
+            {activeTab === 'AUDIO' && (
+              <>
+                {/* Master Volume & Quick Mute */}
+                <div className="p-4 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {settings.soundEnabled && settings.masterVolume > 0 ? (
+                        <Volume2 className="w-5 h-5 text-amber-300 shrink-0" />
+                      ) : (
+                        <VolumeX className="w-5 h-5 text-slate-400 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {isEn ? 'Master Audio' : 'Ana Ses (Genel)'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Global volume level for all game audio'
+                            : 'Tüm oyun seslerinin ana ses seviyesi'}
+                        </div>
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
-                        setConfirmReset(false);
-                        onResetSave();
+                        const nextEnabled = !(settings.soundEnabled && settings.masterVolume > 0);
+                        onUpdateSettings({
+                          ...settings,
+                          soundEnabled: nextEnabled,
+                          masterVolume:
+                            nextEnabled && settings.masterVolume === 0
+                              ? 100
+                              : settings.masterVolume,
+                        });
+                        if (nextEnabled) {
+                          soundEngine.ensureAmbientOcean();
+                        }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-xs font-bold text-white cursor-pointer"
+                      className={`min-w-[80px] px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                        settings.soundEnabled && settings.masterVolume > 0
+                          ? 'bg-amber-500 text-slate-950'
+                          : 'bg-white/10 text-slate-300'
+                      }`}
                     >
-                      {isEn ? 'Yes, Reset' : 'Evet, Sıfırla'}
+                      {settings.soundEnabled && settings.masterVolume > 0
+                        ? isEn
+                          ? 'On'
+                          : 'Açık'
+                        : isEn
+                        ? 'Muted'
+                        : 'Kapalı'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      aria-label={isEn ? 'Master volume' : 'Ana ses yüksekliği'}
+                      value={settings.soundEnabled ? settings.masterVolume : 0}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        onUpdateSettings({
+                          ...settings,
+                          soundEnabled: val > 0,
+                          masterVolume: val,
+                        });
+                        if (val > 0) soundEngine.ensureAmbientOcean();
+                      }}
+                      className="flex-1 accent-amber-400 cursor-pointer"
+                    />
+                    <span className="font-mono-num text-xs font-bold text-amber-300 w-11 text-right">
+                      %{settings.soundEnabled ? settings.masterVolume : 0}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sound Effects Volume */}
+                <div className="p-4 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Volume2 className="w-5 h-5 text-emerald-300 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {isEn ? 'Sound Effects (SFX)' : 'Ses Efektleri'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Digging, radar pings, cannon & combat audio'
+                            : 'Kazı, radar sinyali, top ve savaş sesleri'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!settings.soundEnabled || settings.masterVolume === 0 || settings.sfxVolume === 0}
+                      onClick={() => soundEngine.playRadarPing('HOT')}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 disabled:opacity-40 border border-emerald-400/35 text-emerald-200 text-xs font-semibold transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0"
+                    >
+                      {isEn ? 'Test' : 'Test Et'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      disabled={!settings.soundEnabled}
+                      aria-label={isEn ? 'Sound effects volume' : 'Ses efektleri yüksekliği'}
+                      value={settings.sfxVolume}
+                      onChange={(e) =>
+                        onUpdateSettings({
+                          ...settings,
+                          sfxVolume: Number(e.target.value),
+                        })
+                      }
+                      className="flex-1 accent-emerald-400 cursor-pointer disabled:opacity-40"
+                    />
+                    <span className="font-mono-num text-xs font-bold text-emerald-300 w-11 text-right">
+                      %{settings.sfxVolume}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ocean Surf Ambience Volume & Toggle */}
+                <div className="p-4 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Waves className="w-5 h-5 text-cyan-300 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {isEn ? 'Ocean Surf Ambience' : 'Okyanus Dalga Sesi (Ambiyans)'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Gentle synthesized ocean waves background sound'
+                            : 'Arka planda sakin dalga ve rüzgar sesi'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextAmbient = !(settings.ambientEnabled && settings.ambientVolume > 0);
+                        onUpdateSettings({
+                          ...settings,
+                          ambientEnabled: nextAmbient,
+                          ambientVolume:
+                            nextAmbient && settings.ambientVolume === 0
+                              ? 80
+                              : settings.ambientVolume,
+                        });
+                        if (nextAmbient && settings.soundEnabled) {
+                          soundEngine.ensureAmbientOcean();
+                        }
+                      }}
+                      className={`min-w-[80px] px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                        settings.ambientEnabled && settings.ambientVolume > 0
+                          ? 'bg-cyan-500 text-slate-950'
+                          : 'bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      {settings.ambientEnabled && settings.ambientVolume > 0
+                        ? isEn
+                          ? 'On'
+                          : 'Açık'
+                        : isEn
+                        ? 'Off'
+                        : 'Kapalı'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      disabled={!settings.soundEnabled || !settings.ambientEnabled}
+                      aria-label={isEn ? 'Ocean ambience volume' : 'Okyanus dalga sesi yüksekliği'}
+                      value={settings.ambientEnabled ? settings.ambientVolume : 0}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        onUpdateSettings({
+                          ...settings,
+                          ambientEnabled: val > 0,
+                          ambientVolume: val,
+                        });
+                        if (val > 0 && settings.soundEnabled) {
+                          soundEngine.ensureAmbientOcean();
+                        }
+                      }}
+                      className="flex-1 accent-cyan-400 cursor-pointer disabled:opacity-40"
+                    />
+                    <span className="font-mono-num text-xs font-bold text-cyan-300 w-11 text-right">
+                      %{settings.ambientEnabled ? settings.ambientVolume : 0}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* TAB 3: CONTROLS */}
+            {activeTab === 'CONTROLS' && (
+              <>
+                {/* Touch Controls Visibility */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-100">
+                      {isEn ? 'On-Screen Touch Controls' : 'Ekrandaki Mobil Tuşlar'}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {isEn
+                        ? 'Show or hide joystick and touch buttons'
+                        : 'Joystick ve dokunmatik tuş görünürlüğü'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 p-1 bg-slate-950/60 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
+                    {(
+                      [
+                        { id: 'AUTO', label: isEn ? 'Auto' : 'Otomatik' },
+                        { id: 'ALWAYS', label: isEn ? 'Show' : 'Göster' },
+                        { id: 'HIDDEN', label: isEn ? 'Hide' : 'Gizle' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onUpdateSettings({ ...settings, touchControls: opt.id })}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                          settings.touchControls === opt.id
+                            ? 'bg-amber-500 text-slate-950 font-semibold'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Joystick Mode */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-100">
+                      {isEn ? 'Joystick Mode' : 'Joystick Modu'}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {isEn
+                        ? 'Touch thumbstick center behavior'
+                        : 'Dokunmatik kontrol merkezi davranışı'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 p-1 bg-slate-950/60 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onUpdateSettings({ ...settings, joystickMode: 'FIXED' })}
+                      className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        settings.joystickMode === 'FIXED'
+                          ? 'bg-amber-500 text-slate-950 font-semibold'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {isEn ? 'Fixed' : 'Sabit'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateSettings({ ...settings, joystickMode: 'DYNAMIC' })}
+                      className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        settings.joystickMode === 'DYNAMIC'
+                          ? 'bg-amber-500 text-slate-950 font-semibold'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {isEn ? 'Dynamic' : 'Dinamik'}
                     </button>
                   </div>
                 </div>
-              ))}
+
+                {/* Touch Button Layout Customization (in-game only) */}
+                {onOpenLayoutEditor && (
+                  <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn ? 'Touch Button Positions & Size' : 'Tuş Konumlarını Düzenle'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {isEn
+                          ? 'Drag joystick and action buttons anywhere on screen'
+                          : 'Joystick ve aksiyon tuşlarını sürükleyip boyutunu ayarlayın'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                      {Object.keys(settings.touchLayout ?? {}).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onUpdateSettings({ ...settings, touchLayout: {} });
+                            showToast(
+                              isEn ? 'Button layout reset.' : 'Tuş düzeni sıfırlandı.'
+                            );
+                          }}
+                          className="px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onOpenLayoutEditor}
+                        className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer whitespace-nowrap"
+                      >
+                        <Move className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Edit Layout' : 'Düzenle'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Remappable Keybindings */}
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-100">
+                      <Keyboard className="w-4 h-4 text-sky-300 shrink-0" />
+                      <span>
+                        {isEn
+                          ? 'Keyboard Keybindings (WASD / Arrows · F5 Save)'
+                          : 'Klavye Tuşları (WASD/Yön · F5 Hızlı Kayıt)'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({
+                          ...settings,
+                          keybindings: { ...DEFAULT_KEYBINDINGS },
+                        })
+                      }
+                      className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer shrink-0"
+                    >
+                      {isEn ? 'Reset Keys' : 'Varsayılanlar'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {keyLabels.map((item) => {
+                      const active = listeningKey === item.key;
+                      return (
+                        <div
+                          key={item.key}
+                          className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10 text-xs"
+                        >
+                          <span className="text-slate-300 truncate">{item.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => setListeningKey(active ? null : item.key)}
+                            className={`px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer ${
+                              active
+                                ? 'bg-amber-500 text-slate-950 animate-pulse'
+                                : 'bg-white/10 hover:bg-white/20 text-amber-200'
+                            }`}
+                          >
+                            {active
+                              ? isEn
+                                ? 'Press key...'
+                                : 'Tuşa bas...'
+                              : formatKeyCode(settings.keybindings[item.key])}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* TAB 4: SAVES & WORLD */}
+            {activeTab === 'SAVE' && !onlineMode && (
+              <>
+                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-100">
+                      {isEn ? 'Quick Save & File Backup' : 'Hızlı Kayıt & Dosya Yedeği'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onQuickSave();
+                          showToast(isEn ? 'Quick saved!' : 'Hızlı kayıt alındı!');
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'QuickSave (F5)' : 'Hızlı Kayıt (F5)'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadJson}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>JSON</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Import' : 'Yükle'}</span>
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/json"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    </div>
+                  </div>
+
+                  {/* World Seed box */}
+                  <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-950/55 border border-white/10 text-xs">
+                    <span className="text-slate-400">Seed:</span>
+                    <span className="font-mono-num font-bold text-amber-300">{worldSeed}</span>
+                    <button
+                      type="button"
+                      onClick={handleCopySeed}
+                      className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-slate-200 cursor-pointer"
+                      title={isEn ? 'Copy Seed' : 'Tohumu Kopyala'}
+                    >
+                      {copiedSeed ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <input
+                        type="number"
+                        value={seedInput}
+                        onChange={(e) => setSeedInput(e.target.value)}
+                        className="w-24 px-2 py-1.5 rounded-md bg-slate-900 border border-white/15 text-slate-100 font-mono-num text-xs"
+                        placeholder="123456"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const n = parseInt(seedInput, 10);
+                          if (!Number.isNaN(n) && n > 0) {
+                            onStartWithSeed(n);
+                            showToast(
+                              isEn ? `New world #${n}` : `Yeni dünya #${n} oluşturuldu!`
+                            );
+                          }
+                        }}
+                        className="px-2.5 py-1.5 rounded-md bg-sky-500/25 hover:bg-sky-500/35 border border-sky-400/40 text-sky-200 text-xs font-semibold cursor-pointer"
+                      >
+                        {isEn ? 'Launch Seed' : 'Tohumla Başla'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3 Save Slots */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[1, 2, 3].map((slotNum) => {
+                      const summary = slots[slotNum - 1];
+                      return (
+                        <div
+                          key={slotNum}
+                          className="p-3 rounded-xl bg-slate-950/55 border border-white/10 flex flex-col justify-between gap-2 text-xs"
+                        >
+                          <div>
+                            <div className="font-semibold text-slate-100">
+                              {isEn ? `Slot ${slotNum}` : `Yuva ${slotNum}`}
+                            </div>
+                            {summary ? (
+                              <div className="text-[11px] text-slate-400 font-mono-num mt-0.5">
+                                {summary.gold}G · {summary.discoveredCount}{' '}
+                                {isEn ? 'Isl' : 'Ada'} · Sv.{summary.boatLevel}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                {isEn ? 'Empty' : 'Boş'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onSaveToSlot(slotNum);
+                                setSlots(listSaveSlots());
+                                showToast(
+                                  isEn
+                                    ? `Saved to Slot ${slotNum}`
+                                    : `Yuva ${slotNum}'e kaydedildi!`
+                                );
+                              }}
+                              className="flex-1 py-1.5 rounded bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/40 text-amber-200 text-[11px] font-semibold cursor-pointer"
+                            >
+                              {isEn ? 'Save' : 'Kaydet'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!summary}
+                              onClick={() => {
+                                onLoadFromSlot(slotNum);
+                                showToast(
+                                  isEn
+                                    ? `Loaded Slot ${slotNum}`
+                                    : `Yuva ${slotNum} yüklendi!`
+                                );
+                              }}
+                              className={`flex-1 py-1.5 rounded text-[11px] font-semibold border ${
+                                summary
+                                  ? 'bg-sky-500/20 hover:bg-sky-500/35 border-sky-400/40 text-sky-200 cursor-pointer'
+                                  : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed'
+                              }`}
+                            >
+                              {isEn ? 'Load' : 'Yükle'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Reset Progress */}
+                <div className="p-3.5 rounded-xl bg-red-950/20 border border-red-400/20 flex items-center justify-between gap-3">
+                  {!confirmReset ? (
+                    <>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-red-200">
+                          {isEn ? 'Reset Progress' : 'İlerlemeyi Sıfırla'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Start fresh on a new random ocean map'
+                            : 'Yeni rastgele ada haritasıyla sıfırdan başla'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmReset(true)}
+                        className="px-3.5 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-400/35 text-red-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full justify-between">
+                      <span className="text-xs text-red-200">
+                        {isEn
+                          ? 'Reset progress with a brand new random world?'
+                          : 'Yeni rastgele ada haritasıyla sıfırlansın mı?'}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmReset(false)}
+                          className="px-3 py-1.5 rounded-lg bg-white/10 text-xs text-slate-200 cursor-pointer"
+                        >
+                          {isEn ? 'Cancel' : 'Vazgeç'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmReset(false);
+                            onResetSave();
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-xs font-bold text-white cursor-pointer"
+                        >
+                          {isEn ? 'Yes, Reset' : 'Evet, Sıfırla'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Footer Action Bar when in-game */}
+        {onLeaveToMenu && (
+          <div className="px-4 sm:px-5 py-2.5 border-t border-white/10 bg-[#081A24] flex items-center justify-between gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={onLeaveToMenu}
+              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>
+                {onlineMode && onlineRoomId
+                  ? isEn
+                    ? `Leave Room (${onlineRoomId})`
+                    : `Odadan Ayrıl (${onlineRoomId})`
+                  : isEn
+                  ? 'Main Menu'
+                  : 'Ana Menüye Dön'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer whitespace-nowrap"
+            >
+              {isEn ? 'Done' : 'Tamam'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 };
-

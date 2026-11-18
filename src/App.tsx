@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Check,
   CloudLightning,
   Heart,
   HelpCircle,
   MessageCircle,
   Mic,
   MicOff,
+  Minus,
+  Move,
+  Plus,
   Radio,
+  RotateCcw,
   RotateCw,
   Send,
   ShieldAlert,
@@ -47,6 +52,9 @@ import {
   SaveData,
   SeaHazard,
   SoldierType,
+  TouchButtonId,
+  TouchButtonTransform,
+  TouchLayoutConfig,
   Vec2,
   WaterRipple,
   WeaponId,
@@ -257,6 +265,16 @@ export default function App() {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 640 || window.innerHeight < 500;
   });
+  const [isShortViewport, setIsShortViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerHeight < 540;
+  });
+  const [isTinyWidth, setIsTinyWidth] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 560;
+  });
+  const [draftTouchLayout, setDraftTouchLayout] = useState<TouchLayoutConfig>({});
+  const [selectedTouchButton, setSelectedTouchButton] = useState<TouchButtonId | null>(null);
 
   const [hudState, setHudState] = useState({
     canBoard: false,
@@ -464,6 +482,11 @@ export default function App() {
     settingsRef.current = settings;
     soundEngine.setEnabled(settings.soundEnabled);
     soundEngine.setAmbientEnabled(settings.ambientEnabled);
+    soundEngine.setVolumes(
+      settings.masterVolume,
+      settings.sfxVolume,
+      settings.ambientVolume
+    );
     persistSettings(settings);
   }, [settings]);
 
@@ -503,13 +526,23 @@ export default function App() {
 
   useEffect(() => {
     const checkViewport = () => {
-      const portrait = window.innerWidth < 720 && window.innerHeight > window.innerWidth;
+      const vw = window.visualViewport?.width ?? window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const portrait = vw < 720 && vh > vw;
       setIsPortrait(portrait);
-      setIsNarrowViewport(window.innerWidth < 640 || window.innerHeight < 500);
+      setIsNarrowViewport(vw < 640 || vh < 500);
+      setIsShortViewport(vh < 540);
+      setIsTinyWidth(vw < 560);
     };
     checkViewport();
     window.addEventListener('resize', checkViewport);
-    return () => window.removeEventListener('resize', checkViewport);
+    window.addEventListener('orientationchange', checkViewport);
+    window.visualViewport?.addEventListener('resize', checkViewport);
+    return () => {
+      window.removeEventListener('resize', checkViewport);
+      window.removeEventListener('orientationchange', checkViewport);
+      window.visualViewport?.removeEventListener('resize', checkViewport);
+    };
   }, []);
 
   useEffect(() => {
@@ -2411,6 +2444,8 @@ export default function App() {
         islandName: island.name,
         playerX: interior.entryPos.x,
         playerY: interior.entryPos.y,
+        cameraX: interior.entryPos.x,
+        cameraY: interior.entryPos.y,
         playerAngle: 0,
         bossDefeated: interior.enemies.every((e) => !e.isBoss),
       };
@@ -3559,6 +3594,8 @@ export default function App() {
           caveState.playerX = resolved.x;
           caveState.playerY = resolved.y;
         }
+        caveState.cameraX += (caveState.playerX - caveState.cameraX) * Math.min(1, dt * 8);
+        caveState.cameraY += (caveState.playerY - caveState.cameraY) * Math.min(1, dt * 8);
 
         if (isPlaying) {
           // Cave Monster & Boss AI
@@ -7686,14 +7723,34 @@ export default function App() {
   const hpPct = clamp((activeHp / Math.max(1, activeMaxHp)) * 100, 0, 100);
   const weaponDef = hudState.equippedWeapon ? WEAPONS[hudState.equippedWeapon] : null;
   const isCompactHud = isCoarseDevice || isNarrowViewport;
-  const controlsDisplayMode: ActionControlsDisplayMode =
-    settings.touchControls === 'ALWAYS'
-      ? 'TOUCH'
-      : settings.touchControls === 'HIDDEN'
-      ? 'HIDDEN'
-      : isCoarseDevice
-      ? 'TOUCH'
-      : 'DESKTOP';
+  const isCompactTouch = isCompactHud || isShortViewport;
+  const isEditingLayout = activeModal === 'LAYOUT_EDIT';
+  const controlsDisplayMode: ActionControlsDisplayMode = isEditingLayout
+    ? 'TOUCH'
+    : settings.touchControls === 'ALWAYS'
+    ? 'TOUCH'
+    : settings.touchControls === 'HIDDEN'
+    ? 'HIDDEN'
+    : isCoarseDevice
+    ? 'TOUCH'
+    : 'DESKTOP';
+  const activeTouchLayout = isEditingLayout ? draftTouchLayout : settings.touchLayout;
+
+  const openLayoutEditor = useCallback(() => {
+    setDraftTouchLayout(settings.touchLayout ? { ...settings.touchLayout } : {});
+    setSelectedTouchButton('digOrFire');
+    setActiveModal('LAYOUT_EDIT');
+  }, [settings.touchLayout]);
+
+  const updateDraftButtonTransform = useCallback(
+    (id: TouchButtonId, next: TouchButtonTransform) => {
+      setDraftTouchLayout((prev) => ({
+        ...prev,
+        [id]: next,
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     hasTouchControlsRef.current = controlsDisplayMode === 'TOUCH';
@@ -7711,8 +7768,29 @@ export default function App() {
           hasSavedProgress={hasSavedProgress}
           savedGold={save.gold}
           discoveredCount={save.discoveredIslandIds.length}
+          treasuresFoundCount={save.treasuresFoundCount}
+          boatLevel={save.upgrades.boatLevel}
+          captainName={identity.name}
           inviteRoomCode={inviteRoomCode}
           language={settings.language}
+          soundEnabled={settings.soundEnabled && settings.masterVolume > 0}
+          onToggleLanguage={() =>
+            setSettings((prev) => ({
+              ...prev,
+              language: prev.language === 'en' ? 'tr' : 'en',
+            }))
+          }
+          onToggleSound={() =>
+            setSettings((prev) => {
+              const nextEnabled = !(prev.soundEnabled && prev.masterVolume > 0);
+              return {
+                ...prev,
+                soundEnabled: nextEnabled,
+                masterVolume: nextEnabled && prev.masterVolume === 0 ? 100 : prev.masterVolume,
+              };
+            })
+          }
+          onOpenSettings={() => setActiveModal('SETTINGS')}
           onStart={() => {
             soundEngine.ensureAmbientOcean();
             onlineActiveRef.current = false;
@@ -7739,6 +7817,7 @@ export default function App() {
           players={onlineLobbyPlayers}
           starterSlots={onlineStarterSlots}
           initialRoomCode={inviteRoomCode}
+          language={settings.language}
           onCreateRoom={(rule: OnlineModeRule, resumeRoomId?: string) => {
             const mgr = ensureOnlineManager();
             void mgr.createOrResumeHostRoom(identity, rule, resumeRoomId).catch(() => {
@@ -7766,7 +7845,7 @@ export default function App() {
       )}
 
       {phase === 'PLAYING' && (
-        <div className="pointer-events-none fixed inset-0 z-20 pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-5 flex flex-col justify-between">
+        <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
           {/* Active World Event Banner (Top-Center) */}
           {activeWorldEvent && !onlineActive && (
             <div className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F2936]/90 border border-amber-400/45 text-xs text-amber-200 shadow-lg max-w-md">
@@ -7782,121 +7861,184 @@ export default function App() {
             </div>
           )}
 
-          {/* Top Row */}
-          <div className="flex items-start justify-between gap-2 sm:gap-4">
-            <div
-              className={`pointer-events-auto flex flex-col items-start gap-1.5 sm:gap-2 min-w-0 ${
-                isCompactHud ? 'max-w-[52vw]' : 'max-w-none'
-              }`}
-            >
-              {onlineActive && onlineRoomInfo && (
-                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#0F2936]/90 border border-sky-400/35 text-[11px] sm:text-xs font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      onlineStatus === 'RECONNECTING' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
-                    }`}
-                  />
-                  <span className="truncate font-mono-num">
-                    Oda {onlineRoomInfo.roomId} ·{' '}
-                    {onlineLobbyPlayers.filter((p) => p.connected).length} Kaptan ·{' '}
-                    {onlineRoomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
-                    {!isCompactHud && onlinePing !== null ? ` · ${onlinePing}ms` : ''}
-                  </span>
-                </div>
-              )}
-
-              {(hudState.isSailing || activeHp < activeMaxHp || hudState.nearbyEnemyCount > 0) && (
-                <div className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center gap-1.5 sm:gap-2.5 shadow-md max-w-full">
-                  <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
-                  <div className="w-14 sm:w-28 h-2 rounded-full bg-slate-900 overflow-hidden shrink-0">
-                    <div
-                      className={`h-full transition-all duration-150 ${
-                        hpPct > 45 ? 'bg-emerald-400' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${hpPct}%` }}
-                    />
-                  </div>
-                  <span className="font-mono-num text-[11px] sm:text-xs font-semibold text-slate-100 whitespace-nowrap">
-                    {activeHp}/{activeMaxHp}
-                  </span>
-                  {hudState.isSailing && !isCompactHud && (
-                    <span className="text-[11px] font-semibold text-amber-200/90 border-l border-white/15 pl-2 whitespace-nowrap">
-                      {hudState.shipClassName}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {hudState.currentIslandName && (
-                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-[#0F2936]/85 border border-white/15 text-[11px] sm:text-xs font-medium text-slate-100 truncate max-w-full shadow-md">
-                  {hudState.currentIslandName}
-                </div>
-              )}
-
-              {hudState.zoneBanner && (
-                <div
-                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 max-w-full shadow-md whitespace-nowrap ${
-                    hudState.zoneBanner.tone === 'CITY'
-                      ? 'bg-sky-950/85 border-sky-400/45 text-sky-200'
-                      : hudState.zoneBanner.tone === 'ARENA'
-                      ? 'bg-orange-950/85 border-orange-400/45 text-orange-200'
-                      : 'bg-purple-950/85 border-purple-400/45 text-purple-200'
+          {/* Top-Left HUD Stack (independently anchored so it never shifts bottom controls) */}
+          <div
+            className={`pointer-events-auto absolute ${
+              isCompactTouch
+                ? 'top-[max(0.5rem,env(safe-area-inset-top))] left-[max(0.5rem,env(safe-area-inset-left))] gap-1 max-w-[46vw]'
+                : 'top-5 left-5 gap-2 max-w-[36vw]'
+            } flex flex-col items-start min-w-0`}
+          >
+            {onlineActive && onlineRoomInfo && (
+              <div
+                className={`${
+                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
+                } rounded-lg bg-[#0F2936]/90 border border-sky-400/35 font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    onlineStatus === 'RECONNECTING' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
                   }`}
+                />
+                <span className="truncate font-mono-num">
+                  Oda {onlineRoomInfo.roomId} ·{' '}
+                  {onlineLobbyPlayers.filter((p) => p.connected).length} Kaptan ·{' '}
+                  {onlineRoomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
+                  {!isCompactHud && onlinePing !== null ? ` · ${onlinePing}ms` : ''}
+                </span>
+              </div>
+            )}
+
+            {(hudState.isSailing || activeHp < activeMaxHp || hudState.nearbyEnemyCount > 0) && (
+              <div
+                className={`${
+                  isCompactTouch ? 'px-2 py-1 gap-1.5' : 'px-3 py-2 gap-2.5'
+                } rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center shadow-md max-w-full`}
+              >
+                <Heart
+                  className={`${
+                    isCompactTouch ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                  } text-red-400 shrink-0`}
+                />
+                <div
+                  className={`${
+                    isCompactTouch ? 'w-14' : 'w-28'
+                  } h-2 rounded-full bg-slate-900 overflow-hidden shrink-0`}
                 >
-                  {hudState.zoneBanner.tone === 'CITY' ? (
-                    <ShieldCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                  ) : hudState.zoneBanner.tone === 'ARENA' ? (
-                    <Swords className="w-3.5 h-3.5 text-orange-300 shrink-0" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-                  )}
-                  <span className="truncate">{hudState.zoneBanner.label}</span>
+                  <div
+                    className={`h-full transition-all duration-150 ${
+                      hpPct > 45 ? 'bg-emerald-400' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${hpPct}%` }}
+                  />
                 </div>
-              )}
-
-              {hudState.arenaWaveText && (
-                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-orange-950/90 border border-amber-400/60 text-amber-200 text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-md whitespace-nowrap">
-                  <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>{hudState.arenaWaveText}</span>
-                </div>
-              )}
-
-              {!hudState.isSailing && weaponDef && (
-                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-[#0F2936]/90 border border-white/15 text-[11px] sm:text-xs font-medium text-slate-100 flex items-center gap-1.5 sm:gap-2 shadow-md max-w-full">
-                  <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="truncate">{weaponDef.name}</span>
-                </div>
-              )}
-
-              {hudState.nearbyEnemyCount > 0 && (
-                <div className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-red-950/85 border border-red-400/45 text-red-200 text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shadow-md max-w-full">
-                  <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400 shrink-0" />
-                  <span className="whitespace-nowrap">
-                    {isCompactHud
-                      ? `Düşman (${hudState.nearbyEnemyCount})`
-                      : hudState.isSailing
-                      ? `Yakında Düşman Gemisi (${hudState.nearbyEnemyCount})`
-                      : `Adada Düşman Takımı (${hudState.nearbyEnemyCount})`}
-                  </span>
-                </div>
-              )}
-
-              {hudState.nearDock && !isCompactHud && (
-                <button
-                  type="button"
-                  onClick={() => setActiveModal('SHOP')}
-                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+                <span
+                  className={`font-mono-num ${
+                    isCompactTouch ? 'text-[11px]' : 'text-xs'
+                  } font-semibold text-slate-100 whitespace-nowrap`}
                 >
-                  <Store className="w-4 h-4" />
-                  <span>
-                    {settings.language === 'en'
-                      ? 'Merchant Dock Open (T)'
-                      : 'Tüccar İskelesi Açık (T)'}
+                  {activeHp}/{activeMaxHp}
+                </span>
+                {hudState.isSailing && !isCompactHud && (
+                  <span className="text-[11px] font-semibold text-amber-200/90 border-l border-white/15 pl-2 whitespace-nowrap">
+                    {hudState.shipClassName}
                   </span>
-                </button>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
+            {hudState.currentIslandName && hudState.zoneBanner?.tone !== 'CAVE' && (
+              <div
+                className={`${
+                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
+                } rounded-lg bg-[#0F2936]/85 border border-white/15 font-medium text-slate-100 truncate max-w-full shadow-md`}
+              >
+                {hudState.currentIslandName}
+              </div>
+            )}
+
+            {hudState.zoneBanner && (
+              <div
+                className={`${
+                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
+                } rounded-lg border font-semibold flex items-center gap-1.5 max-w-full shadow-md whitespace-nowrap ${
+                  hudState.zoneBanner.tone === 'CITY'
+                    ? 'bg-sky-950/85 border-sky-400/45 text-sky-200'
+                    : hudState.zoneBanner.tone === 'ARENA'
+                    ? 'bg-orange-950/85 border-orange-400/45 text-orange-200'
+                    : 'bg-purple-950/85 border-purple-400/45 text-purple-200'
+                }`}
+              >
+                {hudState.zoneBanner.tone === 'CITY' ? (
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                ) : hudState.zoneBanner.tone === 'ARENA' ? (
+                  <Swords className="w-3.5 h-3.5 text-orange-300 shrink-0" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                )}
+                <span className="truncate">{hudState.zoneBanner.label}</span>
+              </div>
+            )}
+
+            {(hudState.arenaWaveText ||
+              (!hudState.isSailing && weaponDef) ||
+              hudState.nearbyEnemyCount > 0) && (
+              <div
+                className={`${
+                  isCompactTouch
+                    ? 'flex flex-wrap items-center gap-1'
+                    : 'flex flex-col items-start gap-2'
+                } max-w-full`}
+              >
+                {hudState.arenaWaveText && (
+                  <div
+                    className={`${
+                      isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
+                    } rounded-lg bg-orange-950/90 border border-amber-400/60 text-amber-200 font-bold flex items-center gap-1 shadow-md whitespace-nowrap`}
+                  >
+                    <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>{hudState.arenaWaveText}</span>
+                  </div>
+                )}
+
+                {!hudState.isSailing && weaponDef && (
+                  <div
+                    className={`${
+                      isCompactTouch ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-3 py-1.5 text-xs gap-2'
+                    } rounded-xl bg-[#0F2936]/90 border border-white/15 font-medium text-slate-100 flex items-center shadow-md max-w-full`}
+                  >
+                    <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span className="truncate">{weaponDef.name}</span>
+                  </div>
+                )}
+
+                {hudState.nearbyEnemyCount > 0 && (
+                  <div
+                    className={`${
+                      isCompactTouch ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-3 py-1.5 text-xs gap-1.5'
+                    } rounded-xl bg-red-950/85 border border-red-400/45 text-red-200 font-semibold flex items-center shadow-md max-w-full`}
+                  >
+                    <ShieldAlert
+                      className={`${
+                        isCompactTouch ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                      } text-red-400 shrink-0`}
+                    />
+                    <span className="whitespace-nowrap">
+                      {isCompactHud
+                        ? `Düşman (${hudState.nearbyEnemyCount})`
+                        : hudState.isSailing
+                        ? `Yakında Düşman Gemisi (${hudState.nearbyEnemyCount})`
+                        : `Adada Düşman Takımı (${hudState.nearbyEnemyCount})`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hudState.nearDock && !isCompactHud && (
+              <button
+                type="button"
+                onClick={() => setActiveModal('SHOP')}
+                className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+              >
+                <Store className="w-4 h-4" />
+                <span>
+                  {settings.language === 'en'
+                    ? 'Merchant Dock Open (T)'
+                    : 'Tüccar İskelesi Açık (T)'}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Top-Right HUD (independently anchored) */}
+          <div
+            className={`pointer-events-none absolute ${
+              isCompactTouch
+                ? 'top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))]'
+                : 'top-5 right-5'
+            }`}
+          >
             <TopRightHud
               isCompactMode={isCompactHud}
               gold={save.gold}
@@ -7915,9 +8057,17 @@ export default function App() {
             />
           </div>
 
-          {/* Contextual Onboarding Hint Bar */}
+          {/* Contextual Onboarding Hint Bar (independently anchored so it never shifts controls) */}
           {nextTutorialStep && (
-            <div className="pointer-events-auto self-center mb-1 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl max-w-lg">
+            <div
+              className={`pointer-events-auto absolute left-1/2 -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl ${
+                controlsDisplayMode === 'TOUCH'
+                  ? isTinyWidth
+                    ? 'bottom-[8.25rem] max-w-[calc(100vw-1.5rem)]'
+                    : 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] max-w-[calc(100vw-21rem)]'
+                  : 'bottom-5 max-w-lg'
+              }`}
+            >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
                 <span className="font-bold text-amber-200 mr-1.5">
@@ -7938,9 +8088,17 @@ export default function App() {
             </div>
           )}
 
-          {/* Online Chat & Quick Emotes Widget */}
-          {onlineActive && (
-            <div className="pointer-events-auto fixed bottom-28 sm:bottom-5 left-3 sm:left-5 z-30 flex flex-col items-start gap-2">
+          {/* Online Chat & Quick Emotes Widget (never overlaps VirtualJoystick or ActionControls) */}
+          {onlineActive && !isEditingLayout && (
+            <div
+              className={`pointer-events-auto absolute z-30 flex flex-col gap-1.5 ${
+                controlsDisplayMode === 'TOUCH'
+                  ? isTinyWidth
+                    ? 'bottom-[8rem] left-[max(0.5rem,env(safe-area-inset-left))] items-start max-w-[calc(100vw-1rem)]'
+                    : 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 items-center max-w-[calc(100vw-20.5rem)]'
+                  : 'bottom-5 left-5 items-start'
+              }`}
+            >
               {chatOpen && (
                 <div className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
                   <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
@@ -8042,15 +8200,27 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div
+                className={`flex flex-wrap items-center ${
+                  isCompactTouch ? 'gap-1 justify-center' : 'gap-1.5'
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className="px-3 py-1.5 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 text-xs font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                  className={`${
+                    isCompactTouch ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+                  } rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap`}
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
                   <span>
-                    {settings.language === 'en' ? 'Chat & Emotes' : 'Sohbet & İfade'}
+                    {settings.language === 'en'
+                      ? isCompactTouch
+                        ? 'Chat'
+                        : 'Chat & Emotes'
+                      : isCompactTouch
+                      ? 'Sohbet'
+                      : 'Sohbet & İfade'}
                   </span>
                   {onlineChat.length > 0 && !chatOpen && (
                     <span className="px-1.5 py-0.2 rounded-full bg-sky-500/30 text-[10px] font-mono-num text-sky-100">
@@ -8063,7 +8233,9 @@ export default function App() {
                   type="button"
                   onClick={() => void handleToggleVoiceJoin()}
                   disabled={voiceState.connecting}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`${
+                    isCompactTouch ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+                  } rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
                     voiceState.enabled
                       ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
                       : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-white/15 text-slate-200'
@@ -8081,10 +8253,14 @@ export default function App() {
                         : 'Bağlanıyor...'
                       : voiceState.enabled
                       ? settings.language === 'en'
-                        ? 'Leave Voice'
+                        ? isCompactTouch
+                          ? 'Leave'
+                          : 'Leave Voice'
                         : 'Sesten Çık'
                       : settings.language === 'en'
-                      ? 'Join Voice'
+                      ? isCompactTouch
+                        ? 'Voice'
+                        : 'Join Voice'
                       : 'Sesli Sohbet'}
                   </span>
                   {voiceState.enabled && (
@@ -8156,21 +8332,46 @@ export default function App() {
             </div>
           )}
 
-          {/* Bottom Row */}
-          <div className="flex items-end justify-between gap-2 sm:gap-4">
-            {controlsDisplayMode === 'TOUCH' ? (
+          {/* Bottom-Left Virtual Joystick (independently anchored) */}
+          {controlsDisplayMode === 'TOUCH' && (
+            <div
+              className={`pointer-events-none absolute ${
+                isEditingLayout ? 'z-30' : ''
+              } ${
+                isCompactTouch
+                  ? 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-[max(0.5rem,env(safe-area-inset-left))]'
+                  : 'bottom-5 left-5'
+              }`}
+            >
               <VirtualJoystick
                 mode={settings.joystickMode}
+                compact={isCompactTouch}
+                touchLayout={activeTouchLayout}
+                isEditingLayout={isEditingLayout}
+                isSelected={selectedTouchButton === 'joystick'}
+                language={settings.language}
+                onSelectButton={setSelectedTouchButton}
+                onUpdateButtonTransform={updateDraftButtonTransform}
                 onChange={(vec) => {
                   simRef.current.joystickVec = vec;
                 }}
               />
-            ) : (
-              <div aria-hidden="true" />
-            )}
+            </div>
+          )}
 
+          {/* Bottom-Right Action Controls (independently anchored) */}
+          <div
+            className={`pointer-events-none absolute ${
+              isEditingLayout ? 'z-30' : ''
+            } ${
+              isCompactTouch
+                ? 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] right-[max(0.5rem,env(safe-area-inset-right))]'
+                : 'bottom-5 right-5'
+            }`}
+          >
             <ActionControls
               displayMode={controlsDisplayMode}
+              compact={isCompactTouch}
               isSailing={hudState.isSailing}
               canBoard={hudState.canBoard}
               canDisembark={hudState.canDisembark}
@@ -8192,6 +8393,11 @@ export default function App() {
               armyStance={hudState.armyStance}
               hasSoldiers={save.kingdom.soldiers.length > 0}
               interactLabel={hudState.interactLabel}
+              touchLayout={activeTouchLayout}
+              isEditingLayout={isEditingLayout}
+              selectedButtonId={selectedTouchButton}
+              onSelectButton={setSelectedTouchButton}
+              onUpdateButtonTransform={updateDraftButtonTransform}
               onDig={handleDig}
               onFireCannons={handleFireCannons}
               onAttackLand={handleAttackLand}
@@ -8204,6 +8410,140 @@ export default function App() {
               onCycleStance={handleCycleStance}
             />
           </div>
+
+          {/* Interactive Touch Button Layout Editor Toolbar */}
+          {isEditingLayout && (
+            <>
+              <div className="pointer-events-none fixed inset-0 bg-slate-950/35 z-20" />
+              <div className="pointer-events-auto fixed top-[max(0.625rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-40 w-[min(94vw,30rem)] rounded-2xl bg-[#0F2936]/95 border border-amber-400/50 shadow-2xl backdrop-blur-md px-3 py-2.5 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Move className="w-4 h-4 text-amber-300 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-50 truncate">
+                        {settings.language === 'en'
+                          ? 'Drag buttons to reposition'
+                          : 'Tuşları sürükleyerek yerini değiştir'}
+                      </div>
+                      {selectedTouchButton && (
+                        <div className="text-[11px] text-amber-300 truncate">
+                          {settings.language === 'en' ? 'Selected: ' : 'Seçili: '}
+                          {selectedTouchButton === 'digOrFire'
+                            ? settings.language === 'en'
+                              ? 'Dig / Fire'
+                              : 'Kazı Yap / Top At'
+                            : selectedTouchButton === 'boatOrInteract'
+                            ? settings.language === 'en'
+                              ? 'Ship / Interact'
+                              : 'Tekne / Etkileşim'
+                            : selectedTouchButton === 'attack'
+                            ? settings.language === 'en'
+                              ? 'Attack'
+                              : 'Saldır'
+                            : selectedTouchButton === 'radar'
+                            ? 'Radar'
+                            : selectedTouchButton === 'ability'
+                            ? settings.language === 'en'
+                              ? 'Order'
+                              : 'Savaş Emri'
+                            : selectedTouchButton === 'fish'
+                            ? settings.language === 'en'
+                              ? 'Fishing'
+                              : 'Olta'
+                            : settings.language === 'en'
+                            ? 'Move Joystick'
+                            : 'Hareket Joystick'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {selectedTouchButton && (
+                    <div className="flex items-center gap-1 shrink-0 bg-slate-900/70 border border-white/10 rounded-lg px-1.5 py-1">
+                      <button
+                        type="button"
+                        aria-label="Küçült"
+                        onClick={() => {
+                          const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
+                          const nextScale = Math.max(0.75, Math.round(((cur.scale ?? 1) - 0.1) * 100) / 100);
+                          updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
+                        }}
+                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="font-mono-num text-[11px] font-bold text-slate-200 w-9 text-center">
+                        %{Math.round((draftTouchLayout[selectedTouchButton]?.scale ?? 1) * 100)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Büyüt"
+                        onClick={() => {
+                          const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
+                          const nextScale = Math.min(1.35, Math.round(((cur.scale ?? 1) + 0.1) * 100) / 100);
+                          updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
+                        }}
+                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        title={settings.language === 'en' ? 'Reset Selected' : 'Seçili Tuşu Sıfırla'}
+                        onClick={() => {
+                          setDraftTouchLayout((prev) => {
+                            const next = { ...prev };
+                            delete next[selectedTouchButton];
+                            return next;
+                          });
+                        }}
+                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-sky-300 flex items-center justify-center cursor-pointer ml-0.5"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setDraftTouchLayout({})}
+                    className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{settings.language === 'en' ? 'Reset All' : 'Varsayılan'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveModal('NONE')}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold cursor-pointer"
+                    >
+                      {settings.language === 'en' ? 'Cancel' : 'İptal'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettings((prev) => ({
+                          ...prev,
+                          touchControls:
+                            prev.touchControls === 'HIDDEN' ? 'ALWAYS' : prev.touchControls,
+                          touchLayout: draftTouchLayout,
+                        }));
+                        setActiveModal('NONE');
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 shadow cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{settings.language === 'en' ? 'Save' : 'Kaydet'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -8318,7 +8658,8 @@ export default function App() {
           onStartWithSeed={handleStartWithSeed}
           onExportSave={handleExportSave}
           onImportSave={handleImportSave}
-          onLeaveToMenu={handleLeaveToMenu}
+          onLeaveToMenu={phase === 'PLAYING' ? handleLeaveToMenu : undefined}
+          onOpenLayoutEditor={phase === 'PLAYING' ? openLayoutEditor : undefined}
           onClose={() => setActiveModal('NONE')}
         />
       )}
