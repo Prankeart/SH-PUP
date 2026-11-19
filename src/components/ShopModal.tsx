@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import {
   Backpack,
   Bird,
+  Check,
   Coins,
   Compass,
   Crosshair,
   Fish,
   Hammer,
   HeartPulse,
+  Lock,
   Pickaxe,
   Shield,
   Ship,
@@ -23,8 +25,10 @@ import { BagItem, PetId, Upgrades, WeaponId } from '../types/game';
 import { getUpgradeCost, UPGRADE_DEFS, UpgradeKey } from '../engine/upgrades';
 import { PET_DEFS } from '../engine/progression';
 import { MAX_CARRIED_WEAPONS, WEAPON_LIST, WEAPONS } from '../engine/weapons';
+import { WeaponSilhouette } from './WeaponHudPanel';
 
 type ShopTab = 'TRADE' | 'ARSENAL' | 'WORKSHOP' | 'PETS';
+type ArsenalFilter = 'ALL' | 'MELEE' | 'RANGED' | 'OWNED';
 
 interface ShopModalProps {
   gold: number;
@@ -101,6 +105,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
   onClose,
 }) => {
   const [tab, setTab] = useState<ShopTab>('TRADE');
+  const [arsenalFilter, setArsenalFilter] = useState<ArsenalFilter>('ALL');
   const [targetReplaceSlot, setTargetReplaceSlot] = useState<number>(0);
   const isEn = language === 'en';
   const carriedFull = weaponSlots.length >= MAX_CARRIED_WEAPONS;
@@ -110,22 +115,29 @@ export const ShopModal: React.FC<ShopModalProps> = ({
   const canCraftWithRes = wood >= 2 && iron >= 1;
   const canCraftWithGold = gold >= 60;
 
+  const filteredWeapons = WEAPON_LIST.filter((w) => {
+    if (arsenalFilter === 'MELEE') return w.kind === 'MELEE';
+    if (arsenalFilter === 'RANGED') return w.kind === 'RANGED';
+    if (arsenalFilter === 'OWNED') return unlockedWeapons.includes(w.id);
+    return true;
+  });
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Harbor Merchant & Upgrades' : 'Liman Tüccarı ve Geliştirmeler'}
     >
-      <div className="w-full max-w-4xl max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+      <div className="w-full max-w-4xl max-h-[92dvh] sm:max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="px-3.5 sm:px-5 py-3 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Store className="w-5 h-5 text-amber-400 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
               {isEn ? 'Harbor Merchant' : 'Liman Tüccarı'}
             </h2>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <div className="flex items-center gap-1.5 font-mono-num text-sm font-bold text-amber-300">
               <Coins className="w-4 h-4 text-amber-400" />
               <span>{gold.toLocaleString('tr-TR')}</span>
@@ -141,54 +153,59 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           </div>
         </div>
 
-        <div className="px-4 sm:px-5 py-2 border-b border-white/10 flex flex-wrap items-center gap-1.5 bg-slate-950/25 shrink-0">
+        {/* Single-row horizontal tab navigation on mobile */}
+        <div className="px-3 sm:px-5 py-2 border-b border-white/10 flex flex-nowrap items-center gap-1.5 overflow-x-auto bg-slate-950/25 shrink-0">
           <button
             type="button"
             onClick={() => setTab('TRADE')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'TRADE'
                 ? 'bg-amber-500 text-slate-950'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Store className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Trade & Upgrades' : 'Tüccar & Yükseltme'}</span>
+            <Store className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">{isEn ? 'Trade' : 'Tüccar'}</span>
+            <span className="hidden sm:inline">{isEn ? 'Trade & Upgrades' : 'Tüccar & Yükseltme'}</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('ARSENAL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'ARSENAL'
                 ? 'bg-amber-500 text-slate-950'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Swords className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Weapons & Arsenal' : 'Silahlar & Cephanelik'}</span>
+            <Swords className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">{isEn ? 'Weapons' : 'Silahlar'}</span>
+            <span className="hidden sm:inline">{isEn ? 'Weapons & Arsenal' : 'Silahlar & Cephanelik'}</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('WORKSHOP')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'WORKSHOP'
                 ? 'bg-amber-500 text-slate-950'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Hammer className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Workshop & Resources' : 'Atölye & Kaynaklar'}</span>
+            <Hammer className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">{isEn ? 'Workshop' : 'Atölye'}</span>
+            <span className="hidden sm:inline">{isEn ? 'Workshop & Resources' : 'Atölye & Kaynaklar'}</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('PETS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'PETS'
                 ? 'bg-amber-500 text-slate-950'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Bird className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Pets & Fishing' : 'Evcil Hayvan & Balık'}</span>
+            <Bird className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">{isEn ? 'Pets' : 'Evcil'}</span>
+            <span className="hidden sm:inline">{isEn ? 'Pets & Fishing' : 'Evcil Hayvan & Balık'}</span>
           </button>
         </div>
 
@@ -327,30 +344,28 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           )}
 
           {tab === 'ARSENAL' && (
-            <div className="flex flex-col gap-4">
-              {/* 2-Slot Carried Loadout Bar */}
-              <div className="p-3.5 rounded-xl bg-slate-950/45 border border-white/15 flex flex-col gap-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Swords className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span className="text-xs sm:text-sm font-bold text-slate-100">
+            <div className="flex flex-col gap-3.5">
+              {/* Compact 2-Slot Carried Loadout Strip */}
+              <div className="rounded-xl bg-slate-950/45 border border-white/12 p-3">
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Swords className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-slate-100 truncate">
                       {isEn
-                        ? `Carried Weapons (${weaponSlots.length}/${MAX_CARRIED_WEAPONS})`
+                        ? `Active Loadout (${weaponSlots.length}/${MAX_CARRIED_WEAPONS})`
                         : `Taşınan Silahlar (${weaponSlots.length}/${MAX_CARRIED_WEAPONS})`}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400">
-                    {carriedFull
-                      ? isEn
-                        ? `Full · Replacing Slot ${targetReplaceSlot + 1} on equip`
-                        : `Dolu · Yeni silah Slot ${targetReplaceSlot + 1} yerine geçer`
-                      : isEn
-                      ? 'Carry up to 2 weapons & switch anytime'
-                      : 'Üzerinde en fazla 2 silah taşıyabilirsin'}
-                  </span>
+                  {carriedFull && (
+                    <span className="text-[11px] font-medium text-amber-300 whitespace-nowrap">
+                      {isEn
+                        ? `Replacing Slot ${targetReplaceSlot + 1}`
+                        : `Yeni seçim: Slot ${targetReplaceSlot + 1}`}
+                    </span>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2">
                   {[0, 1].map((slotIdx) => {
                     const slotId = weaponSlots[slotIdx];
                     const slotDef = slotId ? WEAPONS[slotId] : null;
@@ -358,8 +373,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                     const isReplaceTarget = carriedFull && targetReplaceSlot === slotIdx;
 
                     return (
-                      <div
+                      <button
                         key={slotIdx}
+                        type="button"
                         onClick={() => {
                           if (slotId) {
                             onEquipWeapon?.(slotId);
@@ -368,58 +384,38 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                             setTargetReplaceSlot(slotIdx);
                           }
                         }}
-                        className={`p-2.5 rounded-xl border transition-colors ${
-                          slotId ? 'cursor-pointer' : ''
-                        } ${
+                        className={`min-h-[68px] p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 cursor-pointer ${
                           isActive
-                            ? 'bg-emerald-950/45 border-emerald-400/60'
+                            ? 'bg-emerald-950/50 border-emerald-400/65 shadow-sm'
                             : isReplaceTarget
-                            ? 'bg-amber-950/30 border-amber-400/50'
+                            ? 'bg-amber-950/35 border-amber-400/55'
                             : 'bg-slate-900/60 border-white/10 hover:border-white/25'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-1.5">
+                        <div className="w-full flex items-center justify-between gap-1">
                           <span className="text-[10px] font-mono-num font-bold uppercase tracking-wider text-slate-400">
                             Slot {slotIdx + 1}
                           </span>
-                          <div className="flex items-center gap-1">
-                            {isActive && (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                                {isEn ? 'Active' : 'Aktif'}
-                              </span>
-                            )}
-                            {carriedFull && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setTargetReplaceSlot(slotIdx);
-                                }}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-pointer ${
-                                  isReplaceTarget
-                                    ? 'bg-amber-400 text-slate-950'
-                                    : 'bg-white/10 text-slate-300 hover:bg-white/20'
-                                }`}
-                              >
-                                {isReplaceTarget
-                                  ? isEn
-                                    ? 'Target'
-                                    : 'Hedef'
-                                  : isEn
-                                  ? 'Replace'
-                                  : 'Değiştir'}
-                              </button>
-                            )}
-                          </div>
+                          {isActive ? (
+                            <span className="text-[10px] font-bold text-emerald-300 flex items-center gap-0.5">
+                              <Check className="w-3 h-3" />
+                              {isEn ? 'Active' : 'Aktif'}
+                            </span>
+                          ) : isReplaceTarget ? (
+                            <span className="text-[10px] font-bold text-amber-300">
+                              {isEn ? 'Target' : 'Hedef'}
+                            </span>
+                          ) : null}
                         </div>
 
                         {slotDef ? (
-                          <div className="mt-1.5 flex items-center gap-2 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: slotDef.color }}
+                          <div className="flex items-center gap-2 min-w-0 w-full">
+                            <WeaponSilhouette
+                              weaponId={slotDef.id}
+                              className="w-10 h-4 shrink-0"
+                              style={{ color: slotDef.color }}
                             />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="text-xs font-bold text-slate-100 truncate">
                                 {isEn ? slotDef.nameEn : slotDef.name}
                               </div>
@@ -433,69 +429,134 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <div className="mt-1.5 text-xs text-slate-500 italic">
+                          <div className="text-xs text-slate-500">
                             {isEn ? 'Empty Slot' : 'Boş Slot'}
                           </div>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {WEAPON_LIST.map((w) => {
+              {/* Category Filter Strip */}
+              <div className="grid grid-cols-4 sm:inline-flex sm:self-start gap-1 p-1 rounded-xl bg-slate-950/45 border border-white/10">
+                {(
+                  [
+                    { id: 'ALL', label: isEn ? 'All' : 'Tümü' },
+                    { id: 'MELEE', label: isEn ? 'Melee' : 'Yakın' },
+                    { id: 'RANGED', label: isEn ? 'Ranged' : 'Menzilli' },
+                    { id: 'OWNED', label: isEn ? 'Owned' : 'Bende' },
+                  ] as const
+                ).map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setArsenalFilter(cat.id)}
+                    className={`h-8 px-2 sm:px-3.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      arsenalFilter === cat.id
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Clean Mobile-Optimized Weapon Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                {filteredWeapons.map((w) => {
                   const unlocked = unlockedWeapons.includes(w.id);
                   const slotIdx = weaponSlots.indexOf(w.id);
                   const carried = slotIdx >= 0;
                   const equipped = equippedWeapon === w.id;
                   const canBuy = Boolean(w.shopCost && gold >= w.shopCost);
+                  const damageText = w.pellets > 1 ? `${w.damage}×${w.pellets}` : `${w.damage}`;
+                  const specialPerk = w.splashRadius
+                    ? isEn
+                      ? 'AoE Blast'
+                      : 'Alan Hasarı'
+                    : w.lifesteal
+                    ? `+${w.lifesteal} HP`
+                    : null;
+
                   return (
                     <div
                       key={w.id}
-                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 ${
+                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition-colors ${
                         equipped
-                          ? 'bg-emerald-950/35 border-emerald-400/55'
+                          ? 'bg-emerald-950/30 border-emerald-400/55'
                           : carried
                           ? 'bg-sky-950/25 border-sky-400/40'
                           : 'bg-slate-950/35 border-white/10'
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className="w-3 h-3 rounded-full shrink-0"
-                              style={{ backgroundColor: w.color }}
-                            />
-                            <span className="text-sm font-bold text-slate-100 truncate">
+                      {/* Top Header with Silhouette Bay */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-11 rounded-lg bg-slate-950/70 border border-white/10 flex items-center justify-center shrink-0 px-1.5">
+                          <WeaponSilhouette
+                            weaponId={w.id}
+                            className="w-full h-6 drop-shadow-sm"
+                            style={{ color: w.color }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-50 truncate">
                               {isEn ? w.nameEn : w.name}
                             </span>
+                            <span className="text-[11px] font-mono-num text-amber-300 shrink-0">
+                              Sv.{w.tier}
+                            </span>
                           </div>
-                          <span className="text-[11px] font-mono-num text-amber-300 shrink-0">
-                            {isEn ? `Tier ${w.tier}` : `Sv.${w.tier}`} · {w.kind === 'MELEE' ? (isEn ? 'Melee' : 'Yakın') : (isEn ? 'Ranged' : 'Menzilli')}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                          {isEn ? w.descriptionEn : w.description}
-                        </p>
-                        <div className="text-[11px] text-sky-300 font-mono-num mt-1.5">
-                          {isEn ? 'Dmg' : 'Hasar'}: {w.damage}
-                          {w.pellets > 1 ? `×${w.pellets}` : ''} · {isEn ? 'Range' : 'Menzil'}: {w.range}
-                          {w.magSize
-                            ? ` · ${isEn ? 'Mag' : 'Şarjör'}: ${w.magSize}`
-                            : ''}
-                          {w.splashRadius ? (isEn ? ' · AoE Blast' : ' · Alan Patlaması') : ''}
-                          {w.lifesteal ? ` · +${w.lifesteal} HP` : ''}
+                          <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
+                            {isEn ? w.descriptionEn : w.description}
+                          </p>
                         </div>
                       </div>
 
+                      {/* Clean 3-Stat Row */}
+                      <div className="grid grid-cols-3 gap-1.5 text-center bg-slate-950/35 rounded-lg py-1.5 px-2 border border-white/5">
+                        <div>
+                          <div className="text-[10px] text-slate-400">
+                            {isEn ? 'Damage' : 'Hasar'}
+                          </div>
+                          <div className="text-xs font-mono-num font-bold text-slate-100">
+                            {damageText}
+                          </div>
+                        </div>
+                        <div className="border-x border-white/10">
+                          <div className="text-[10px] text-slate-400">
+                            {isEn ? 'Range' : 'Menzil'}
+                          </div>
+                          <div className="text-xs font-mono-num font-bold text-sky-300">
+                            {w.range}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400">
+                            {w.magSize ? (isEn ? 'Mag' : 'Şarjör') : isEn ? 'Type' : 'Tür'}
+                          </div>
+                          <div className="text-xs font-mono-num font-bold text-amber-300">
+                            {w.magSize ? w.magSize : isEn ? 'Melee' : 'Yakın'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {specialPerk && (
+                        <div className="text-[11px] font-medium text-emerald-300/90 -mt-1 px-0.5">
+                          {specialPerk}
+                        </div>
+                      )}
+
+                      {/* Action Button */}
                       {unlocked ? (
                         <button
                           type="button"
                           disabled={equipped}
                           onClick={() => onEquipWeapon?.(w.id, carried ? undefined : effectiveReplaceSlot)}
-                          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-colors ${
+                          className={`w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
                             equipped
                               ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 cursor-default'
                               : carried
@@ -503,44 +564,57 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                               : 'bg-indigo-500 hover:bg-indigo-400 text-slate-950 cursor-pointer'
                           }`}
                         >
-                          {equipped
-                            ? isEn
-                              ? `Slot ${slotIdx + 1} · Active`
-                              : `Slot ${slotIdx + 1} · Aktif`
-                            : carried
-                            ? isEn
-                              ? `Switch to Slot ${slotIdx + 1}`
-                              : `Slot ${slotIdx + 1} · Eline Al`
-                            : carriedFull
-                            ? isEn
-                              ? `Equip into Slot ${targetReplaceSlot + 1}`
-                              : `Slot ${targetReplaceSlot + 1} Yerine Al`
-                            : isEn
-                            ? 'Equip to Empty Slot'
-                            : 'Yanına Al (Kuşan)'}
+                          {equipped ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>
+                                {isEn
+                                  ? `Equipped (Slot ${slotIdx + 1})`
+                                  : `Aktif · Slot ${slotIdx + 1}`}
+                              </span>
+                            </>
+                          ) : carried ? (
+                            <span>
+                              {isEn ? `Use Slot ${slotIdx + 1}` : `Eline Al (Slot ${slotIdx + 1})`}
+                            </span>
+                          ) : carriedFull ? (
+                            <span>
+                              {isEn
+                                ? `Equip to Slot ${targetReplaceSlot + 1}`
+                                : `Slot ${targetReplaceSlot + 1} Yerine Kuşan`}
+                            </span>
+                          ) : (
+                            <span>{isEn ? 'Equip Weapon' : 'Kuşan'}</span>
+                          )}
                         </button>
                       ) : w.shopCost ? (
                         <button
                           type="button"
                           disabled={!canBuy}
                           onClick={() => onBuyWeapon?.(w.id, effectiveReplaceSlot)}
-                          className={`w-full py-2 px-3 rounded-lg text-xs font-bold font-mono-num transition-colors ${
+                          className={`w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold font-mono-num flex items-center justify-center gap-1.5 transition-colors ${
                             canBuy
                               ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                               : 'bg-white/10 text-slate-400 cursor-not-allowed'
                           }`}
                         >
-                          {isEn ? `Buy (${w.shopCost} Gold)` : `Satın Al (${w.shopCost} Altın)`}
+                          <Coins className="w-3.5 h-3.5" />
+                          <span>
+                            {isEn ? `Buy · ${w.shopCost} Gold` : `Satın Al · ${w.shopCost} Altın`}
+                          </span>
                         </button>
                       ) : (
-                        <div className="w-full py-2 px-3 rounded-lg bg-white/5 border border-white/10 text-[11px] text-slate-400 text-center">
-                          {w.id === 'ANCIENT_HARPOON'
-                            ? isEn
-                              ? 'Reward: Win Battle Arena'
-                              : 'Ödül: Savaş Arenasını Kazan'
-                            : isEn
-                            ? 'Found in Cave Altars / Islands'
-                            : 'Mağara Sunaklarından / Adalardan Bulunur'}
+                        <div className="w-full min-h-[40px] py-2 px-3 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-400 flex items-center justify-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">
+                            {w.id === 'ANCIENT_HARPOON'
+                              ? isEn
+                                ? 'Win Battle Arena'
+                                : 'Savaş Arenası Ödülü'
+                              : isEn
+                              ? 'Cave Altar / Island Loot'
+                              : 'Mağara Sunağı / Ada Ganimeti'}
+                          </span>
                         </div>
                       )}
                     </div>

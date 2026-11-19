@@ -27,7 +27,7 @@ interface WeaponHudPanelProps {
   onReload: () => void;
 }
 
-const WeaponSilhouette: React.FC<{
+export const WeaponSilhouette: React.FC<{
   weaponId: WeaponId;
   className?: string;
   style?: React.CSSProperties;
