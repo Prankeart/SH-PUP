@@ -26,6 +26,9 @@ interface MapModalProps {
   onClose: () => void;
 }
 
+const MIN_MAP_ZOOM = 0.025;
+const MAX_MAP_ZOOM = 0.28;
+
 export const MapModal: React.FC<MapModalProps> = ({
   worldManager,
   discoveredIslandIds,
@@ -51,6 +54,11 @@ export const MapModal: React.FC<MapModalProps> = ({
   const [showRings, setShowRings] = useState(true);
   const [offset, setOffset] = useState<Vec2>({ x: playerPos.x, y: playerPos.y });
   const [canvasTick, setCanvasTick] = useState(0);
+  const zoomRef = useRef(0.085);
+  const offsetRef = useRef<Vec2>({ x: playerPos.x, y: playerPos.y });
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{ lastDist: number; lastMidX: number; lastMidY: number } | null>(null);
+  const wasPinchRef = useRef(false);
   const dragRef = useRef<{
     active: boolean;
     startX: number;
@@ -66,6 +74,18 @@ export const MapModal: React.FC<MapModalProps> = ({
     lastY: 0,
     moved: false,
   });
+
+  const applyZoom = (nextZoom: number) => {
+    const clamped = Math.min(MAX_MAP_ZOOM, Math.max(MIN_MAP_ZOOM, nextZoom));
+    zoomRef.current = clamped;
+    setZoom(clamped);
+    return clamped;
+  };
+
+  const applyOffset = (nextOffset: Vec2) => {
+    offsetRef.current = nextOffset;
+    setOffset(nextOffset);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -606,20 +626,94 @@ export const MapModal: React.FC<MapModalProps> = ({
             onWheel={(e) => {
               e.preventDefault();
               const factor = e.deltaY < 0 ? 1.16 : 0.86;
-              setZoom((z) => Math.min(0.28, Math.max(0.025, z * factor)));
+              const oldZoom = zoomRef.current;
+              const newZoom = applyZoom(oldZoom * factor);
+              if (canvasRef.current && newZoom !== oldZoom) {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const wx = offsetRef.current.x + (sx - rect.width / 2) / oldZoom;
+                const wy = offsetRef.current.y + (sy - rect.height / 2) / oldZoom;
+                applyOffset({
+                  x: wx - (sx - rect.width / 2) / newZoom,
+                  y: wy - (sy - rect.height / 2) / newZoom,
+                });
+              }
             }}
             onPointerDown={(e) => {
-              dragRef.current = {
-                active: true,
-                startX: e.clientX,
-                startY: e.clientY,
-                lastX: e.clientX,
-                lastY: e.clientY,
-                moved: false,
-              };
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // Ignore if pointer capture is unavailable
+              }
+              activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+              if (activePointersRef.current.size >= 2) {
+                const pts = Array.from(activePointersRef.current.values());
+                const p1 = pts[0];
+                const p2 = pts[1];
+                pinchRef.current = {
+                  lastDist: Math.max(8, Math.hypot(p2.x - p1.x, p2.y - p1.y)),
+                  lastMidX: (p1.x + p2.x) / 2,
+                  lastMidY: (p1.y + p2.y) / 2,
+                };
+                wasPinchRef.current = true;
+                dragRef.current.moved = true;
+                dragRef.current.active = false;
+              } else {
+                wasPinchRef.current = false;
+                pinchRef.current = null;
+                dragRef.current = {
+                  active: true,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  lastX: e.clientX,
+                  lastY: e.clientY,
+                  moved: false,
+                };
+              }
             }}
             onPointerMove={(e) => {
+              if (!activePointersRef.current.has(e.pointerId)) return;
+              activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+              if (activePointersRef.current.size >= 2) {
+                const pts = Array.from(activePointersRef.current.values());
+                const p1 = pts[0];
+                const p2 = pts[1];
+                const newDist = Math.max(8, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+                const newMidX = (p1.x + p2.x) / 2;
+                const newMidY = (p1.y + p2.y) / 2;
+
+                if (!pinchRef.current) {
+                  pinchRef.current = { lastDist: newDist, lastMidX: newMidX, lastMidY: newMidY };
+                  return;
+                }
+
+                const scaleFactor = newDist / Math.max(8, pinchRef.current.lastDist);
+                const oldZoom = zoomRef.current;
+                const newZoom = applyZoom(oldZoom * scaleFactor);
+
+                if (canvasRef.current) {
+                  const rect = canvasRef.current.getBoundingClientRect();
+                  const sx0 = pinchRef.current.lastMidX - rect.left;
+                  const sy0 = pinchRef.current.lastMidY - rect.top;
+                  const sx1 = newMidX - rect.left;
+                  const sy1 = newMidY - rect.top;
+                  const wx = offsetRef.current.x + (sx0 - rect.width / 2) / oldZoom;
+                  const wy = offsetRef.current.y + (sy0 - rect.height / 2) / oldZoom;
+                  applyOffset({
+                    x: wx - (sx1 - rect.width / 2) / newZoom,
+                    y: wy - (sy1 - rect.height / 2) / newZoom,
+                  });
+                }
+
+                pinchRef.current = { lastDist: newDist, lastMidX: newMidX, lastMidY: newMidY };
+                wasPinchRef.current = true;
+                dragRef.current.moved = true;
+                return;
+              }
+
               if (!dragRef.current.active) return;
               if (
                 Math.hypot(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY) >
@@ -627,24 +721,58 @@ export const MapModal: React.FC<MapModalProps> = ({
               ) {
                 dragRef.current.moved = true;
               }
-              const dx = (e.clientX - dragRef.current.lastX) / zoom;
-              const dy = (e.clientY - dragRef.current.lastY) / zoom;
+              const curZoom = zoomRef.current;
+              const dx = (e.clientX - dragRef.current.lastX) / curZoom;
+              const dy = (e.clientY - dragRef.current.lastY) / curZoom;
               dragRef.current.lastX = e.clientX;
               dragRef.current.lastY = e.clientY;
-              setOffset((prev) => ({ x: prev.x - dx, y: prev.y - dy }));
+              applyOffset({
+                x: offsetRef.current.x - dx,
+                y: offsetRef.current.y - dy,
+              });
             }}
             onPointerUp={(e) => {
-              const wasClick = dragRef.current.active && !dragRef.current.moved;
+              activePointersRef.current.delete(e.pointerId);
+
+              if (activePointersRef.current.size >= 2) {
+                const pts = Array.from(activePointersRef.current.values());
+                pinchRef.current = {
+                  lastDist: Math.max(8, Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)),
+                  lastMidX: (pts[0].x + pts[1].x) / 2,
+                  lastMidY: (pts[0].y + pts[1].y) / 2,
+                };
+                return;
+              }
+
+              pinchRef.current = null;
+              if (activePointersRef.current.size === 1) {
+                const rem = Array.from(activePointersRef.current.values())[0];
+                dragRef.current = {
+                  active: true,
+                  startX: rem.x,
+                  startY: rem.y,
+                  lastX: rem.x,
+                  lastY: rem.y,
+                  moved: true,
+                };
+                return;
+              }
+
+              const wasClick =
+                dragRef.current.active && !dragRef.current.moved && !wasPinchRef.current;
               dragRef.current.active = false;
+              wasPinchRef.current = false;
+
               if (wasClick && onSetMapPin && canvasRef.current) {
                 const rect = canvasRef.current.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
-                const wx = offset.x + (sx - rect.width / 2) / zoom;
-                const wy = offset.y + (sy - rect.height / 2) / zoom;
+                const curZoom = zoomRef.current;
+                const wx = offsetRef.current.x + (sx - rect.width / 2) / curZoom;
+                const wy = offsetRef.current.y + (sy - rect.height / 2) / curZoom;
 
                 // Clicking existing pin toggles/removes it
-                if (mapPin && Math.hypot(wx - mapPin.x, wy - mapPin.y) <= Math.max(150, 26 / zoom)) {
+                if (mapPin && Math.hypot(wx - mapPin.x, wy - mapPin.y) <= Math.max(150, 26 / curZoom)) {
                   onSetMapPin(null);
                   return;
                 }
@@ -667,19 +795,36 @@ export const MapModal: React.FC<MapModalProps> = ({
                 onSetMapPin({ x: Math.round(wx), y: Math.round(wy), label });
               }
             }}
-            onPointerCancel={() => {
-              dragRef.current.active = false;
+            onPointerCancel={(e) => {
+              activePointersRef.current.delete(e.pointerId);
+              if (activePointersRef.current.size < 2) {
+                pinchRef.current = null;
+              }
+              if (activePointersRef.current.size === 1) {
+                const rem = Array.from(activePointersRef.current.values())[0];
+                dragRef.current = {
+                  active: true,
+                  startX: rem.x,
+                  startY: rem.y,
+                  lastX: rem.x,
+                  lastY: rem.y,
+                  moved: true,
+                };
+              } else if (activePointersRef.current.size === 0) {
+                dragRef.current.active = false;
+                wasPinchRef.current = false;
+              }
             }}
             className="w-full h-full cursor-crosshair active:cursor-grabbing touch-none"
           />
 
           {/* Active Waypoint Quick Bar / Placement Hint */}
           {mapPin ? (
-            <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-rose-400/50 shadow-lg text-xs">
+            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-rose-400/50 shadow-lg text-xs">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 animate-pulse" />
               <button
                 type="button"
-                onClick={() => setOffset({ x: mapPin.x, y: mapPin.y })}
+                onClick={() => applyOffset({ x: mapPin.x, y: mapPin.y })}
                 className="font-semibold text-rose-100 hover:text-white truncate max-w-[160px] cursor-pointer text-left"
                 title={isEn ? 'Center on Waypoint' : 'İşarete Odaklan'}
               >
@@ -703,12 +848,12 @@ export const MapModal: React.FC<MapModalProps> = ({
               )}
             </div>
           ) : (
-            <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/80 border border-white/15 shadow-md text-[11px] text-slate-200">
+            <div className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/80 border border-white/15 shadow-md text-[11px] text-slate-200">
               <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-              <span>
+              <span className="truncate">
                 {isEn
-                  ? 'Tap anywhere to place a waypoint'
-                  : 'Konum işaretlemek için haritaya dokun'}
+                  ? 'Tap to mark · Pinch to zoom'
+                  : 'Dokun: işaretle · İki parmak: yakınlaştır'}
               </span>
             </div>
           )}
@@ -717,7 +862,7 @@ export const MapModal: React.FC<MapModalProps> = ({
           <div className="absolute bottom-4 right-4 flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.min(0.24, z * 1.25))}
+              onClick={() => applyZoom(zoomRef.current * 1.25)}
               aria-label={isEn ? 'Zoom In' : 'Yakınlaştır'}
               className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
             >
@@ -725,7 +870,7 @@ export const MapModal: React.FC<MapModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.max(0.03, z * 0.8))}
+              onClick={() => applyZoom(zoomRef.current * 0.8)}
               aria-label={isEn ? 'Zoom Out' : 'Uzaklaştır'}
               className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
             >
@@ -733,7 +878,7 @@ export const MapModal: React.FC<MapModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setOffset({ x: playerPos.x, y: playerPos.y })}
+              onClick={() => applyOffset({ x: playerPos.x, y: playerPos.y })}
               aria-label={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
               title={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
               className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-200 text-slate-950 hover:bg-amber-400 flex items-center justify-center shadow-lg cursor-pointer"

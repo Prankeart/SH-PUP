@@ -1,16 +1,19 @@
 import React, { useRef, useState } from 'react';
 import { Move } from 'lucide-react';
 import { TouchButtonId, TouchButtonTransform, TouchLayoutConfig, Vec2 } from '../types/game';
+import { ResolvedJoystickGeom } from '../utils/hudLayout';
 
 interface VirtualJoystickProps {
   mode: 'FIXED' | 'DYNAMIC';
   compact?: boolean;
   touchLayout?: TouchLayoutConfig;
+  resolvedGeom?: ResolvedJoystickGeom;
   isEditingLayout?: boolean;
   isSelected?: boolean;
   language?: 'tr' | 'en';
   onSelectButton?: (id: TouchButtonId) => void;
   onUpdateButtonTransform?: (id: TouchButtonId, next: TouchButtonTransform) => void;
+  onDragResolve?: (id: TouchButtonId, candidate: TouchButtonTransform) => TouchButtonTransform;
   onChange: (vec: Vec2) => void;
 }
 
@@ -41,11 +44,13 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   mode,
   compact = false,
   touchLayout,
+  resolvedGeom,
   isEditingLayout = false,
   isSelected = false,
   language = 'tr',
   onSelectButton,
   onUpdateButtonTransform,
+  onDragResolve,
   onChange,
 }) => {
   const activePointerId = useRef<number | null>(null);
@@ -63,9 +68,14 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   const [dynamicOrigin, setDynamicOrigin] = useState<Vec2 | null>(null);
   const [isActive, setIsActive] = useState(false);
 
-  const boxSize = compact ? 112 : 160;
-  const pad = compact ? 8 : 20;
-  const { dx, dy, scale } = clampJoystickTransform(touchLayout?.joystick, boxSize, pad);
+  const boxSize = resolvedGeom?.boxSize ?? (compact ? 112 : 160);
+  const pad = resolvedGeom?.pad ?? (compact ? 8 : 20);
+  const fallback = clampJoystickTransform(touchLayout?.joystick, boxSize, pad);
+  const dx = resolvedGeom?.dx ?? fallback.dx;
+  const dy = resolvedGeom?.dy ?? fallback.dy;
+  const scale = resolvedGeom?.scale ?? fallback.scale;
+  const innerSize = Math.round(boxSize * (compact ? 0.85 : 0.72));
+  const knobSize = Math.round(boxSize * (compact ? 0.36 : 0.3));
 
   const updateVector = (clientX: number, clientY: number) => {
     const rawDx = (clientX - originRef.current.x) / scale;
@@ -135,12 +145,15 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       if (activePointerId.current !== e.pointerId || !dragStartRef.current) return;
       const nextDx = dragStartRef.current.startDx + (e.clientX - dragStartRef.current.pointerX);
       const nextDy = dragStartRef.current.startDy + (e.clientY - dragStartRef.current.pointerY);
-      const clamped = clampJoystickTransform(
-        { dx: nextDx, dy: nextDy, scale: dragStartRef.current.scale },
-        boxSize,
-        pad
-      );
-      onUpdateButtonTransform?.('joystick', clamped);
+      const candidate: TouchButtonTransform = {
+        dx: nextDx,
+        dy: nextDy,
+        scale: dragStartRef.current.scale,
+      };
+      const resolved = onDragResolve
+        ? onDragResolve('joystick', candidate)
+        : clampJoystickTransform(candidate, boxSize, pad);
+      onUpdateButtonTransform?.('joystick', resolved);
       return;
     }
     if (activePointerId.current !== e.pointerId) return;
@@ -175,11 +188,11 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       onPointerCancel={releasePointer}
       aria-label="Hareket Joystick"
       style={{
+        width: `${boxSize}px`,
+        height: `${boxSize}px`,
         transform: `translate(${dx}px, ${dy}px) scale(${scale})`,
       }}
-      className={`pointer-events-auto relative ${
-        compact ? 'w-28 h-28' : 'w-28 h-28 sm:w-40 sm:h-40'
-      } flex items-center justify-center touch-none shrink-0 ${
+      className={`pointer-events-auto relative flex items-center justify-center touch-none shrink-0 ${
         isEditingLayout
           ? `cursor-move rounded-full border-2 border-dashed ${
               isSelected
@@ -190,11 +203,13 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       }`}
     >
       <div
-        style={basePositionStyle}
+        style={{
+          ...basePositionStyle,
+          width: `${innerSize}px`,
+          height: `${innerSize}px`,
+        }}
         className={`${
           !isEditingLayout && mode === 'DYNAMIC' && dynamicOrigin ? 'absolute' : 'relative'
-        } ${
-          compact ? 'w-24 h-24' : 'w-24 h-24 sm:w-28 sm:h-28'
         } rounded-full border transition-opacity duration-150 flex items-center justify-center ${
           isActive
             ? 'bg-slate-900/55 border-amber-300/60 shadow-lg'
@@ -210,11 +225,11 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         {/* Inner thumb knob */}
         <div
           style={{
+            width: `${knobSize}px`,
+            height: `${knobSize}px`,
             transform: `translate(${knobOffset.x}px, ${knobOffset.y}px)`,
           }}
-          className={`${
-            compact ? 'w-10 h-10' : 'w-10 h-10 sm:w-12 sm:h-12'
-          } rounded-full border shadow-md transition-colors duration-100 pointer-events-none flex items-center justify-center ${
+          className={`rounded-full border shadow-md transition-colors duration-100 pointer-events-none flex items-center justify-center ${
             isActive
               ? 'bg-amber-400 border-amber-200'
               : 'bg-slate-100/85 border-white'

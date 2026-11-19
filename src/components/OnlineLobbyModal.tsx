@@ -185,8 +185,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#041824]/90 via-[#062233]/75 to-[#03121b]/95"
       />
 
-      {/* Full-Viewport Zero-Scroll Container */}
-      <div className="relative z-10 h-full w-full max-w-6xl mx-auto px-3 sm:px-5 lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-hidden">
+      {/* Full-Viewport Container (scrolls on tiny portrait phones, single-screen cockpit on >=600px) */}
+      <div className="relative z-10 h-full w-full max-w-6xl mx-auto px-3 sm:px-5 lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-y-auto [@media(min-width:600px)]:overflow-hidden">
         {/* Compact Top Navigation Header */}
         <header className="h-11 sm:h-12 shrink-0 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">

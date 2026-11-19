@@ -12,6 +12,7 @@ import {
 import { RemotePlayerSnapshot } from '../types/online';
 import { WorldManager } from '../engine/worldGen';
 import { getEffectiveIslandFaction, getFactionDisplay } from '../engine/factions';
+import { ResolvedMiniMapGeom } from '../utils/hudLayout';
 
 export interface MiniMapLiveSnapshot {
   playerX: number;
@@ -36,10 +37,12 @@ interface MiniMapProps {
   colorblindMode?: boolean;
   language?: 'tr' | 'en';
   touchLayout?: TouchLayoutConfig;
+  resolvedGeom?: ResolvedMiniMapGeom;
   isEditingLayout?: boolean;
   isSelected?: boolean;
   onSelectButton?: (id: TouchButtonId) => void;
   onUpdateButtonTransform?: (id: TouchButtonId, next: TouchButtonTransform) => void;
+  onDragResolve?: (id: TouchButtonId, candidate: TouchButtonTransform) => TouchButtonTransform;
   getLiveSnapshot: () => MiniMapLiveSnapshot;
   onOpenMap: () => void;
 }
@@ -84,10 +87,12 @@ export const MiniMap: React.FC<MiniMapProps> = ({
   colorblindMode = false,
   language = 'tr',
   touchLayout,
+  resolvedGeom,
   isEditingLayout = false,
   isSelected = false,
   onSelectButton,
   onUpdateButtonTransform,
+  onDragResolve,
   getLiveSnapshot,
   onOpenMap,
 }) => {
@@ -101,12 +106,13 @@ export const MiniMap: React.FC<MiniMapProps> = ({
     startDy: number;
     scale: number;
   } | null>(null);
-  const pad = size < 100 ? 8 : 20;
-  const { dx, dy, scale, effectiveSize } = clampMiniMapTransform(
-    touchLayout?.minimap,
-    size,
-    pad
-  );
+  const baseSize = resolvedGeom?.baseSize ?? size;
+  const pad = resolvedGeom?.pad ?? (baseSize < 100 ? 8 : 20);
+  const fallback = clampMiniMapTransform(touchLayout?.minimap, baseSize, pad);
+  const dx = resolvedGeom?.dx ?? fallback.dx;
+  const dy = resolvedGeom?.dy ?? fallback.dy;
+  const scale = resolvedGeom?.scale ?? fallback.scale;
+  const effectiveSize = resolvedGeom?.effectiveSize ?? fallback.effectiveSize;
   const latestPropsRef = useRef({
     worldManager,
     discoveredIslandIds,
@@ -549,15 +555,18 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           }
           const nextDx = dragRef.current.startDx + (e.clientX - dragRef.current.startX);
           const nextDy = dragRef.current.startDy + (e.clientY - dragRef.current.startY);
-          const clamped = clampMiniMapTransform(
-            { dx: nextDx, dy: nextDy, scale: dragRef.current.scale },
-            size,
-            pad
-          );
+          const candidate: TouchButtonTransform = {
+            dx: nextDx,
+            dy: nextDy,
+            scale: dragRef.current.scale,
+          };
+          const resolved = onDragResolve
+            ? onDragResolve('minimap', candidate)
+            : clampMiniMapTransform(candidate, baseSize, pad);
           onUpdateButtonTransform?.('minimap', {
-            dx: clamped.dx,
-            dy: clamped.dy,
-            scale: clamped.scale,
+            dx: resolved.dx,
+            dy: resolved.dy,
+            scale: resolved.scale,
           });
         }}
         onPointerUp={(e) => {

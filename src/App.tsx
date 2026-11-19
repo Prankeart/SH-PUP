@@ -162,6 +162,11 @@ import { formatKeyCode, SettingsModal } from './components/SettingsModal';
 import { JournalModal } from './components/JournalModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { OnlineLobbyModal } from './components/OnlineLobbyModal';
+import {
+  ActionButtonKey,
+  computeUnifiedHudLayout,
+  resolveDraggedTouchTransform,
+} from './utils/hudLayout';
 
 const PLAYER_SPEED = 175;
 const MAX_PLAYER_HP = 100;
@@ -268,6 +273,13 @@ export default function App() {
     );
   });
   const isCoarseDeviceRef = useRef<boolean>(isCoarseDevice);
+  const [viewport, setViewport] = useState<{ vw: number; vh: number }>(() => {
+    if (typeof window === 'undefined') return { vw: 1024, vh: 768 };
+    return {
+      vw: Math.round(window.visualViewport?.width ?? window.innerWidth),
+      vh: Math.round(window.visualViewport?.height ?? window.innerHeight),
+    };
+  });
   const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 640 || window.innerHeight < 500;
@@ -275,10 +287,6 @@ export default function App() {
   const [isShortViewport, setIsShortViewport] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.innerHeight < 540;
-  });
-  const [isTinyWidth, setIsTinyWidth] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerWidth < 560;
   });
   const [draftTouchLayout, setDraftTouchLayout] = useState<TouchLayoutConfig>({});
   const [selectedTouchButton, setSelectedTouchButton] = useState<TouchButtonId | null>(null);
@@ -640,13 +648,13 @@ export default function App() {
 
   useEffect(() => {
     const checkViewport = () => {
-      const vw = window.visualViewport?.width ?? window.innerWidth;
-      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const vw = Math.round(window.visualViewport?.width ?? window.innerWidth);
+      const vh = Math.round(window.visualViewport?.height ?? window.innerHeight);
       const portrait = vw < 720 && vh > vw;
+      setViewport((prev) => (prev.vw === vw && prev.vh === vh ? prev : { vw, vh }));
       setIsPortrait(portrait);
       setIsNarrowViewport(vw < 640 || vh < 500);
       setIsShortViewport(vh < 540);
-      setIsTinyWidth(vw < 560);
     };
     checkViewport();
     window.addEventListener('resize', checkViewport);
@@ -7959,6 +7967,100 @@ export default function App() {
     : 'HIDDEN';
   const activeTouchLayout = isEditingLayout ? draftTouchLayout : settings.touchLayout;
 
+  const visibleTouchActionKeys = useMemo<ActionButtonKey[]>(() => {
+    const keys: ActionButtonKey[] = ['ability', 'radar', 'boatOrInteract', 'digOrFire'];
+    if (hudState.repairKits > 0) keys.push('repair');
+    if (save.kingdom.soldiers.length > 0 && !hudState.isSailing) keys.push('stance');
+    if (hudState.canFish || hudState.isFishing) keys.push('fish');
+    if (!hudState.isSailing && Boolean(weaponDef)) keys.push('attack');
+    return keys;
+  }, [
+    hudState.repairKits,
+    save.kingdom.soldiers.length,
+    hudState.isSailing,
+    hudState.canFish,
+    hudState.isFishing,
+    weaponDef,
+  ]);
+
+  const desktopActionButtonCount = useMemo(() => {
+    let count = 3; // Order, Radar, Dig/Fire
+    if (save.kingdom.soldiers.length > 0 && !hudState.isSailing) count++;
+    if (hudState.repairKits > 0) count++;
+    if (hudState.canFish || hudState.isFishing) count++;
+    if (!hudState.isSailing && Boolean(weaponDef)) count++;
+    const boatActionEnabled = hudState.isSailing ? hudState.canDisembark : hudState.canBoard;
+    if (hudState.interactLabel || boatActionEnabled) count++;
+    return count;
+  }, [
+    save.kingdom.soldiers.length,
+    hudState.isSailing,
+    hudState.repairKits,
+    hudState.canFish,
+    hudState.isFishing,
+    weaponDef,
+    hudState.interactLabel,
+    hudState.canBoard,
+    hudState.canDisembark,
+  ]);
+
+  const showPortraitHintBanner =
+    isCoarseDevice && isPortrait && !dismissPortraitHint && phase === 'PLAYING' && !isEditingLayout;
+
+  const hudLayoutBaseInput = useMemo(
+    () => ({
+      vw: viewport.vw,
+      vh: viewport.vh,
+      isCoarseDevice,
+      controlsDisplayMode,
+      isEditingLayout,
+      visibleActionIds: visibleTouchActionKeys,
+      desktopActionButtonCount,
+      showTopRightHudButtons: isCoarseDevice ? true : settings.desktopShowHudButtons,
+      showTopRightSettingsButton: isCoarseDevice ? true : settings.desktopShowSettingsButton,
+      gold: save.gold,
+      bagCount: save.bag.length,
+      nearDock: hudState.nearDock,
+      hasCycleLabel: Boolean(hudState.cycleLabel),
+      onlineActive,
+      voiceEnabled: voiceState.enabled,
+      chatOpen,
+      hasTutorial: Boolean(nextTutorialStep),
+      showPortraitHint: showPortraitHintBanner,
+      hasWorldEvent: Boolean(activeWorldEvent && !onlineActive),
+    }),
+    [
+      viewport.vw,
+      viewport.vh,
+      isCoarseDevice,
+      controlsDisplayMode,
+      isEditingLayout,
+      visibleTouchActionKeys,
+      desktopActionButtonCount,
+      settings.desktopShowHudButtons,
+      settings.desktopShowSettingsButton,
+      save.gold,
+      save.bag.length,
+      hudState.nearDock,
+      hudState.cycleLabel,
+      onlineActive,
+      voiceState.enabled,
+      chatOpen,
+      nextTutorialStep,
+      showPortraitHintBanner,
+      activeWorldEvent,
+    ]
+  );
+
+  const hudLayout = useMemo(
+    () =>
+      computeUnifiedHudLayout({
+        ...hudLayoutBaseInput,
+        touchLayout: activeTouchLayout,
+      }),
+    [hudLayoutBaseInput, activeTouchLayout]
+  );
+
   const openLayoutEditor = useCallback(() => {
     setDraftTouchLayout(settings.touchLayout ? { ...settings.touchLayout } : {});
     setSelectedTouchButton('digOrFire');
@@ -7973,6 +8075,12 @@ export default function App() {
       }));
     },
     []
+  );
+
+  const handleDragResolve = useCallback(
+    (id: TouchButtonId, candidate: TouchButtonTransform): TouchButtonTransform =>
+      resolveDraggedTouchTransform(id, candidate, hudLayoutBaseInput, draftTouchLayout),
+    [hudLayoutBaseInput, draftTouchLayout]
   );
 
   const getMiniMapLiveSnapshot = useCallback((): MiniMapLiveSnapshot => {
@@ -8083,9 +8191,12 @@ export default function App() {
 
       {phase === 'PLAYING' && (
         <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
-          {/* Active World Event Banner (Top-Center) */}
-          {activeWorldEvent && !onlineActive && (
-            <div className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F2936]/90 border border-amber-400/45 text-xs text-amber-200 shadow-lg max-w-md">
+          {/* Active World Event Banner (Top-Center when gap allows, otherwise inside Top-Left stack) */}
+          {activeWorldEvent && !onlineActive && hudLayout.showTopCenterEvent && (
+            <div
+              style={{ maxWidth: `${hudLayout.topCenterEventMaxWidth}px` }}
+              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F2936]/90 border border-amber-400/45 text-xs text-amber-200 shadow-lg"
+            >
               {activeWorldEvent.type === 'STORM' ? (
                 <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
               ) : (
@@ -8098,18 +8209,13 @@ export default function App() {
             </div>
           )}
 
-          {/* Top-Left HUD: Minimap + Status Stack (independently anchored so it never shifts bottom controls) */}
+          {/* Mini Map (Independently positioned & collision-solved) */}
           <div
-            className={`pointer-events-auto absolute ${
-              isEditingLayout ? 'z-30' : ''
-            } ${
-              isCompactTouch
-                ? 'top-[max(0.5rem,env(safe-area-inset-top))] left-[max(0.5rem,env(safe-area-inset-left))] gap-2 max-w-[58vw]'
-                : 'top-5 left-5 gap-3 max-w-[44vw]'
-            } flex flex-row items-start min-w-0`}
+            style={{ top: `${hudLayout.minimap.pad}px`, left: `${hudLayout.minimap.pad}px` }}
+            className={`pointer-events-auto absolute ${isEditingLayout ? 'z-30' : ''}`}
           >
             <MiniMap
-              size={isCompactTouch ? 86 : 124}
+              size={hudLayout.minimap.baseSize}
               worldManager={worldManagerRef.current}
               discoveredIslandIds={save.discoveredIslandIds}
               kingdom={save.kingdom}
@@ -8120,24 +8226,34 @@ export default function App() {
               colorblindMode={settings.colorblindMode}
               language={settings.language}
               touchLayout={activeTouchLayout}
+              resolvedGeom={hudLayout.minimap}
               isEditingLayout={isEditingLayout}
               isSelected={selectedTouchButton === 'minimap'}
               onSelectButton={setSelectedTouchButton}
               onUpdateButtonTransform={updateDraftButtonTransform}
+              onDragResolve={handleDragResolve}
               getLiveSnapshot={getMiniMapLiveSnapshot}
               onOpenMap={() => setActiveModal('MAP')}
             />
+          </div>
 
-            <div
-              className={`flex flex-col items-start min-w-0 ${
-                isCompactTouch ? 'gap-1' : 'gap-2'
-              } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
-            >
+          {/* Top-Left Status Stack (Always avoids MiniMap, TopRightHud, and Bottom Controls) */}
+          <div
+            style={{
+              top: `${hudLayout.topLeftPlacement.top}px`,
+              left: `${hudLayout.topLeftPlacement.left}px`,
+              maxWidth: `${hudLayout.topLeftPlacement.maxWidth}px`,
+              maxHeight: `${hudLayout.topLeftPlacement.maxHeight}px`,
+            }}
+            className={`pointer-events-auto absolute overflow-y-auto flex flex-col items-start min-w-0 ${
+              isCompactTouch ? 'gap-1' : 'gap-2'
+            } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
+          >
             {onlineActive && onlineRoomInfo && (
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#0F2936]/90 border border-sky-400/35 font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md`}
+                } rounded-lg bg-[#0F2936]/90 border border-sky-400/35 font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md shrink-0`}
               >
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
@@ -8157,7 +8273,7 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-1 gap-1.5' : 'px-3 py-2 gap-2.5'
-                } rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center shadow-md max-w-full`}
+                } rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center shadow-md max-w-full shrink-0`}
               >
                 <Heart
                   className={`${
@@ -8195,7 +8311,7 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#0F2936]/85 border border-white/15 font-medium text-slate-100 truncate max-w-full shadow-md`}
+                } rounded-lg bg-[#0F2936]/85 border border-white/15 font-medium text-slate-100 truncate max-w-full shadow-md shrink-0`}
               >
                 {hudState.currentIslandName}
               </div>
@@ -8205,7 +8321,7 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg border font-semibold flex items-center gap-1.5 max-w-full shadow-md whitespace-nowrap ${
+                } rounded-lg border font-semibold flex items-center gap-1.5 max-w-full shadow-md whitespace-nowrap shrink-0 ${
                   hudState.zoneBanner.tone === 'CITY'
                     ? 'bg-sky-950/85 border-sky-400/45 text-sky-200'
                     : hudState.zoneBanner.tone === 'ARENA'
@@ -8226,13 +8342,14 @@ export default function App() {
 
             {(hudState.arenaWaveText ||
               (!hudState.isSailing && weaponDef) ||
-              hudState.nearbyEnemyCount > 0) && (
+              hudState.nearbyEnemyCount > 0 ||
+              (activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent)) && (
               <div
                 className={`${
-                  isCompactTouch
+                  isCompactTouch || hudLayout.topLeftPlacement.maxHeight < 180
                     ? 'flex flex-wrap items-center gap-1'
                     : 'flex flex-col items-start gap-2'
-                } max-w-full`}
+                } max-w-full shrink-0`}
               >
                 {hudState.arenaWaveText && (
                   <div
@@ -8276,16 +8393,31 @@ export default function App() {
                     </span>
                   </div>
                 )}
+
+                {activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent && (
+                  <div
+                    className={`${
+                      isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
+                    } rounded-lg bg-[#0F2936]/90 border border-amber-400/40 text-amber-200 font-semibold flex items-center gap-1 shadow-md max-w-full`}
+                  >
+                    {activeWorldEvent.type === 'STORM' ? (
+                      <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    )}
+                    <span className="truncate">{activeWorldEvent.title}</span>
+                  </div>
+                )}
               </div>
             )}
 
             {hudState.nearDock &&
-              !isCompactHud &&
+              !hudLayout.isTopRightCompact &&
               (isCoarseDevice || settings.desktopShowHudButtons) && (
                 <button
                   type="button"
                   onClick={() => setActiveModal('SHOP')}
-                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer shrink-0"
                 >
                   <Store className="w-4 h-4" />
                   <span>
@@ -8295,19 +8427,18 @@ export default function App() {
                   </span>
                 </button>
               )}
-            </div>
           </div>
 
           {/* Top-Right HUD (independently anchored) */}
           <div
+            style={{ top: `${hudLayout.pad}px`, right: `${hudLayout.pad}px` }}
             className={`pointer-events-none absolute ${
-              isCompactTouch
-                ? 'top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))]'
-                : 'top-5 right-5'
+              isEditingLayout ? 'opacity-35 pointer-events-none' : ''
             }`}
           >
             <TopRightHud
-              isCompactMode={isCompactHud}
+              isCompactMode={hudLayout.isTopRightCompact}
+              maxWidth={hudLayout.topRightMaxWidth}
               gold={save.gold}
               bagCount={save.bag.length}
               nearDock={hudState.nearDock}
@@ -8325,16 +8456,291 @@ export default function App() {
             />
           </div>
 
-          {/* Contextual Onboarding Hint Bar (independently anchored so it never shifts controls) */}
-          {nextTutorialStep && (
+          {/* TOUCH mode: Unified Non-Overlapping Bottom Stack (Portrait Hint + Tutorial + Online Chat/Voice) */}
+          {controlsDisplayMode === 'TOUCH' &&
+            (showPortraitHintBanner ||
+              nextTutorialStep ||
+              (onlineActive && !isEditingLayout)) && (
+              <div
+                style={{
+                  bottom: `${hudLayout.bottomStackPlacement.bottom}px`,
+                  left: `${hudLayout.bottomStackPlacement.left}px`,
+                  transform: hudLayout.bottomStackPlacement.translateXMinus50
+                    ? 'translateX(-50%)'
+                    : undefined,
+                  maxWidth: `${hudLayout.bottomStackPlacement.maxWidth}px`,
+                  maxHeight: `${hudLayout.bottomStackPlacement.maxHeight}px`,
+                }}
+                className={`pointer-events-none absolute z-30 w-full flex flex-col gap-1.5 ${
+                  hudLayout.bottomStackPlacement.align === 'center' ? 'items-center' : 'items-start'
+                }`}
+              >
+                {showPortraitHintBanner && (
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-[11px] text-slate-100 flex items-center gap-2 shadow-xl">
+                    <RotateCw className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span className="truncate">
+                      {settings.language === 'en'
+                        ? 'Rotate to landscape for best view'
+                        : 'En iyi deneyim için telefonu yatay çevirin'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDismissPortraitHint(true)}
+                      className="text-slate-300 hover:text-white font-semibold ml-1 shrink-0 cursor-pointer"
+                    >
+                      {settings.language === 'en' ? 'Close' : 'Kapat'}
+                    </button>
+                  </div>
+                )}
+
+                {nextTutorialStep && !isEditingLayout && (
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2 shadow-xl">
+                    <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="font-bold text-amber-200 mr-1.5">
+                        {settings.language === 'en' ? nextTutorialStep.titleEn : nextTutorialStep.title}:
+                      </span>
+                      <span className="text-slate-200">
+                        {settings.language === 'en' ? nextTutorialStep.textEn : nextTutorialStep.text}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => markTutorialStep(nextTutorialStep.id)}
+                      aria-label="Dismiss hint"
+                      className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-white shrink-0 cursor-pointer"
+                    >
+                      <XIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {onlineActive && !isEditingLayout && (
+                  <div
+                    className={`pointer-events-auto flex flex-col gap-1.5 max-w-full ${
+                      hudLayout.bottomStackPlacement.align === 'center'
+                        ? 'items-center'
+                        : 'items-start'
+                    }`}
+                  >
+                    {chatOpen && (
+                      <div className="w-72 max-w-full rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
+                        <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+                          <span className="text-xs font-bold text-sky-200">
+                            {settings.language === 'en' ? 'Fleet Chat & Emotes' : 'Filo Sohbeti & İfadeler'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setChatOpen(false)}
+                            className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                          >
+                            <XIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="max-h-28 overflow-y-auto px-3 py-2 space-y-1 text-xs">
+                          {onlineChat.length === 0 ? (
+                            <div className="text-slate-400 text-[11px]">
+                              {settings.language === 'en'
+                                ? 'No messages yet. Say ahoy!'
+                                : 'Henüz mesaj yok. Kaptanlara selam ver!'}
+                            </div>
+                          ) : (
+                            onlineChat.map((m) => (
+                              <div key={m.id} className="leading-snug break-words">
+                                {m.senderId === 'SYSTEM' ? (
+                                  <span className="text-amber-300/90 italic">{m.text}</span>
+                                ) : (
+                                  <>
+                                    <span
+                                      className="font-bold mr-1.5"
+                                      style={{ color: m.bannerColor || '#38BDF8' }}
+                                    >
+                                      {m.senderName}:
+                                    </span>
+                                    <span className="text-slate-100">{m.text}</span>
+                                  </>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="px-2.5 py-1.5 border-t border-white/10 flex items-center justify-between gap-1 bg-slate-900/40">
+                          {['👋', '⚔️', '💰', '🏴‍☠️', '🆘', '❤️'].map((em) => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => onlineManagerRef.current?.sendEmote(em)}
+                              className="flex-1 py-1 rounded-lg hover:bg-white/15 active:scale-90 transition text-sm cursor-pointer"
+                              title="İfade Gönder"
+                            >
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const trimmed = chatInput.trim();
+                            if (!trimmed) return;
+                            onlineManagerRef.current?.sendChat(trimmed);
+                            setChatInput('');
+                          }}
+                          className="p-2 border-t border-white/10 flex items-center gap-1.5"
+                        >
+                          <input
+                            type="text"
+                            value={chatInput}
+                            maxLength={140}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder={
+                              settings.language === 'en' ? 'Message fleet...' : 'Filoya mesaj yaz...'
+                            }
+                            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-white/15 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400"
+                          />
+                          <button
+                            type="submit"
+                            className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold cursor-pointer"
+                            aria-label="Send"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        </form>
+                      </div>
+                    )}
+
+                    {voiceState.error && (
+                      <div className="px-2.5 py-1 rounded-lg bg-red-950/90 border border-red-400/50 text-red-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
+                        <span className="truncate">{voiceState.error}</span>
+                        <button
+                          type="button"
+                          onClick={() => voiceManagerRef.current?.clearError()}
+                          className="p-0.5 rounded hover:bg-white/10 text-red-300 shrink-0 cursor-pointer"
+                        >
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div
+                      className={`flex flex-wrap items-center gap-1 max-w-full ${
+                        hudLayout.bottomStackPlacement.align === 'center'
+                          ? 'justify-center'
+                          : 'justify-start'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setChatOpen((prev) => !prev)}
+                        className="px-2.5 py-1 text-[11px] rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
+                        <span>{settings.language === 'en' ? 'Chat' : 'Sohbet'}</span>
+                        {onlineChat.length > 0 && !chatOpen && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-sky-500/30 text-[10px] font-mono-num text-sky-100">
+                            {onlineChat.length}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleVoiceJoin()}
+                        disabled={voiceState.connecting}
+                        className={`px-2.5 py-1 text-[11px] rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                          voiceState.enabled
+                            ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
+                            : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-white/15 text-slate-200'
+                        }`}
+                      >
+                        {voiceState.enabled ? (
+                          <Volume2 className="w-3.5 h-3.5 text-emerald-300" />
+                        ) : (
+                          <Mic className="w-3.5 h-3.5 text-slate-300" />
+                        )}
+                        <span>
+                          {voiceState.connecting
+                            ? settings.language === 'en'
+                              ? 'Connecting...'
+                              : 'Bağlanıyor...'
+                            : voiceState.enabled
+                            ? settings.language === 'en'
+                              ? 'Leave'
+                              : 'Sesten Çık'
+                            : settings.language === 'en'
+                            ? 'Voice'
+                            : 'Sesli Sohbet'}
+                        </span>
+                        {voiceState.enabled && (
+                          <span className="px-1.5 rounded-full bg-emerald-500/25 text-[10px] font-mono-num text-emerald-100">
+                            {voiceState.connectedVoicePeerCount}
+                            {voicePeersCount > 1 ? `/${Math.max(1, voicePeersCount - 1)}` : ''}
+                          </span>
+                        )}
+                      </button>
+
+                      {voiceState.enabled && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleToggleVoiceMute}
+                            title={
+                              voiceState.muted
+                                ? settings.language === 'en'
+                                  ? 'Unmute Mic'
+                                  : 'Mikrofonu Aç'
+                                : settings.language === 'en'
+                                ? 'Mute Mic'
+                                : 'Mikrofonu Kapat'
+                            }
+                            className={`p-1.5 rounded-xl border shadow-lg cursor-pointer flex items-center gap-1 ${
+                              voiceState.muted
+                                ? 'bg-red-950/90 border-red-400/50 text-red-200'
+                                : 'bg-[#0F2936]/90 border-emerald-400/40 text-emerald-200'
+                            }`}
+                          >
+                            {voiceState.muted ? (
+                              <MicOff className="w-3.5 h-3.5" />
+                            ) : (
+                              <Mic className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleToggleVoiceMode}
+                            className="px-2 py-1 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/35 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
+                          >
+                            <Radio className="w-3 h-3 text-sky-300" />
+                            <span>
+                              {voiceState.mode === 'PROXIMITY'
+                                ? settings.language === 'en'
+                                  ? 'Proximity'
+                                  : 'Yakınlık'
+                                : settings.language === 'en'
+                                ? 'Room'
+                                : 'Oda'}
+                            </span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+          {/* DESKTOP / HIDDEN mode: Guaranteed non-overlapping Tutorial Hint */}
+          {controlsDisplayMode !== 'TOUCH' && nextTutorialStep && (
             <div
-              className={`pointer-events-auto absolute left-1/2 -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl ${
-                controlsDisplayMode === 'TOUCH'
-                  ? isTinyWidth
-                    ? 'bottom-[8.25rem] max-w-[calc(100vw-1.5rem)]'
-                    : 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] max-w-[calc(100vw-21rem)]'
-                  : 'bottom-5 max-w-lg'
-              }`}
+              style={{
+                bottom: `${hudLayout.desktopTutorialPlacement.bottom}px`,
+                left: `${hudLayout.desktopTutorialPlacement.left}px`,
+                maxWidth: `${hudLayout.desktopTutorialPlacement.maxWidth}px`,
+              }}
+              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl"
             >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
@@ -8356,19 +8762,19 @@ export default function App() {
             </div>
           )}
 
-          {/* Online Chat & Quick Emotes Widget (never overlaps VirtualJoystick or ActionControls) */}
-          {onlineActive && !isEditingLayout && (
+          {/* DESKTOP / HIDDEN mode: Online Chat & Quick Emotes Widget */}
+          {controlsDisplayMode !== 'TOUCH' && onlineActive && !isEditingLayout && (
             <div
-              className={`pointer-events-auto absolute z-30 flex flex-col gap-1.5 ${
-                controlsDisplayMode === 'TOUCH'
-                  ? isTinyWidth
-                    ? 'bottom-[8rem] left-[max(0.5rem,env(safe-area-inset-left))] items-start max-w-[calc(100vw-1rem)]'
-                    : 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 items-center max-w-[calc(100vw-20.5rem)]'
-                  : 'bottom-5 left-5 items-start'
-              }`}
+              style={{
+                bottom: `${hudLayout.desktopChatPlacement.bottom}px`,
+                left: `${hudLayout.desktopChatPlacement.left}px`,
+                maxWidth: `${hudLayout.desktopChatPlacement.maxWidth}px`,
+                maxHeight: `${hudLayout.desktopChatPlacement.maxHeight}px`,
+              }}
+              className="pointer-events-auto absolute z-30 flex flex-col gap-1.5 items-start"
             >
               {chatOpen && (
-                <div className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
+                <div className="w-72 max-w-full rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
                   <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
                     <span className="text-xs font-bold text-sky-200">
                       {settings.language === 'en' ? 'Fleet Chat & Emotes' : 'Filo Sohbeti & İfadeler'}
@@ -8468,28 +8874,14 @@ export default function App() {
                 </div>
               )}
 
-              <div
-                className={`flex flex-wrap items-center ${
-                  isCompactTouch ? 'gap-1 justify-center' : 'gap-1.5'
-                }`}
-              >
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className={`${
-                    isCompactTouch ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
-                  } rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap`}
+                  className="px-3 py-1.5 text-xs rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
-                  <span>
-                    {settings.language === 'en'
-                      ? isCompactTouch
-                        ? 'Chat'
-                        : 'Chat & Emotes'
-                      : isCompactTouch
-                      ? 'Sohbet'
-                      : 'Sohbet & İfade'}
-                  </span>
+                  <span>{settings.language === 'en' ? 'Chat & Emotes' : 'Sohbet & İfade'}</span>
                   {controlsDisplayMode === 'DESKTOP' && (
                     <span className="text-[10px] font-mono-num text-sky-300/80">
                       [{formatKeyCode(settings.keybindings.chat)}]
@@ -8506,9 +8898,7 @@ export default function App() {
                   type="button"
                   onClick={() => void handleToggleVoiceJoin()}
                   disabled={voiceState.connecting}
-                  className={`${
-                    isCompactTouch ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
-                  } rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
                     voiceState.enabled
                       ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
                       : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-white/15 text-slate-200'
@@ -8526,14 +8916,10 @@ export default function App() {
                         : 'Bağlanıyor...'
                       : voiceState.enabled
                       ? settings.language === 'en'
-                        ? isCompactTouch
-                          ? 'Leave'
-                          : 'Leave Voice'
+                        ? 'Leave Voice'
                         : 'Sesten Çık'
                       : settings.language === 'en'
-                      ? isCompactTouch
-                        ? 'Voice'
-                        : 'Join Voice'
+                      ? 'Join Voice'
                       : 'Sesli Sohbet'}
                   </span>
                   {voiceState.enabled && (
@@ -8610,26 +8996,26 @@ export default function App() {
             </div>
           )}
 
-          {/* Bottom-Left Virtual Joystick (independently anchored) */}
+          {/* Bottom-Left Virtual Joystick (independently anchored & collision-solved) */}
           {controlsDisplayMode === 'TOUCH' && (
             <div
-              className={`pointer-events-none absolute ${
-                isEditingLayout ? 'z-30' : ''
-              } ${
-                isCompactTouch
-                  ? 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-[max(0.5rem,env(safe-area-inset-left))]'
-                  : 'bottom-5 left-5'
-              }`}
+              style={{
+                bottom: `${hudLayout.joystick.pad}px`,
+                left: `${hudLayout.joystick.pad}px`,
+              }}
+              className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : ''}`}
             >
               <VirtualJoystick
                 mode={settings.joystickMode}
-                compact={isCompactTouch}
+                compact={hudLayout.isCompactTouch}
                 touchLayout={activeTouchLayout}
+                resolvedGeom={hudLayout.joystick}
                 isEditingLayout={isEditingLayout}
                 isSelected={selectedTouchButton === 'joystick'}
                 language={settings.language}
                 onSelectButton={setSelectedTouchButton}
                 onUpdateButtonTransform={updateDraftButtonTransform}
+                onDragResolve={handleDragResolve}
                 onChange={(vec) => {
                   simRef.current.joystickVec = vec;
                 }}
@@ -8637,19 +9023,17 @@ export default function App() {
             </div>
           )}
 
-          {/* Bottom-Right Action Controls (independently anchored) */}
+          {/* Bottom-Right Action Controls (independently anchored & collision-solved) */}
           <div
-            className={`pointer-events-none absolute ${
-              isEditingLayout ? 'z-30' : ''
-            } ${
-              isCompactTouch
-                ? 'bottom-[max(0.5rem,env(safe-area-inset-bottom))] right-[max(0.5rem,env(safe-area-inset-right))]'
-                : 'bottom-5 right-5'
-            }`}
+            style={{
+              bottom: `${hudLayout.actionContainer.pad}px`,
+              right: `${hudLayout.actionContainer.pad}px`,
+            }}
+            className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : ''}`}
           >
             <ActionControls
               displayMode={controlsDisplayMode}
-              compact={isCompactTouch}
+              compact={hudLayout.isCompactTouch}
               isSailing={hudState.isSailing}
               canBoard={hudState.canBoard}
               canDisembark={hudState.canDisembark}
@@ -8682,10 +9066,15 @@ export default function App() {
               hasSoldiers={save.kingdom.soldiers.length > 0}
               interactLabel={hudState.interactLabel}
               touchLayout={activeTouchLayout}
+              resolvedContainer={hudLayout.actionContainer}
+              resolvedButtons={hudLayout.actionButtons}
+              radarToastPlacement={hudLayout.radarToastPlacement}
+              desktopMaxWidth={hudLayout.desktopActionBar.maxWidth}
               isEditingLayout={isEditingLayout}
               selectedButtonId={selectedTouchButton}
               onSelectButton={setSelectedTouchButton}
               onUpdateButtonTransform={updateDraftButtonTransform}
+              onDragResolve={handleDragResolve}
               onDig={handleDig}
               onFireCannons={handleFireCannons}
               onAttackLand={handleAttackLand}
@@ -8699,11 +9088,18 @@ export default function App() {
             />
           </div>
 
-          {/* Interactive Touch Button Layout Editor Toolbar */}
+          {/* Interactive Touch Button Layout Editor Toolbar (Positioned in open clear space) */}
           {isEditingLayout && (
             <>
               <div className="pointer-events-none fixed inset-0 bg-slate-950/35 z-20" />
-              <div className="pointer-events-auto fixed top-[max(0.625rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-40 w-[min(94vw,30rem)] rounded-2xl bg-[#0F2936]/95 border border-amber-400/50 shadow-2xl backdrop-blur-md px-3 py-2.5 flex flex-col gap-2">
+              <div
+                style={{
+                  top: `${hudLayout.editorToolbarPlacement.top}px`,
+                  left: `${hudLayout.editorToolbarPlacement.left}px`,
+                  width: `${hudLayout.editorToolbarPlacement.width}px`,
+                }}
+                className="pointer-events-auto fixed z-40 rounded-2xl bg-[#0F2936]/95 border border-amber-400/50 shadow-2xl backdrop-blur-md px-3 py-2.5 flex flex-col gap-2"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <Move className="w-4 h-4 text-amber-300 shrink-0" />
@@ -8767,7 +9163,8 @@ export default function App() {
                           const minScale = selectedTouchButton === 'minimap' ? 0.65 : 0.75;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
                           const nextScale = Math.max(minScale, Math.round(((cur.scale ?? 1) - 0.1) * 100) / 100);
-                          updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
+                          const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
+                          updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
                         className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
                       >
@@ -8783,7 +9180,8 @@ export default function App() {
                           const maxScale = selectedTouchButton === 'minimap' ? 1.6 : 1.35;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
                           const nextScale = Math.min(maxScale, Math.round(((cur.scale ?? 1) + 0.1) * 100) / 100);
-                          updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
+                          const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
+                          updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
                         className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
                       >
@@ -8807,7 +9205,7 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -8862,20 +9260,6 @@ export default function App() {
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {isCoarseDevice && isPortrait && !dismissPortraitHint && phase === 'PLAYING' && (
-        <div className="fixed bottom-[10.5rem] left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-1.5rem)] px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2 shadow-xl">
-          <RotateCw className="w-4 h-4 text-amber-300 shrink-0" />
-          <span className="truncate">En iyi deneyim için telefonu yatay çevirin</span>
-          <button
-            type="button"
-            onClick={() => setDismissPortraitHint(true)}
-            className="text-slate-400 hover:text-white font-semibold ml-1 shrink-0 cursor-pointer"
-          >
-            Kapat
-          </button>
         </div>
       )}
 

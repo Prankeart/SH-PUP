@@ -21,42 +21,21 @@ import {
   WeaponId,
 } from '../types/game';
 import { WEAPONS } from '../engine/weapons';
+import {
+  ActionButtonKey,
+  COMPACT_ACTION_CONTAINER,
+  COMPACT_ACTION_RECTS,
+  FULL_ACTION_CONTAINER,
+  FULL_ACTION_RECTS,
+  ResolvedButtonGeom,
+} from '../utils/hudLayout';
 
 export type ActionControlsDisplayMode = 'TOUCH' | 'DESKTOP' | 'HIDDEN';
 
-type ActionButtonKey = Exclude<TouchButtonId, 'joystick' | 'minimap'>;
-
-interface ButtonRectSpec {
-  left: number;
-  top: number;
-  w: number;
-  h: number;
-}
-
-const COMPACT_CONTAINER = { w: 176, h: 160, pad: 8 };
-const FULL_CONTAINER = { w: 224, h: 192, pad: 20 };
-
-const COMPACT_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
-  repair: { left: 2, top: -48, w: 44, h: 44 },
-  stance: { left: 56, top: -48, w: 44, h: 44 },
-  fish: { left: 124, top: -48, w: 44, h: 44 },
-  ability: { left: 48, top: 0, w: 44, h: 44 },
-  attack: { left: 0, top: 48, w: 48, h: 48 },
-  radar: { left: 122, top: 0, w: 48, h: 48 },
-  boatOrInteract: { left: 8, top: 108, w: 48, h: 48 },
-  digOrFire: { left: 104, top: 88, w: 72, h: 72 },
-};
-
-const FULL_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
-  repair: { left: 44, top: -52, w: 48, h: 48 },
-  stance: { left: 104, top: -52, w: 48, h: 48 },
-  fish: { left: 172, top: -48, w: 44, h: 44 },
-  ability: { left: 64, top: 0, w: 56, h: 56 },
-  attack: { left: 4, top: 56, w: 60, h: 60 },
-  radar: { left: 152, top: 0, w: 64, h: 64 },
-  boatOrInteract: { left: 12, top: 120, w: 64, h: 64 },
-  digOrFire: { left: 136, top: 104, w: 88, h: 88 },
-};
+const COMPACT_CONTAINER = COMPACT_ACTION_CONTAINER;
+const FULL_CONTAINER = FULL_ACTION_CONTAINER;
+const COMPACT_RECTS = COMPACT_ACTION_RECTS;
+const FULL_RECTS = FULL_ACTION_RECTS;
 
 export function clampActionButtonTransform(
   id: ActionButtonKey,
@@ -68,8 +47,8 @@ export function clampActionButtonTransform(
   const container = compact ? COMPACT_CONTAINER : FULL_CONTAINER;
   const rect = compact ? COMPACT_RECTS[id] : FULL_RECTS[id];
   const scale = Math.max(0.75, Math.min(1.35, raw?.scale ?? 1));
-  const halfExtraW = ((rect.w * scale) - rect.w) / 2;
-  const halfExtraH = ((rect.h * scale) - rect.h) / 2;
+  const halfExtraW = (rect.w * scale - rect.w) / 2;
+  const halfExtraH = (rect.h * scale - rect.h) / 2;
 
   const baseScreenLeft = vw - container.pad - container.w + rect.left;
   const baseScreenTop = vh - container.pad - container.h + rect.top;
@@ -124,10 +103,20 @@ interface ActionControlsProps {
   hasSoldiers?: boolean;
   interactLabel?: string | null;
   touchLayout?: TouchLayoutConfig;
+  resolvedContainer?: { w: number; h: number; pad: number };
+  resolvedButtons?: Record<ActionButtonKey, ResolvedButtonGeom>;
+  radarToastPlacement?: {
+    mode: 'ABOVE' | 'LEFT';
+    top: number;
+    right: number;
+    maxWidth: number;
+  };
+  desktopMaxWidth?: number;
   isEditingLayout?: boolean;
   selectedButtonId?: TouchButtonId | null;
   onSelectButton?: (id: TouchButtonId) => void;
   onUpdateButtonTransform?: (id: TouchButtonId, next: TouchButtonTransform) => void;
+  onDragResolve?: (id: TouchButtonId, candidate: TouchButtonTransform) => TouchButtonTransform;
   onDig: () => void;
   onFireCannons: () => void;
   onAttackLand: () => void;
@@ -190,10 +179,15 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   hasSoldiers = false,
   interactLabel = null,
   touchLayout,
+  resolvedContainer,
+  resolvedButtons,
+  radarToastPlacement,
+  desktopMaxWidth,
   isEditingLayout = false,
   selectedButtonId = null,
   onSelectButton,
   onUpdateButtonTransform,
+  onDragResolve,
   onDig,
   onFireCannons,
   onAttackLand,
@@ -256,11 +250,14 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
     const kBoat = keyLabels?.boat ?? 'E';
     const kDig = keyLabels?.digOrFire ?? (isEn ? 'Space' : 'Boşluk');
     return (
-      <div className="pointer-events-none relative flex flex-col items-end select-none shrink-0">
+      <div
+        style={desktopMaxWidth ? { maxWidth: `${desktopMaxWidth}px` } : undefined}
+        className="pointer-events-none relative flex flex-col items-end select-none shrink-0"
+      >
         {radarToastContent && (
           <div className="absolute bottom-full right-0 mb-2 z-30">{radarToastContent}</div>
         )}
-        <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-xl bg-[#0F2936]/85 border border-white/15 shadow-lg">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5 p-1.5 rounded-xl bg-[#0F2936]/85 border border-white/15 shadow-lg">
           {onCycleStance && hasSoldiers && !isSailing && (
             <button
               type="button"
@@ -473,10 +470,17 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   }
 
   // TOUCH mode (or LAYOUT_EDIT preview)
-  const container = compact ? COMPACT_CONTAINER : FULL_CONTAINER;
+  const container = resolvedContainer ?? (compact ? COMPACT_CONTAINER : FULL_CONTAINER);
   const rects = compact ? COMPACT_RECTS : FULL_RECTS;
 
   const getBtnGeom = (id: ActionButtonKey) => {
+    const resolved = resolvedButtons?.[id];
+    if (resolved) {
+      return {
+        r: resolved.rect,
+        t: { dx: resolved.dx, dy: resolved.dy, scale: resolved.scale },
+      };
+    }
     const r = rects[id];
     const t = clampActionButtonTransform(id, touchLayout?.[id], compact);
     return { r, t };
@@ -506,12 +510,15 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         if (!drag || drag.id !== id || drag.pointerId !== e.pointerId) return;
         const nextDx = drag.startDx + (e.clientX - drag.pointerX);
         const nextDy = drag.startDy + (e.clientY - drag.pointerY);
-        const clamped = clampActionButtonTransform(
-          id,
-          { dx: nextDx, dy: nextDy, scale: drag.scale },
-          compact
-        );
-        onUpdateButtonTransform?.(id, clamped);
+        const candidate: TouchButtonTransform = {
+          dx: nextDx,
+          dy: nextDy,
+          scale: drag.scale,
+        };
+        const resolved = onDragResolve
+          ? onDragResolve(id, candidate)
+          : clampActionButtonTransform(id, candidate, compact);
+        onUpdateButtonTransform?.(id, resolved);
       },
       onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
         if (dragStateRef.current?.pointerId === e.pointerId) {
@@ -538,8 +545,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   const showFishBtn = isEditingLayout || Boolean(onFish && (canFish || isFishing));
   const showAttackBtn = isEditingLayout || (!isSailing && Boolean(weaponDef));
 
-  // Dynamically compute the top edge of all currently visible touch buttons so the Radar toast
-  // always appears cleanly ABOVE Tamir / Olta / Ordu Düzeni / Radar / any customized button without overlapping!
+  // Compute Radar toast placement cleanly above all resolved buttons (or to their left near TopRightHud)
   const visibleKeys: ActionButtonKey[] = ['ability', 'radar', 'boatOrInteract', 'digOrFire'];
   if (showRepairBtn) visibleKeys.push('repair');
   if (showStanceBtn) visibleKeys.push('stance');
@@ -549,15 +555,24 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   let minVisibleTop = 0;
   for (const key of visibleKeys) {
     const { r, t } = getBtnGeom(key);
-    const halfExtraH = ((r.h * t.scale) - r.h) / 2;
+    const halfExtraH = (r.h * t.scale - r.h) / 2;
     const btnTop = r.top + t.dy - halfExtraH;
     if (btnTop < minVisibleTop) minVisibleTop = btnTop;
   }
 
   const vh = typeof window !== 'undefined' ? window.innerHeight : 600;
   const containerScreenTop = vh - container.pad - container.h;
-  const toastTopCandidate = minVisibleTop - 40;
-  const toastFitsAbove = containerScreenTop + toastTopCandidate >= 48;
+  const fallbackToastTop = minVisibleTop - 40;
+  const fallbackFitsAbove = containerScreenTop + fallbackToastTop >= 52;
+  const toastTopStyle = radarToastPlacement
+    ? {
+        top: `${radarToastPlacement.top}px`,
+        right: `${radarToastPlacement.right}px`,
+        maxWidth: `${radarToastPlacement.maxWidth}px`,
+      }
+    : fallbackFitsAbove
+    ? { top: `${fallbackToastTop}px`, right: 0 }
+    : { top: '4px', right: `${container.w + 10}px` };
 
   const repairGeom = getBtnGeom('repair');
   const stanceGeom = getBtnGeom('stance');
@@ -571,14 +586,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   return (
     <div className="pointer-events-none relative flex flex-col items-end select-none shrink-0 touch-none">
       {radarToastContent && (
-        <div
-          style={
-            toastFitsAbove
-              ? { top: `${toastTopCandidate}px`, right: 0 }
-              : { top: '4px', right: `${container.w + 10}px` }
-          }
-          className="absolute z-30 pointer-events-none"
-        >
+        <div style={toastTopStyle} className="absolute z-30 pointer-events-none">
           {radarToastContent}
         </div>
       )}
