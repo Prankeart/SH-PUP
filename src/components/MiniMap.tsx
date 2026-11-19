@@ -252,8 +252,10 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       }
 
       // Overworld Minimap
-      const cx = live.isSailing ? live.boatX : live.playerX;
-      const cy = live.isSailing ? live.boatY : live.playerY;
+      const rawCx = live.isSailing ? live.boatX : live.playerX;
+      const rawCy = live.isSailing ? live.boatY : live.playerY;
+      const cx = Number.isFinite(rawCx) ? rawCx : 0;
+      const cy = Number.isFinite(rawCy) ? rawCy : 0;
       const worldRadius = 2650;
       const zoom = half / worldRadius;
 

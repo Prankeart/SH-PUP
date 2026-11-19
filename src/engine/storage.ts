@@ -223,7 +223,9 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
       mapPin:
         parsed.mapPin &&
         typeof parsed.mapPin.x === 'number' &&
-        typeof parsed.mapPin.y === 'number'
+        Number.isFinite(parsed.mapPin.x) &&
+        typeof parsed.mapPin.y === 'number' &&
+        Number.isFinite(parsed.mapPin.y)
           ? {
               x: parsed.mapPin.x,
               y: parsed.mapPin.y,
@@ -233,8 +235,23 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
                   : 'Harita İşareti',
             }
           : null,
-      player: parsed.player,
-      boat: parsed.boat,
+      player: {
+        x: typeof parsed.player?.x === 'number' && Number.isFinite(parsed.player.x) ? parsed.player.x : 0,
+        y: typeof parsed.player?.y === 'number' && Number.isFinite(parsed.player.y) ? parsed.player.y : 0,
+        angle:
+          typeof parsed.player?.angle === 'number' && Number.isFinite(parsed.player.angle)
+            ? parsed.player.angle
+            : 0,
+        isSailing: Boolean(parsed.player?.isSailing),
+      },
+      boat: {
+        x: typeof parsed.boat?.x === 'number' && Number.isFinite(parsed.boat.x) ? parsed.boat.x : 0,
+        y: typeof parsed.boat?.y === 'number' && Number.isFinite(parsed.boat.y) ? parsed.boat.y : 0,
+        angle:
+          typeof parsed.boat?.angle === 'number' && Number.isFinite(parsed.boat.angle)
+            ? parsed.boat.angle
+            : 0,
+      },
     };
   } catch {
     return null;

@@ -74,7 +74,11 @@ export const MapModal: React.FC<MapModalProps> = ({
       setCanvasTick((t) => t + 1);
     });
     observer.observe(canvas);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      canvas.width = 0;
+      canvas.height = 0;
+    };
   }, []);
 
   useEffect(() => {
@@ -84,9 +88,14 @@ export const MapModal: React.FC<MapModalProps> = ({
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
+    if (rect.width < 4 || rect.height < 4) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    const targetW = Math.max(1, Math.floor(rect.width * dpr));
+    const targetH = Math.max(1, Math.floor(rect.height * dpr));
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const w = rect.width;

@@ -120,7 +120,7 @@ import {
   TUTORIAL_STEPS,
 } from './engine/progression';
 import { createWorldEvent, getWorldCycleInfo } from './engine/worldEvents';
-import { renderGameFrame } from './engine/renderer';
+import { clearRenderCaches, renderGameFrame } from './engine/renderer';
 import { generateCaveInterior, isPointInsideCaveWalkable, resolveCaveCollision } from './engine/caves';
 import { renderCaveFrame } from './engine/caveRenderer';
 import { SpatialGrid } from './engine/spatialGrid';
@@ -267,6 +267,7 @@ export default function App() {
       (navigator.maxTouchPoints > 0 && (window.innerWidth < 768 || window.innerHeight <= 600))
     );
   });
+  const isCoarseDeviceRef = useRef<boolean>(isCoarseDevice);
   const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 640 || window.innerHeight < 500;
@@ -689,6 +690,39 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    isCoarseDeviceRef.current = isCoarseDevice;
+  }, [isCoarseDevice]);
+
+  useEffect(() => {
+    const handleVisibilityOrPageShow = () => {
+      if (document.visibilityState === 'visible') {
+        clearRenderCaches();
+      }
+    };
+    const handlePageShow = () => {
+      clearRenderCaches();
+    };
+    const canvas = canvasRef.current;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      clearRenderCaches();
+    };
+    const handleContextRestored = () => {
+      clearRenderCaches();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityOrPageShow);
+    window.addEventListener('pageshow', handlePageShow);
+    canvas?.addEventListener('contextlost', handleContextLost);
+    canvas?.addEventListener('contextrestored', handleContextRestored);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrPageShow);
+      window.removeEventListener('pageshow', handlePageShow);
+      canvas?.removeEventListener('contextlost', handleContextLost);
+      canvas?.removeEventListener('contextrestored', handleContextRestored);
+    };
+  }, []);
+
   const addFloatingText = useCallback(
     (x: number, y: number, text: string, color: string, priority = true) => {
       const budget = perfGovRef.current.getCurrentBudget();
@@ -930,6 +964,7 @@ export default function App() {
         setOnlineLobbyPlayers(msg.players);
         setOnlineRole(mgr.getRole());
 
+        clearRenderCaches();
         worldManagerRef.current.setOnlineMode(true);
         worldManagerRef.current.setSeed(msg.roomInfo.worldSeed);
         worldManagerRef.current.setLuckLevel(msg.yourProfile.upgrades.luckLevel);
@@ -1522,6 +1557,7 @@ export default function App() {
       setOnlinePing(null);
       remotePlayersRef.current.clear();
       onlineProjectilesRef.current = [];
+      clearRenderCaches();
       worldManagerRef.current.setOnlineMode(false);
 
       const offlineSave = loadSaveData() ?? createInitialSave();
@@ -3518,14 +3554,37 @@ export default function App() {
     let frameCounter = 0;
 
     const step = (now: number) => {
+      try {
       frameCounter++;
       const rawDeltaMs = now - lastFrameTime;
-      const dt = Math.min(0.05, rawDeltaMs / 1000);
+      const dt = Number.isFinite(rawDeltaMs) ? Math.max(0, Math.min(0.05, rawDeltaMs / 1000)) : 0.016;
       lastFrameTime = now;
 
       const sim = simRef.current;
       const currentSave = saveRef.current;
       const currentSettings = settingsRef.current;
+
+      // Sanitize simulation coordinates if any external state or NaN ever slipped in
+      if (!Number.isFinite(sim.playerX) || !Number.isFinite(sim.playerY)) {
+        sim.playerX = Number.isFinite(currentSave.player.x) ? currentSave.player.x : 0;
+        sim.playerY = Number.isFinite(currentSave.player.y) ? currentSave.player.y : 0;
+      }
+      if (!Number.isFinite(sim.boatX) || !Number.isFinite(sim.boatY)) {
+        sim.boatX = Number.isFinite(currentSave.boat.x) ? currentSave.boat.x : 0;
+        sim.boatY = Number.isFinite(currentSave.boat.y) ? currentSave.boat.y : 0;
+      }
+      if (!Number.isFinite(sim.boatVx) || !Number.isFinite(sim.boatVy)) {
+        sim.boatVx = 0;
+        sim.boatVy = 0;
+      }
+      if (!Number.isFinite(sim.cameraX) || !Number.isFinite(sim.cameraY)) {
+        sim.cameraX = sim.isSailing ? sim.boatX : sim.playerX;
+        sim.cameraY = sim.isSailing ? sim.boatY : sim.playerY;
+      }
+      if (!Number.isFinite(sim.zoom) || sim.zoom <= 0) {
+        sim.zoom = 1;
+      }
+
       const isPlaying = phaseRef.current === 'PLAYING' && modalRef.current === 'NONE';
       const maxBoatHp = getMaxBoatHp(currentSave.upgrades.boatLevel);
       const activeUnitCount =
@@ -6745,12 +6804,22 @@ export default function App() {
       if (onlineActiveRef.current) {
         const interp = Math.min(1, dt * 12);
         for (const rp of remotePlayersRef.current.values()) {
-          rp.x = lerp(rp.x, rp.targetX, interp);
-          rp.y = lerp(rp.y, rp.targetY, interp);
-          rp.angle = lerpAngle(rp.angle, rp.targetAngle, interp);
-          rp.boatX = lerp(rp.boatX, rp.targetBoatX, interp);
-          rp.boatY = lerp(rp.boatY, rp.targetBoatY, interp);
-          rp.boatAngle = lerpAngle(rp.boatAngle, rp.targetBoatAngle, interp);
+          if (Number.isFinite(rp.targetX) && Number.isFinite(rp.targetY)) {
+            rp.x = Number.isFinite(rp.x) ? lerp(rp.x, rp.targetX, interp) : rp.targetX;
+            rp.y = Number.isFinite(rp.y) ? lerp(rp.y, rp.targetY, interp) : rp.targetY;
+          }
+          if (Number.isFinite(rp.targetAngle)) {
+            rp.angle = Number.isFinite(rp.angle) ? lerpAngle(rp.angle, rp.targetAngle, interp) : rp.targetAngle;
+          }
+          if (Number.isFinite(rp.targetBoatX) && Number.isFinite(rp.targetBoatY)) {
+            rp.boatX = Number.isFinite(rp.boatX) ? lerp(rp.boatX, rp.targetBoatX, interp) : rp.targetBoatX;
+            rp.boatY = Number.isFinite(rp.boatY) ? lerp(rp.boatY, rp.targetBoatY, interp) : rp.targetBoatY;
+          }
+          if (Number.isFinite(rp.targetBoatAngle)) {
+            rp.boatAngle = Number.isFinite(rp.boatAngle)
+              ? lerpAngle(rp.boatAngle, rp.targetBoatAngle, interp)
+              : rp.targetBoatAngle;
+          }
 
           if (rp.soldiers && rp.soldierTargets) {
             for (let si = 0; si < rp.soldiers.length; si++) {
@@ -6882,7 +6951,15 @@ export default function App() {
         );
       }
 
-      if (isPlaying && !onlineActiveRef.current && now - sim.lastAutoSaveTime > 2000) {
+      if (
+        isPlaying &&
+        !onlineActiveRef.current &&
+        now - sim.lastAutoSaveTime > 2000 &&
+        Number.isFinite(sim.playerX) &&
+        Number.isFinite(sim.playerY) &&
+        Number.isFinite(sim.boatX) &&
+        Number.isFinite(sim.boatY)
+      ) {
         sim.lastAutoSaveTime = now;
         const updatedSave: SaveData = {
           ...saveRef.current,
@@ -6999,14 +7076,16 @@ export default function App() {
         const ctx = canvas.getContext('2d', { alpha: false });
         if (ctx) {
           const rect = canvas.getBoundingClientRect();
-          const dpr = Math.min(window.devicePixelRatio || 1, budget.dprCap);
-          const targetW = Math.max(1, Math.floor(rect.width * dpr));
-          const targetH = Math.max(1, Math.floor(rect.height * dpr));
-          if (Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2) {
-            canvas.width = targetW;
-            canvas.height = targetH;
-          }
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          if (rect.width >= 4 && rect.height >= 4) {
+            const stableDprCap = isCoarseDeviceRef.current ? 1.5 : 2;
+            const dpr = Math.min(window.devicePixelRatio || 1, stableDprCap);
+            const targetW = Math.max(1, Math.floor(rect.width * dpr));
+            const targetH = Math.max(1, Math.floor(rect.height * dpr));
+            if (Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2) {
+              canvas.width = targetW;
+              canvas.height = targetH;
+            }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
           if (sim.activeCave) {
             const cave = sim.activeCave.cave;
@@ -7167,6 +7246,7 @@ export default function App() {
               mapWaypoint: currentSave.mapPin ?? null,
             });
           }
+          }
         }
       }
 
@@ -7284,8 +7364,12 @@ export default function App() {
             : null,
         });
       }
-
-      rafId = requestAnimationFrame(step);
+      } catch (err) {
+        console.error('Frame step recovered:', err);
+        clearRenderCaches();
+      } finally {
+        rafId = requestAnimationFrame(step);
+      }
     };
 
     rafId = requestAnimationFrame(step);
@@ -7608,6 +7692,7 @@ export default function App() {
 
   const handleResetSave = useCallback(() => {
     clearSaveData();
+    clearRenderCaches();
     const fresh = createInitialSave();
     worldManagerRef.current.setSeed(fresh.worldSeed);
     worldManagerRef.current.setLuckLevel(1);

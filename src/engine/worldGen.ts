@@ -1471,19 +1471,24 @@ export class WorldManager {
   }
 
   public getIslandAtSector(sx: number, sy: number): Island | null {
-    const key = `${sx}_${sy}`;
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
+    const isx = Math.trunc(sx);
+    const isy = Math.trunc(sy);
+    const key = `${isx}_${isy}`;
     if (!this.cache.has(key)) {
       this.cache.set(
         key,
-        generateSectorIsland(this.worldSeed, sx, sy, this.luckLevel, this.onlineMode)
+        generateSectorIsland(this.worldSeed, isx, isy, this.luckLevel, this.onlineMode)
       );
     }
     return this.cache.get(key) ?? null;
   }
 
   public getVisibleIslands(centerX: number, centerY: number, radiusSectors = 2): Island[] {
-    const csx = Math.round(centerX / SECTOR_SIZE);
-    const csy = Math.round(centerY / SECTOR_SIZE);
+    const safeX = Number.isFinite(centerX) ? centerX : 0;
+    const safeY = Number.isFinite(centerY) ? centerY : 0;
+    const csx = Math.round(safeX / SECTOR_SIZE);
+    const csy = Math.round(safeY / SECTOR_SIZE);
     const result: Island[] = [];
 
     for (let dx = -radiusSectors; dx <= radiusSectors; dx++) {
@@ -1496,7 +1501,7 @@ export class WorldManager {
     if (this.onlineMode && this.starterIslands.size > 0) {
       const maxDist = (radiusSectors + 0.8) * SECTOR_SIZE;
       for (const isl of this.starterIslands.values()) {
-        if (Math.hypot(isl.centerX - centerX, isl.centerY - centerY) <= maxDist) {
+        if (Math.hypot(isl.centerX - safeX, isl.centerY - safeY) <= maxDist) {
           result.push(isl);
         }
       }

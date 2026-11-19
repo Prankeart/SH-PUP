@@ -155,7 +155,8 @@ interface CachedIslandCanvas {
 }
 
 const islandTerrainCache = new Map<string, CachedIslandCanvas>();
-const MAX_CACHED_ISLANDS = 8;
+const MAX_CACHED_ISLANDS = 4;
+const MAX_ISLAND_CACHE_DIM = 1400;
 
 // Offscreen sprite caches for 10x faster large-army & fleet rendering
 const UNIT_SPRITE_HALF = 32;
@@ -164,6 +165,27 @@ const allySoldierSpriteCache = new Map<string, HTMLCanvasElement>();
 const islandEnemySpriteCache = new Map<string, HTMLCanvasElement>();
 const allyShipSpriteCache = new Map<string, HTMLCanvasElement>();
 
+function disposeCanvasMap<K>(map: Map<K, HTMLCanvasElement>) {
+  for (const c of map.values()) {
+    c.width = 0;
+    c.height = 0;
+  }
+  map.clear();
+}
+
+export function clearRenderCaches(): void {
+  for (const entry of islandTerrainCache.values()) {
+    entry.canvas.width = 0;
+    entry.canvas.height = 0;
+  }
+  islandTerrainCache.clear();
+  disposeCanvasMap(allySoldierSpriteCache);
+  disposeCanvasMap(islandEnemySpriteCache);
+  disposeCanvasMap(allyShipSpriteCache);
+  disposeCanvasMap(palmCanopyCache);
+  disposeCanvasMap(palmShadowCache);
+}
+
 function getAllySoldierSprite(
   type: AllySoldier['type'],
   bannerColor: string,
@@ -171,8 +193,8 @@ function getAllySoldierSprite(
 ): HTMLCanvasElement {
   const key = `${type}_${bannerColor}_${isFlashing ? 1 : 0}`;
   const existing = allySoldierSpriteCache.get(key);
-  if (existing) return existing;
-  if (allySoldierSpriteCache.size > 48) allySoldierSpriteCache.clear();
+  if (existing && existing.width > 0 && existing.height > 0) return existing;
+  if (allySoldierSpriteCache.size > 48) disposeCanvasMap(allySoldierSpriteCache);
 
   const size = UNIT_SPRITE_HALF * 2;
   const c = document.createElement('canvas');
@@ -303,8 +325,8 @@ function getIslandEnemySprite(
 ): HTMLCanvasElement {
   const key = `${tier}_${combatStyle}_${squadColor}_${isLeader ? 1 : 0}_${isFlashing ? 1 : 0}`;
   const existing = islandEnemySpriteCache.get(key);
-  if (existing) return existing;
-  if (islandEnemySpriteCache.size > 96) islandEnemySpriteCache.clear();
+  if (existing && existing.width > 0 && existing.height > 0) return existing;
+  if (islandEnemySpriteCache.size > 96) disposeCanvasMap(islandEnemySpriteCache);
 
   const size = UNIT_SPRITE_HALF * 2;
   const c = document.createElement('canvas');
@@ -398,8 +420,8 @@ function getAllyShipSprite(
 ): HTMLCanvasElement {
   const key = `${bannerColor}_${sailColor}_${isFlashing ? 1 : 0}`;
   const existing = allyShipSpriteCache.get(key);
-  if (existing) return existing;
-  if (allyShipSpriteCache.size > 24) allyShipSpriteCache.clear();
+  if (existing && existing.width > 0 && existing.height > 0) return existing;
+  if (allyShipSpriteCache.size > 24) disposeCanvasMap(allyShipSpriteCache);
 
   const size = SHIP_SPRITE_HALF * 2;
   const c = document.createElement('canvas');
@@ -513,22 +535,9 @@ const BIOME_PALETTES = {
   },
 } as const;
 
-function getIslandTerrainCanvas(island: Island): CachedIslandCanvas {
-  const existing = islandTerrainCache.get(island.id);
-  if (existing && existing.islandRef === island) {
-    islandTerrainCache.delete(island.id);
-    islandTerrainCache.set(island.id, existing);
-    return existing;
-  }
-
+function paintIslandTerrain(octx: CanvasRenderingContext2D, island: Island): void {
   const palette = BIOME_PALETTES[island.biome ?? 'TROPICAL'];
-  const halfSize = Math.ceil(island.maxRadius * 1.26) + 16;
-  const canvas = document.createElement('canvas');
-  canvas.width = halfSize * 2;
-  canvas.height = halfSize * 2;
-  const octx = canvas.getContext('2d');
-  if (octx) {
-    octx.translate(halfSize - island.centerX, halfSize - island.centerY);
+  {
 
     octx.save();
     octx.translate(island.centerX, island.centerY);
@@ -703,12 +712,62 @@ function getIslandTerrainCanvas(island: Island): CachedIslandCanvas {
       octx.restore();
     }
   }
+}
+
+function getIslandTerrainCanvas(island: Island): CachedIslandCanvas | null {
+  if (!Number.isFinite(island.centerX) || !Number.isFinite(island.centerY) || !Number.isFinite(island.maxRadius) || island.maxRadius <= 0) {
+    return null;
+  }
+  const existing = islandTerrainCache.get(island.id);
+  if (
+    existing &&
+    existing.islandRef === island &&
+    existing.canvas.width > 0 &&
+    existing.canvas.height > 0
+  ) {
+    islandTerrainCache.delete(island.id);
+    islandTerrainCache.set(island.id, existing);
+    return existing;
+  }
+  if (existing) {
+    existing.canvas.width = 0;
+    existing.canvas.height = 0;
+    islandTerrainCache.delete(island.id);
+  }
+
+  const halfSize = Math.ceil(island.maxRadius * 1.26) + 16;
+  const fullDim = halfSize * 2;
+  const cacheScale = fullDim > MAX_ISLAND_CACHE_DIM ? MAX_ISLAND_CACHE_DIM / fullDim : 1;
+  const pixelDim = Math.max(32, Math.round(fullDim * cacheScale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = pixelDim;
+  canvas.height = pixelDim;
+  const octx = canvas.getContext('2d');
+  if (!octx || canvas.width === 0 || canvas.height === 0) {
+    canvas.width = 0;
+    canvas.height = 0;
+    return null;
+  }
+
+  octx.save();
+  octx.scale(cacheScale, cacheScale);
+  octx.translate(halfSize - island.centerX, halfSize - island.centerY);
+  paintIslandTerrain(octx, island);
+  octx.restore();
 
   const entry: CachedIslandCanvas = { islandRef: island, canvas, halfSize };
   islandTerrainCache.set(island.id, entry);
   if (islandTerrainCache.size > MAX_CACHED_ISLANDS) {
     const oldestKey = islandTerrainCache.keys().next().value;
-    if (oldestKey !== undefined) islandTerrainCache.delete(oldestKey);
+    if (oldestKey !== undefined) {
+      const evicted = islandTerrainCache.get(oldestKey);
+      if (evicted) {
+        evicted.canvas.width = 0;
+        evicted.canvas.height = 0;
+      }
+      islandTerrainCache.delete(oldestKey);
+    }
   }
   return entry;
 }
@@ -2698,6 +2757,11 @@ export function renderGameFrame(
   state: RenderState
 ) {
   const { timeSec, camera, zoom, screenShake, islands, craters, player, boat, showWaves } = state;
+  if (width <= 0 || height <= 0 || !Number.isFinite(camera.x) || !Number.isFinite(camera.y) || !Number.isFinite(zoom) || zoom <= 0) {
+    ctx.fillStyle = '#0B4F6C';
+    ctx.fillRect(0, 0, Math.max(1, width), Math.max(1, height));
+    return;
+  }
 
   ctx.fillStyle = '#0B4F6C';
   ctx.fillRect(0, 0, width, height);
@@ -2768,11 +2832,22 @@ export function renderGameFrame(
     visibleIslandIds.add(island.id);
 
     const cached = getIslandTerrainCanvas(island);
-    ctx.drawImage(
-      cached.canvas,
-      island.centerX - cached.halfSize,
-      island.centerY - cached.halfSize
-    );
+    if (cached && cached.canvas.width > 0 && cached.canvas.height > 0) {
+      try {
+        ctx.drawImage(
+          cached.canvas,
+          island.centerX - cached.halfSize,
+          island.centerY - cached.halfSize,
+          cached.halfSize * 2,
+          cached.halfSize * 2
+        );
+      } catch {
+        islandTerrainCache.delete(island.id);
+        paintIslandTerrain(ctx, island);
+      }
+    } else {
+      paintIslandTerrain(ctx, island);
+    }
 
     if (island.traderDock) {
       drawTraderDock(
