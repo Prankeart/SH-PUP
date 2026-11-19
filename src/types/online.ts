@@ -53,6 +53,7 @@ export interface PlayerProfileLedger {
   boatHp: number;
   playerHp: number;
   equippedWeapon: WeaponId | null;
+  weaponSlots?: WeaponId[];
   unlockedWeapons: WeaponId[];
   collectedPickupIds: string[];
   bag: BagItem[];
@@ -485,10 +486,12 @@ export type ClientToHostMessage =
   | {
       type: 'cmd:equip_weapon';
       weaponId: WeaponId;
+      replaceSlotIndex?: number;
     }
   | {
       type: 'cmd:buy_weapon';
       weaponId: WeaponId;
+      replaceSlotIndex?: number;
     }
   | {
       type: 'cmd:ping';

@@ -1,5 +1,7 @@
 import { WeaponId } from '../types/game';
 
+export const MAX_CARRIED_WEAPONS = 2;
+
 export interface WeaponDef {
   id: WeaponId;
   name: string;
@@ -12,6 +14,8 @@ export interface WeaponDef {
   pellets: number;
   spreadRad: number;
   projectileSpeed: number;
+  magSize?: number;
+  reloadMs?: number;
   color: string;
   splashRadius?: number;
   lifesteal?: number;
@@ -49,6 +53,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 1,
     spreadRad: 0.04,
     projectileSpeed: 540,
+    magSize: 6,
+    reloadMs: 1050,
     color: '#F59E0B',
     shopCost: 140,
     description: 'Tek atışta isabetli orta menzilli denizci tabancası.',
@@ -66,6 +72,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 3,
     spreadRad: 0.24,
     projectileSpeed: 510,
+    magSize: 4,
+    reloadMs: 1300,
     color: '#38BDF8',
     shopCost: 260,
     description: 'Üçlü saçma atarak düşman gruplarını dağıtan tüfek.',
@@ -83,6 +91,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 2,
     spreadRad: 0.12,
     projectileSpeed: 590,
+    magSize: 12,
+    reloadMs: 1200,
     color: '#FDE047',
     shopCost: 420,
     description: 'Çok hızlı çift mermi atan altın işlemeli tabanca çifti.',
@@ -116,6 +126,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 5,
     spreadRad: 0.34,
     projectileSpeed: 570,
+    magSize: 5,
+    reloadMs: 1300,
     color: '#22D3EE',
     description: '5 kristal parçacığı fırlatan yüksek hasarlı karabina.',
     descriptionEn: 'Shatters foes with a 5-shard crystal blast.',
@@ -132,6 +144,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 1,
     spreadRad: 0.02,
     projectileSpeed: 720,
+    magSize: 4,
+    reloadMs: 1200,
     color: '#FB923C',
     description: 'Uzun menzilli yüksek hızlı delici arena zıpkını.',
     descriptionEn: 'Long-range high-velocity arena harpoon rifle.',
@@ -166,6 +180,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 1,
     spreadRad: 0.03,
     projectileSpeed: 460,
+    magSize: 3,
+    reloadMs: 1450,
     color: '#F97316',
     splashRadius: 68,
     shopCost: 860,
@@ -184,6 +200,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 3,
     spreadRad: 0.16,
     projectileSpeed: 680,
+    magSize: 6,
+    reloadMs: 1250,
     color: '#38BDF8',
     description: 'Üçlü yıldırım mızrağı fırlatan kadim deniz silahı.',
     descriptionEn: 'Unleashes three crackling lightning bolts per volley.',
@@ -200,6 +218,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     pellets: 1,
     spreadRad: 0.03,
     projectileSpeed: 740,
+    magSize: 14,
+    reloadMs: 1150,
     color: '#10B981',
     shopCost: 920,
     description: 'Seri atışlı hayalet enerjisi oku fırlatan yüksek tempolu arbalet.',
@@ -212,4 +232,152 @@ export const WEAPON_LIST: WeaponDef[] = Object.values(WEAPONS);
 export function pickStrongerWeapon(current: WeaponId | null, candidate: WeaponId): WeaponId {
   if (!current) return candidate;
   return WEAPONS[candidate].tier >= WEAPONS[current].tier ? candidate : current;
+}
+
+export function normalizeWeaponSlots(
+  rawSlots: WeaponId[] | undefined,
+  unlockedWeapons: WeaponId[],
+  equippedWeapon: WeaponId | null
+): { weaponSlots: WeaponId[]; equippedWeapon: WeaponId | null; unlockedWeapons: WeaponId[] } {
+  const unlockedSet = new Set<WeaponId>(
+    unlockedWeapons.filter((id) => Boolean(WEAPONS[id]))
+  );
+  if (equippedWeapon && WEAPONS[equippedWeapon]) {
+    unlockedSet.add(equippedWeapon);
+  }
+
+  const cleanSlots: WeaponId[] = [];
+  if (Array.isArray(rawSlots)) {
+    for (const id of rawSlots) {
+      if (WEAPONS[id] && !cleanSlots.includes(id) && cleanSlots.length < MAX_CARRIED_WEAPONS) {
+        cleanSlots.push(id);
+        unlockedSet.add(id);
+      }
+    }
+  } else {
+    // Legacy save without weaponSlots: seed from equippedWeapon + next strongest unlocked weapon
+    if (equippedWeapon && WEAPONS[equippedWeapon]) {
+      cleanSlots.push(equippedWeapon);
+    }
+    const sortedUnlocked = Array.from(unlockedSet).sort(
+      (a, b) => WEAPONS[b].tier - WEAPONS[a].tier
+    );
+    for (const id of sortedUnlocked) {
+      if (!cleanSlots.includes(id) && cleanSlots.length < MAX_CARRIED_WEAPONS) {
+        cleanSlots.push(id);
+      }
+    }
+  }
+
+  let resolvedEquipped =
+    equippedWeapon && WEAPONS[equippedWeapon] ? equippedWeapon : cleanSlots[0] ?? null;
+  if (resolvedEquipped && !cleanSlots.includes(resolvedEquipped)) {
+    if (cleanSlots.length < MAX_CARRIED_WEAPONS) {
+      cleanSlots.push(resolvedEquipped);
+    } else {
+      cleanSlots[0] = resolvedEquipped;
+    }
+  }
+  if (!resolvedEquipped && cleanSlots.length > 0) {
+    resolvedEquipped = cleanSlots[0];
+  }
+
+  return {
+    weaponSlots: cleanSlots,
+    equippedWeapon: resolvedEquipped,
+    unlockedWeapons: Array.from(unlockedSet),
+  };
+}
+
+export function applyWeaponAcquire(
+  state: {
+    unlockedWeapons: WeaponId[];
+    weaponSlots?: WeaponId[];
+    equippedWeapon: WeaponId | null;
+  },
+  candidate: WeaponId,
+  mode: 'EQUIP_OR_BUY' | 'PICKUP',
+  replaceSlotIndex?: number
+): {
+  unlockedWeapons: WeaponId[];
+  weaponSlots: WeaponId[];
+  equippedWeapon: WeaponId | null;
+  replacedWeapon: WeaponId | null;
+} {
+  const norm = normalizeWeaponSlots(
+    state.weaponSlots,
+    state.unlockedWeapons,
+    state.equippedWeapon
+  );
+  const nextUnlocked = norm.unlockedWeapons.includes(candidate)
+    ? norm.unlockedWeapons
+    : [...norm.unlockedWeapons, candidate];
+  const nextSlots = [...norm.weaponSlots];
+  let nextEquipped = norm.equippedWeapon;
+  let replacedWeapon: WeaponId | null = null;
+
+  if (nextSlots.includes(candidate)) {
+    if (mode === 'EQUIP_OR_BUY') {
+      nextEquipped = candidate;
+    } else {
+      nextEquipped = pickStrongerWeapon(nextEquipped, candidate);
+    }
+    return {
+      unlockedWeapons: nextUnlocked,
+      weaponSlots: nextSlots,
+      equippedWeapon: nextEquipped,
+      replacedWeapon: null,
+    };
+  }
+
+  if (nextSlots.length < MAX_CARRIED_WEAPONS) {
+    nextSlots.push(candidate);
+    nextEquipped =
+      mode === 'EQUIP_OR_BUY'
+        ? candidate
+        : pickStrongerWeapon(nextEquipped, candidate);
+    return {
+      unlockedWeapons: nextUnlocked,
+      weaponSlots: nextSlots,
+      equippedWeapon: nextEquipped,
+      replacedWeapon: null,
+    };
+  }
+
+  // Already carrying MAX_CARRIED_WEAPONS (2)
+  if (mode === 'EQUIP_OR_BUY') {
+    const activeIdx = nextEquipped ? nextSlots.indexOf(nextEquipped) : 0;
+    const targetIdx =
+      typeof replaceSlotIndex === 'number' &&
+      replaceSlotIndex >= 0 &&
+      replaceSlotIndex < MAX_CARRIED_WEAPONS
+        ? replaceSlotIndex
+        : activeIdx >= 0
+        ? activeIdx
+        : 0;
+    replacedWeapon = nextSlots[targetIdx] ?? null;
+    nextSlots[targetIdx] = candidate;
+    nextEquipped = candidate;
+  } else {
+    // PICKUP: replace the weaker carried slot if candidate is >= its tier
+    let weakestIdx = 0;
+    for (let i = 1; i < nextSlots.length; i++) {
+      if (WEAPONS[nextSlots[i]].tier < WEAPONS[nextSlots[weakestIdx]].tier) {
+        weakestIdx = i;
+      }
+    }
+    const weakestWeapon = nextSlots[weakestIdx];
+    if (WEAPONS[candidate].tier >= WEAPONS[weakestWeapon].tier) {
+      replacedWeapon = weakestWeapon;
+      nextSlots[weakestIdx] = candidate;
+      nextEquipped = pickStrongerWeapon(nextEquipped, candidate);
+    }
+  }
+
+  return {
+    unlockedWeapons: nextUnlocked,
+    weaponSlots: nextSlots,
+    equippedWeapon: nextEquipped,
+    replacedWeapon,
+  };
 }

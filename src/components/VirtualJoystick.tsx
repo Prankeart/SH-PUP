@@ -74,6 +74,8 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   const dx = resolvedGeom?.dx ?? fallback.dx;
   const dy = resolvedGeom?.dy ?? fallback.dy;
   const scale = resolvedGeom?.scale ?? fallback.scale;
+  const opacity = resolvedGeom?.opacity ?? touchLayout?.joystick?.opacity ?? 1;
+  const displayOpacity = isEditingLayout ? Math.max(0.35, opacity) : opacity;
   const innerSize = Math.round(boxSize * (compact ? 0.85 : 0.72));
   const knobSize = Math.round(boxSize * (compact ? 0.36 : 0.3));
 
@@ -149,10 +151,11 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         dx: nextDx,
         dy: nextDy,
         scale: dragStartRef.current.scale,
+        opacity,
       };
       const resolved = onDragResolve
         ? onDragResolve('joystick', candidate)
-        : clampJoystickTransform(candidate, boxSize, pad);
+        : { ...clampJoystickTransform(candidate, boxSize, pad), opacity };
       onUpdateButtonTransform?.('joystick', resolved);
       return;
     }
@@ -191,6 +194,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         width: `${boxSize}px`,
         height: `${boxSize}px`,
         transform: `translate(${dx}px, ${dy}px) scale(${scale})`,
+        opacity: displayOpacity,
       }}
       className={`pointer-events-auto relative flex items-center justify-center touch-none shrink-0 ${
         isEditingLayout

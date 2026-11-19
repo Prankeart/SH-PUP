@@ -44,7 +44,7 @@ import {
   MAX_ARMY_LEVEL,
   SOLDIER_SPECS,
 } from './factions';
-import { pickStrongerWeapon } from './weapons';
+import { applyWeaponAcquire, WEAPONS } from './weapons';
 import {
   ACHIEVEMENTS,
   CAMPAIGN_MILESTONES,
@@ -953,10 +953,40 @@ export class OnlineSessionManager {
       if (!prof.collectedPickupIds.includes(msg.pickupId)) {
         prof.collectedPickupIds.push(msg.pickupId);
       }
-      if (!prof.unlockedWeapons.includes(msg.weaponId)) {
-        prof.unlockedWeapons.push(msg.weaponId);
+      if (WEAPONS[msg.weaponId]) {
+        const res = applyWeaponAcquire(prof, msg.weaponId, 'PICKUP');
+        prof.unlockedWeapons = res.unlockedWeapons;
+        prof.weaponSlots = res.weaponSlots;
+        prof.equippedWeapon = res.equippedWeapon;
+        const pose = this.playerPoses.get(pid);
+        if (pose) pose.equippedWeapon = prof.equippedWeapon;
       }
-      prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.weaponId);
+      this.syncProfileToPlayer(pid, prof);
+      return;
+    }
+
+    if (msg.type === 'cmd:buy_weapon') {
+      const def = WEAPONS[msg.weaponId];
+      if (!def || !def.shopCost) return;
+      if (prof.unlockedWeapons.includes(msg.weaponId) || prof.gold < def.shopCost) return;
+      prof.gold -= def.shopCost;
+      const res = applyWeaponAcquire(prof, msg.weaponId, 'EQUIP_OR_BUY', msg.replaceSlotIndex);
+      prof.unlockedWeapons = res.unlockedWeapons;
+      prof.weaponSlots = res.weaponSlots;
+      prof.equippedWeapon = res.equippedWeapon;
+      const pose = this.playerPoses.get(pid);
+      if (pose) pose.equippedWeapon = prof.equippedWeapon;
+      this.syncProfileToPlayer(pid, prof);
+      void saveRoomLedger(this.ledger);
+      return;
+    }
+
+    if (msg.type === 'cmd:equip_weapon') {
+      if (!WEAPONS[msg.weaponId] || !prof.unlockedWeapons.includes(msg.weaponId)) return;
+      const res = applyWeaponAcquire(prof, msg.weaponId, 'EQUIP_OR_BUY', msg.replaceSlotIndex);
+      prof.unlockedWeapons = res.unlockedWeapons;
+      prof.weaponSlots = res.weaponSlots;
+      prof.equippedWeapon = res.equippedWeapon;
       const pose = this.playerPoses.get(pid);
       if (pose) pose.equippedWeapon = prof.equippedWeapon;
       this.syncProfileToPlayer(pid, prof);
@@ -1001,11 +1031,11 @@ export class OnlineSessionManager {
           prof.totalGoldEarned += msg.instantBonus;
           prof.treasuresFoundCount += 1;
           if (msg.bagItem) prof.bag.push(msg.bagItem);
-          if (msg.unlockedWeapon) {
-            if (!prof.unlockedWeapons.includes(msg.unlockedWeapon)) {
-              prof.unlockedWeapons.push(msg.unlockedWeapon);
-            }
-            prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.unlockedWeapon);
+          if (msg.unlockedWeapon && WEAPONS[msg.unlockedWeapon]) {
+            const res = applyWeaponAcquire(prof, msg.unlockedWeapon, 'PICKUP');
+            prof.unlockedWeapons = res.unlockedWeapons;
+            prof.weaponSlots = res.weaponSlots;
+            prof.equippedWeapon = res.equippedWeapon;
             const pose = this.playerPoses.get(pid);
             if (pose) pose.equippedWeapon = prof.equippedWeapon;
           }
@@ -1282,11 +1312,11 @@ export class OnlineSessionManager {
       if (msg.isBossOrFirstInCave) {
         prof.cavesExploredCount = (prof.cavesExploredCount ?? 0) + 1;
       }
-      if (msg.weaponId) {
-        if (!prof.unlockedWeapons.includes(msg.weaponId)) {
-          prof.unlockedWeapons.push(msg.weaponId);
-        }
-        prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.weaponId);
+      if (msg.weaponId && WEAPONS[msg.weaponId]) {
+        const res = applyWeaponAcquire(prof, msg.weaponId, 'PICKUP');
+        prof.unlockedWeapons = res.unlockedWeapons;
+        prof.weaponSlots = res.weaponSlots;
+        prof.equippedWeapon = res.equippedWeapon;
         const pose = this.playerPoses.get(pid);
         if (pose) pose.equippedWeapon = prof.equippedWeapon;
       }
@@ -1300,11 +1330,11 @@ export class OnlineSessionManager {
       prof.gold += safeGold;
       prof.totalGoldEarned += safeGold;
       prof.arenaWinsCount = (prof.arenaWinsCount ?? 0) + 1;
-      if (msg.unlockedWeapon) {
-        if (!prof.unlockedWeapons.includes(msg.unlockedWeapon)) {
-          prof.unlockedWeapons.push(msg.unlockedWeapon);
-        }
-        prof.equippedWeapon = pickStrongerWeapon(prof.equippedWeapon, msg.unlockedWeapon);
+      if (msg.unlockedWeapon && WEAPONS[msg.unlockedWeapon]) {
+        const res = applyWeaponAcquire(prof, msg.unlockedWeapon, 'PICKUP');
+        prof.unlockedWeapons = res.unlockedWeapons;
+        prof.weaponSlots = res.weaponSlots;
+        prof.equippedWeapon = res.equippedWeapon;
         const pose = this.playerPoses.get(pid);
         if (pose) pose.equippedWeapon = prof.equippedWeapon;
       }

@@ -83,6 +83,7 @@ export function createProfileForSlot(
     boatHp: 100,
     playerHp: 100,
     equippedWeapon: null,
+    weaponSlots: [],
     unlockedWeapons: [],
     collectedPickupIds: [],
     bag: [],

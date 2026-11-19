@@ -1,6 +1,6 @@
 import { TouchButtonId, TouchButtonTransform, TouchLayoutConfig } from '../types/game';
 
-export type ActionButtonKey = Exclude<TouchButtonId, 'joystick' | 'minimap'>;
+export type ActionButtonKey = Exclude<TouchButtonId, 'joystick' | 'minimap' | 'weaponPanel'>;
 
 export const ALL_ACTION_BUTTON_KEYS: ActionButtonKey[] = [
   'digOrFire',
@@ -32,6 +32,7 @@ export interface ResolvedButtonGeom {
   dx: number;
   dy: number;
   scale: number;
+  opacity: number;
   screenBox: ScreenBox;
 }
 
@@ -41,6 +42,7 @@ export interface ResolvedJoystickGeom {
   dx: number;
   dy: number;
   scale: number;
+  opacity: number;
   screenBox: ScreenBox;
 }
 
@@ -51,6 +53,19 @@ export interface ResolvedMiniMapGeom {
   dx: number;
   dy: number;
   scale: number;
+  opacity: number;
+  screenBox: ScreenBox;
+}
+
+export interface ResolvedWeaponPanelGeom {
+  baseW: number;
+  baseH: number;
+  baseRight: number;
+  baseTop: number;
+  dx: number;
+  dy: number;
+  scale: number;
+  opacity: number;
   screenBox: ScreenBox;
 }
 
@@ -113,7 +128,7 @@ export interface HudLayoutInput {
   gold: number;
   bagCount: number;
   nearDock: boolean;
-  hasCycleLabel: boolean;
+  hasWeaponPanel: boolean;
   onlineActive: boolean;
   voiceEnabled: boolean;
   chatOpen: boolean;
@@ -141,6 +156,8 @@ export interface UnifiedHudLayout {
   topCenterEventMaxWidth: number;
   minimap: ResolvedMiniMapGeom;
   joystick: ResolvedJoystickGeom;
+  weaponPanel: ResolvedWeaponPanelGeom;
+  weaponAtDefaultSpot: boolean;
   actionContainer: { w: number; h: number; pad: number };
   actionButtons: Record<ActionButtonKey, ResolvedButtonGeom>;
   actionsBounds: ScreenBox;
@@ -445,8 +462,23 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
   const pad = isCompactTouch ? 8 : 20;
   const isTopRightCompact = input.isCoarseDevice || vw < 760 || vh < 500;
 
-  // 1. Estimate Top-Right HUD geometry
+  // 1. Phone-screen-adaptive baseline scale & Top-Right Row 1 HUD geometry
+  const shortSide = Math.min(vw, vh);
+  let deviceAdaptiveScale = 1;
+  if (input.isCoarseDevice || isCompactTouch) {
+    if (shortSide <= 340) {
+      deviceAdaptiveScale = 0.68;
+    } else if (shortSide <= 440) {
+      deviceAdaptiveScale = 0.68 + ((shortSide - 340) / 100) * 0.12;
+    } else if (shortSide <= 660) {
+      deviceAdaptiveScale = 0.8 + ((shortSide - 440) / 220) * 0.14;
+    } else {
+      deviceAdaptiveScale = 0.96;
+    }
+  }
+
   let topRightEstW = 0;
+  let topRightRow1H = 0;
   let topRightEstH = 0;
   const topRightMaxWidth = isTopRightCompact
     ? Math.max(150, vw - 2 * pad - 88)
@@ -456,18 +488,21 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     if (isTopRightCompact) {
       const goldDigits = Math.max(1, String(Math.max(0, Math.round(input.gold))).length);
       const goldW = 54 + goldDigits * 7 + (input.bagCount > 0 ? 34 : 0);
-      topRightEstW =
+      const row1W =
         (input.showTopRightHudButtons ? 36 + 6 + goldW : 0) +
         (input.showTopRightSettingsButton ? (input.showTopRightHudButtons ? 6 : 0) + 36 : 0);
-      topRightEstH = 36;
+      topRightRow1H = 36;
+      topRightEstW = Math.min(topRightMaxWidth, row1W);
+      topRightEstH = topRightRow1H;
     } else {
       const singleRowW =
         (input.showTopRightHudButtons ? 390 + (input.bagCount > 0 ? 38 : 0) : 0) +
         (input.showTopRightSettingsButton ? 48 : 0);
       const wraps = singleRowW > topRightMaxWidth;
       topRightEstW = Math.min(singleRowW, topRightMaxWidth);
-      const hasRow2 = input.hasCycleLabel || (input.nearDock && input.showTopRightHudButtons);
-      topRightEstH = (wraps ? 88 : 40) + (hasRow2 ? 44 : 0);
+      topRightRow1H = wraps ? 88 : 40;
+      const hasDesktopTraderRow = input.nearDock && input.showTopRightHudButtons;
+      topRightEstH = topRightRow1H + (hasDesktopTraderRow ? 46 : 0);
     }
   }
 
@@ -478,10 +513,10 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     bottom: pad + topRightEstH,
   };
 
-  // 2. Compute viewport-adaptive auto scale so corner clusters NEVER touch on tiny screens
-  const rawMiniMapBase = isCompactTouch ? 86 : 124;
-  const miniMapBaseSize =
-    vh < 380 ? Math.max(66, Math.min(rawMiniMapBase, Math.round(vh * 0.21))) : rawMiniMapBase;
+  // 2. Compute viewport-adaptive auto scale so phone buttons shrink neatly to fit each screen
+  const miniMapBaseSize = isCompactTouch
+    ? Math.round(clampVal(shortSide * 0.195, 62, 86))
+    : 124;
 
   const baseJoystickSize = isCompactTouch ? 112 : 160;
   const baseActionSpec = isCompactTouch ? COMPACT_ACTION_CONTAINER : FULL_ACTION_CONTAINER;
@@ -493,7 +528,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     const scaleW = availTouchW / (baseJoystickSize + baseActionSpec.w);
     const availTouchH = vh - 2 * pad - miniMapBaseSize - 14;
     const scaleH = availTouchH / baseActionReachH;
-    clusterScale = clampVal(Math.min(1, scaleW, scaleH), 0.66, 1);
+    clusterScale = clampVal(Math.min(deviceAdaptiveScale, scaleW, scaleH), 0.58, 1);
   }
 
   const joystickBoxSize = Math.round(baseJoystickSize * clusterScale);
@@ -604,10 +639,38 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     };
   }
 
-  // Fixed exclusion zones: TopRightHud (+ desktop action bar when in DESKTOP mode)
+  const wpRaw = layout.weaponPanel;
+  const wpScale = clampVal(wpRaw?.scale ?? 1, 0.65, 1.45);
+  const wpBaseW = isTopRightCompact ? Math.round(clampVal(vw * 0.52, 184, 212)) : 256;
+  const wpBaseH = isTopRightCompact ? 80 : 108;
+  const wpBaseRight = pad;
+  const wpBaseTop = pad + (topRightRow1H > 0 ? topRightRow1H + (isTopRightCompact ? 6 : 8) : 0);
+  const wpBaseCx = vw - wpBaseRight - wpBaseW / 2;
+  const wpBaseCy = wpBaseTop + wpBaseH / 2;
+  const wpNode: SolverNode = {
+    id: 'weaponPanel',
+    shape: 'rect',
+    cx: wpBaseCx + (wpRaw?.dx ?? 0),
+    cy: wpBaseCy + (wpRaw?.dy ?? 0),
+    desiredCx: wpBaseCx + (wpRaw?.dx ?? 0),
+    desiredCy: wpBaseCy + (wpRaw?.dy ?? 0),
+    baseCx: wpBaseCx,
+    baseCy: wpBaseCy,
+    radius: Math.max(wpBaseW, wpBaseH) * wpScale * 0.5,
+    halfW: (wpBaseW * wpScale) / 2,
+    halfH: (wpBaseH * wpScale) / 2,
+    scale: wpScale,
+  };
+
+  // Fixed exclusion zones: TopRightHud Row 1 (+ desktop action bar when in DESKTOP mode)
   const fixedObstacles: ScreenBox[] = [];
-  if (topRightEstW > 0 && topRightEstH > 0) {
-    fixedObstacles.push(topRightBox);
+  if (topRightEstW > 0 && topRightRow1H > 0) {
+    fixedObstacles.push({
+      left: topRightBox.left,
+      top: topRightBox.top,
+      right: topRightBox.right,
+      bottom: pad + topRightRow1H,
+    });
   }
 
   // Estimate desktop action bar dimensions first so minimap also stays clear of it
@@ -632,10 +695,10 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     });
   }
 
-  // Also keep MiniMap out of Editor Toolbar's center band during LAYOUT_EDIT if needed?
-  // Wait: Editor toolbar is anchored in free space away from corners, so it avoids MiniMap!
-
   const activeNodes: SolverNode[] = [miniNode];
+  if (input.hasWeaponPanel || input.isEditingLayout) {
+    activeNodes.push(wpNode);
+  }
   if (input.controlsDisplayMode === 'TOUCH') {
     activeNodes.push(joyNode);
     for (const key of ALL_ACTION_BUTTON_KEYS) {
@@ -742,6 +805,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     dx: Math.round(miniNode.cx - miniNode.baseCx),
     dy: Math.round(miniNode.cy - miniNode.baseCy),
     scale: clampedMiniScale,
+    opacity: clampVal(miniRaw?.opacity ?? 1, 0.25, 1),
     screenBox: minimapBox,
   };
 
@@ -752,8 +816,26 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     dx: Math.round(joyNode.cx - joyNode.baseCx),
     dy: Math.round(joyNode.cy - joyNode.baseCy),
     scale: joyNode.scale,
+    opacity: clampVal(joyRaw?.opacity ?? 1, 0.25, 1),
     screenBox: joystickBox,
   };
+
+  const weaponBox = nodeToScreenBox(wpNode);
+  const weaponPanel: ResolvedWeaponPanelGeom = {
+    baseW: wpBaseW,
+    baseH: wpBaseH,
+    baseRight: wpBaseRight,
+    baseTop: wpBaseTop,
+    dx: Math.round(wpNode.cx - wpNode.baseCx),
+    dy: Math.round(wpNode.cy - wpNode.baseCy),
+    scale: wpNode.scale,
+    opacity: clampVal(wpRaw?.opacity ?? 1, 0.25, 1),
+    screenBox: weaponBox,
+  };
+  const weaponAtDefaultSpot =
+    (input.hasWeaponPanel || input.isEditingLayout) &&
+    Math.abs(weaponPanel.dx) < 28 &&
+    Math.abs(weaponPanel.dy) < 28;
 
   const actionButtons: Record<ActionButtonKey, ResolvedButtonGeom> = {} as Record<
     ActionButtonKey,
@@ -772,6 +854,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
       dx: Math.round(n.cx - n.baseCx),
       dy: Math.round(n.cy - n.baseCy),
       scale: n.scale,
+      opacity: clampVal(layout[key]?.opacity ?? 1, 0.25, 1),
       screenBox: box,
     };
     if (activeButtonSet.has(key)) {
@@ -832,7 +915,11 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
 
   // 5. Radar Toast placement in TOUCH mode (above highest visible action button, or to its left if near top)
   const toastNeededTop = actionsBounds.top - 42;
-  const topClearRightSide = Math.max(pad + 8, topRightBox.bottom + 8);
+  const topClearRightSide = Math.max(
+    pad + 8,
+    topRightBox.bottom + 8,
+    weaponAtDefaultSpot ? weaponBox.bottom + 8 : 0
+  );
   const radarFitsAbove = toastNeededTop >= topClearRightSide;
   const radarToastPlacement = radarFitsAbove
     ? {
@@ -853,6 +940,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
   const topHudEstBottom = Math.max(
     minimapInTopLeft ? minimapBox.bottom : pad + 72,
     topRightBox.bottom,
+    weaponAtDefaultSpot ? weaponBox.bottom : 0,
     statusTop + Math.min(statusMaxHeight, 92)
   );
 
@@ -1027,6 +1115,8 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     topCenterEventMaxWidth,
     minimap,
     joystick,
+    weaponPanel,
+    weaponAtDefaultSpot,
     actionContainer,
     actionButtons,
     actionsBounds,
@@ -1062,11 +1152,13 @@ export function resolveDraggedTouchTransform(
     touchLayout: nextLayout,
     activeDragId: id,
   });
+  const preservedOpacity = clampVal(candidate.opacity ?? currentTouchLayout?.[id]?.opacity ?? 1, 0.25, 1);
   if (id === 'minimap') {
     return {
       dx: solved.minimap.dx,
       dy: solved.minimap.dy,
       scale: solved.minimap.scale,
+      opacity: preservedOpacity,
     };
   }
   if (id === 'joystick') {
@@ -1074,6 +1166,15 @@ export function resolveDraggedTouchTransform(
       dx: solved.joystick.dx,
       dy: solved.joystick.dy,
       scale: solved.joystick.scale,
+      opacity: preservedOpacity,
+    };
+  }
+  if (id === 'weaponPanel') {
+    return {
+      dx: solved.weaponPanel.dx,
+      dy: solved.weaponPanel.dy,
+      scale: solved.weaponPanel.scale,
+      opacity: preservedOpacity,
     };
   }
   const btn = solved.actionButtons[id];
@@ -1081,5 +1182,6 @@ export function resolveDraggedTouchTransform(
     dx: btn.dx,
     dy: btn.dy,
     scale: btn.scale,
+    opacity: preservedOpacity,
   };
 }

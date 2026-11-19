@@ -49,6 +49,8 @@ export interface KeybindingsConfig {
   shop: string;
   kingdom: string;
   journal: string;
+  reload: string;
+  switchWeapon: string;
 }
 
 export interface Vec2 {
@@ -537,12 +539,14 @@ export type TouchButtonId =
   | 'stance'
   | 'repair'
   | 'joystick'
-  | 'minimap';
+  | 'minimap'
+  | 'weaponPanel';
 
 export interface TouchButtonTransform {
   dx: number;
   dy: number;
   scale?: number;
+  opacity?: number;
 }
 
 export type TouchLayoutConfig = Partial<Record<TouchButtonId, TouchButtonTransform>>;
@@ -675,6 +679,7 @@ export interface SaveData {
   boatHp: number;
   playerHp: number;
   equippedWeapon: WeaponId | null;
+  weaponSlots?: WeaponId[];
   unlockedWeapons: WeaponId[];
   collectedPickupIds: string[];
   bag: BagItem[];

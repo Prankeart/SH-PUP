@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Sparkles,
   Store,
-  Sword,
   Swords,
   Volume2,
   X as XIcon,
@@ -106,7 +105,7 @@ import {
   MAX_ARMY_LEVEL,
   SOLDIER_SPECS,
 } from './engine/factions';
-import { pickStrongerWeapon, WEAPONS } from './engine/weapons';
+import { applyWeaponAcquire, normalizeWeaponSlots, WEAPONS } from './engine/weapons';
 import {
   ACHIEVEMENTS,
   CAMPAIGN_MILESTONES,
@@ -162,8 +161,10 @@ import { formatKeyCode, SettingsModal } from './components/SettingsModal';
 import { JournalModal } from './components/JournalModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { OnlineLobbyModal } from './components/OnlineLobbyModal';
+import { WeaponHudPanel } from './components/WeaponHudPanel';
 import {
   ActionButtonKey,
+  ALL_ACTION_BUTTON_KEYS,
   computeUnifiedHudLayout,
   resolveDraggedTouchTransform,
 } from './utils/hudLayout';
@@ -302,6 +303,15 @@ export default function App() {
     maxBoatHp: getMaxBoatHp(save.upgrades.boatLevel),
     playerHp: save.playerHp,
     equippedWeapon: save.equippedWeapon as WeaponId | null,
+    weaponSlots: (save.weaponSlots ?? []) as WeaponId[],
+    activeAmmo: (save.equippedWeapon && WEAPONS[save.equippedWeapon]?.magSize
+      ? WEAPONS[save.equippedWeapon]?.magSize ?? null
+      : null) as number | null,
+    activeMaxAmmo: (save.equippedWeapon && WEAPONS[save.equippedWeapon]?.magSize
+      ? WEAPONS[save.equippedWeapon]?.magSize ?? null
+      : null) as number | null,
+    isReloading: false,
+    reloadProgress: 0,
     nearbyEnemyCount: 0,
     currentIslandName: 'Başlangıç Limanı' as string | null,
     digCooldownPct: 0,
@@ -456,6 +466,12 @@ export default function App() {
     } | null,
   });
   const sentOnlineAchRef = useRef<Set<string>>(new Set());
+  const weaponAmmoRef = useRef<Partial<Record<WeaponId, number>>>({});
+  const reloadStateRef = useRef<{
+    weaponId: WeaponId;
+    startedAt: number;
+    durationMs: number;
+  } | null>(null);
 
   useEffect(() => {
     saveRef.current = save;
@@ -833,7 +849,13 @@ export default function App() {
       worldSeed: number,
       openedTreasureIds: string[],
       dugCraters: DigCrater[]
-    ): SaveData => ({
+    ): SaveData => {
+      const weaponState = normalizeWeaponSlots(
+        prof.weaponSlots,
+        prof.unlockedWeapons,
+        prof.equippedWeapon
+      );
+      return {
       version: 1,
       worldSeed,
       gold: prof.gold,
@@ -843,8 +865,9 @@ export default function App() {
       landEnemiesDefeated: prof.landEnemiesDefeated,
       boatHp: prof.boatHp,
       playerHp: prof.playerHp,
-      equippedWeapon: prof.equippedWeapon,
-      unlockedWeapons: prof.unlockedWeapons,
+      equippedWeapon: weaponState.equippedWeapon,
+      weaponSlots: weaponState.weaponSlots,
+      unlockedWeapons: weaponState.unlockedWeapons,
       collectedPickupIds: prof.collectedPickupIds,
       bag: prof.bag,
       upgrades: {
@@ -890,7 +913,8 @@ export default function App() {
       harvestedNodeIds: [],
       player: prof.player,
       boat: prof.boat,
-    }),
+    };
+    },
     []
   );
 
@@ -927,6 +951,8 @@ export default function App() {
     sim.arenaChallenge = null;
     sentOnlineAchRef.current.clear();
     if (resetWorldEntities) {
+      reloadStateRef.current = null;
+      weaponAmmoRef.current = {};
       perfGovRef.current.reset();
       sim.enemies = [];
       sim.islandEnemies = [];
@@ -1051,6 +1077,11 @@ export default function App() {
           sim.playerHp = prof.playerHp;
         }
 
+        const syncedWeapons = normalizeWeaponSlots(
+          prof.weaponSlots,
+          prof.unlockedWeapons,
+          prof.equippedWeapon
+        );
         const nextSave: SaveData = {
           ...prevSave,
           gold: prof.gold,
@@ -1060,8 +1091,9 @@ export default function App() {
           landEnemiesDefeated: prof.landEnemiesDefeated,
           boatHp: Math.round(sim.boatHp),
           playerHp: Math.round(sim.playerHp),
-          equippedWeapon: prof.equippedWeapon,
-          unlockedWeapons: prof.unlockedWeapons,
+          equippedWeapon: syncedWeapons.equippedWeapon,
+          weaponSlots: syncedWeapons.weaponSlots,
+          unlockedWeapons: syncedWeapons.unlockedWeapons,
           collectedPickupIds: Array.from(
             new Set([...prevSave.collectedPickupIds, ...prof.collectedPickupIds])
           ),
@@ -1802,6 +1834,180 @@ export default function App() {
     [addFloatingText, commitSave, findStandingIsland, spawnParticles]
   );
 
+  const getWeaponAmmo = useCallback((weaponId: WeaponId): number => {
+    const def = WEAPONS[weaponId];
+    if (!def || def.kind !== 'RANGED' || !def.magSize) return 0;
+    const cur = weaponAmmoRef.current[weaponId];
+    if (typeof cur !== 'number') {
+      weaponAmmoRef.current[weaponId] = def.magSize;
+      return def.magSize;
+    }
+    return cur;
+  }, []);
+
+  const startWeaponReload = useCallback(
+    (weaponId: WeaponId, announceEmpty = false) => {
+      const def = WEAPONS[weaponId];
+      if (!def || def.kind !== 'RANGED' || !def.magSize) return;
+      const curAmmo = getWeaponAmmo(weaponId);
+      if (curAmmo >= def.magSize) return;
+      if (reloadStateRef.current?.weaponId === weaponId) return;
+
+      reloadStateRef.current = {
+        weaponId,
+        startedAt: performance.now(),
+        durationMs: def.reloadMs ?? 1200,
+      };
+      soundEngine.playReload();
+
+      if (announceEmpty) {
+        const sim = simRef.current;
+        const pos = sim.activeCave
+          ? { x: sim.activeCave.playerX, y: sim.activeCave.playerY }
+          : { x: sim.playerX, y: sim.playerY };
+        addFloatingText(
+          pos.x,
+          pos.y - 28,
+          settingsRef.current.language === 'en' ? 'Reloading...' : 'Mermi Yenileniyor...',
+          '#FCD34D'
+        );
+      }
+    },
+    [addFloatingText, getWeaponAmmo]
+  );
+
+  const handleReloadWeapon = useCallback(() => {
+    if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
+    const weaponId = saveRef.current.equippedWeapon;
+    if (!weaponId) return;
+    startWeaponReload(weaponId, false);
+  }, [startWeaponReload]);
+
+  const handleSelectWeaponSlot = useCallback(
+    (slotIndex: number) => {
+      if (phaseRef.current !== 'PLAYING') return;
+      const norm = normalizeWeaponSlots(
+        saveRef.current.weaponSlots,
+        saveRef.current.unlockedWeapons,
+        saveRef.current.equippedWeapon
+      );
+      const nextWeapon = norm.weaponSlots[slotIndex];
+      if (!nextWeapon || nextWeapon === norm.equippedWeapon) return;
+      reloadStateRef.current = null;
+      soundEngine.playWeaponSwitch();
+      const def = WEAPONS[nextWeapon];
+      const sim = simRef.current;
+      const pos = sim.activeCave
+        ? { x: sim.activeCave.playerX, y: sim.activeCave.playerY }
+        : { x: sim.playerX, y: sim.playerY };
+      addFloatingText(
+        pos.x,
+        pos.y - 26,
+        settingsRef.current.language === 'en' ? def.nameEn : def.name,
+        def.color
+      );
+
+      commitSave(
+        (prev) => ({
+          ...prev,
+          weaponSlots: norm.weaponSlots,
+          equippedWeapon: nextWeapon,
+        }),
+        onlineActiveRef.current
+      );
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:equip_weapon',
+          weaponId: nextWeapon,
+        });
+      }
+    },
+    [addFloatingText, commitSave]
+  );
+
+  const handleSwitchWeapon = useCallback(
+    (dir: 1 | -1 = 1) => {
+      if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
+      const norm = normalizeWeaponSlots(
+        saveRef.current.weaponSlots,
+        saveRef.current.unlockedWeapons,
+        saveRef.current.equippedWeapon
+      );
+      if (norm.weaponSlots.length <= 1) return;
+      const curIdx = norm.equippedWeapon ? norm.weaponSlots.indexOf(norm.equippedWeapon) : 0;
+      const safeIdx = curIdx >= 0 ? curIdx : 0;
+      const nextIdx = (safeIdx + dir + norm.weaponSlots.length) % norm.weaponSlots.length;
+      handleSelectWeaponSlot(nextIdx);
+    },
+    [handleSelectWeaponSlot]
+  );
+
+  const handleBuyWeapon = useCallback(
+    (weaponId: WeaponId, replaceSlotIndex?: number) => {
+      const def = WEAPONS[weaponId];
+      if (!def || !def.shopCost) return;
+      const cur = saveRef.current;
+      if (cur.unlockedWeapons.includes(weaponId) || cur.gold < def.shopCost) return;
+      reloadStateRef.current = null;
+      if (def.kind === 'RANGED' && def.magSize) {
+        weaponAmmoRef.current[weaponId] = def.magSize;
+      }
+      soundEngine.playWeaponPickup();
+
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:buy_weapon',
+          weaponId,
+          replaceSlotIndex,
+        });
+        return;
+      }
+      commitSave((prev) => {
+        if (prev.unlockedWeapons.includes(weaponId) || prev.gold < def.shopCost!) return prev;
+        const nextLoadout = applyWeaponAcquire(prev, weaponId, 'EQUIP_OR_BUY', replaceSlotIndex);
+        return {
+          ...prev,
+          gold: prev.gold - def.shopCost!,
+          unlockedWeapons: nextLoadout.unlockedWeapons,
+          weaponSlots: nextLoadout.weaponSlots,
+          equippedWeapon: nextLoadout.equippedWeapon,
+        };
+      });
+    },
+    [commitSave]
+  );
+
+  const handleEquipWeapon = useCallback(
+    (weaponId: WeaponId, replaceSlotIndex?: number) => {
+      const def = WEAPONS[weaponId];
+      if (!def || !saveRef.current.unlockedWeapons.includes(weaponId)) return;
+      reloadStateRef.current = null;
+      if (def.kind === 'RANGED' && def.magSize && weaponAmmoRef.current[weaponId] === undefined) {
+        weaponAmmoRef.current[weaponId] = def.magSize;
+      }
+      soundEngine.playWeaponSwitch();
+
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:equip_weapon',
+          weaponId,
+          replaceSlotIndex,
+        });
+        return;
+      }
+      commitSave((prev) => {
+        const nextLoadout = applyWeaponAcquire(prev, weaponId, 'EQUIP_OR_BUY', replaceSlotIndex);
+        return {
+          ...prev,
+          unlockedWeapons: nextLoadout.unlockedWeapons,
+          weaponSlots: nextLoadout.weaponSlots,
+          equippedWeapon: nextLoadout.equippedWeapon,
+        };
+      });
+    },
+    [commitSave]
+  );
+
   // Land Weapon Attack (Melee Cutlass or Ranged Pistol/Musket)
   const handleAttackLand = useCallback(() => {
     if (phaseRef.current !== 'PLAYING' || modalRef.current !== 'NONE') return;
@@ -1813,7 +2019,18 @@ export default function App() {
 
     const def = WEAPONS[weaponId];
     const now = performance.now();
+    if (reloadStateRef.current?.weaponId === weaponId) return;
     if (now - sim.lastAttackTime < def.cooldownMs) return;
+
+    if (def.kind === 'RANGED' && def.magSize) {
+      const curAmmo = getWeaponAmmo(weaponId);
+      if (curAmmo <= 0) {
+        startWeaponReload(weaponId, true);
+        return;
+      }
+      weaponAmmoRef.current[weaponId] = curAmmo - 1;
+    }
+
     sim.lastAttackTime = now;
     sim.attackAnimStart = now;
 
@@ -2118,7 +2335,14 @@ export default function App() {
         type: 'MUZZLE',
       });
     }
-  }, [addFloatingText, ensureWarWithFaction, recordEnemyDefeat, spawnParticles]);
+  }, [
+    addFloatingText,
+    ensureWarWithFaction,
+    getWeaponAmmo,
+    recordEnemyDefeat,
+    spawnParticles,
+    startWeaponReload,
+  ]);
 
   const fireBroadside = useCallback(
     (
@@ -2428,10 +2652,12 @@ export default function App() {
               },
             ];
 
-        const nextUnlocked =
-          foundWeapon && !prev.unlockedWeapons.includes(foundWeapon)
-            ? [...prev.unlockedWeapons, foundWeapon]
-            : prev.unlockedWeapons;
+        const nextLoadout = foundWeapon
+          ? applyWeaponAcquire(prev, foundWeapon, 'PICKUP')
+          : null;
+        if (foundWeapon && WEAPONS[foundWeapon].magSize) {
+          weaponAmmoRef.current[foundWeapon] = WEAPONS[foundWeapon].magSize;
+        }
         const prevRelics = prev.collectedRelicIds ?? [];
         const nextRelics =
           foundRelicId && !prevRelics.includes(foundRelicId)
@@ -2443,10 +2669,9 @@ export default function App() {
           gold: prev.gold + instantBonus,
           totalGoldEarned: prev.totalGoldEarned + instantBonus,
           treasuresFoundCount: prev.treasuresFoundCount + 1,
-          equippedWeapon: foundWeapon
-            ? pickStrongerWeapon(prev.equippedWeapon, foundWeapon)
-            : prev.equippedWeapon,
-          unlockedWeapons: nextUnlocked,
+          equippedWeapon: nextLoadout ? nextLoadout.equippedWeapon : prev.equippedWeapon,
+          weaponSlots: nextLoadout ? nextLoadout.weaponSlots : prev.weaponSlots,
+          unlockedWeapons: nextLoadout ? nextLoadout.unlockedWeapons : prev.unlockedWeapons,
           collectedRelicIds: nextRelics,
           openedTreasureIds: [...prev.openedTreasureIds, hitTreasure.id],
           dugCraters: updatedCraters,
@@ -2719,18 +2944,23 @@ export default function App() {
       return;
     }
 
-    commitSave((prev) => ({
-      ...prev,
-      gold: prev.gold + 40,
-      totalGoldEarned: prev.totalGoldEarned + 40,
-      openedCaveChestIds: (prev.openedCaveChestIds ?? []).includes(altar.id)
-        ? prev.openedCaveChestIds ?? []
-        : [...(prev.openedCaveChestIds ?? []), altar.id],
-      unlockedWeapons: prev.unlockedWeapons.includes(altar.weaponId)
-        ? prev.unlockedWeapons
-        : [...prev.unlockedWeapons, altar.weaponId],
-      equippedWeapon: pickStrongerWeapon(prev.equippedWeapon, altar.weaponId),
-    }));
+    if (def.kind === 'RANGED' && def.magSize) {
+      weaponAmmoRef.current[altar.weaponId] = def.magSize;
+    }
+    commitSave((prev) => {
+      const nextLoadout = applyWeaponAcquire(prev, altar.weaponId, 'PICKUP');
+      return {
+        ...prev,
+        gold: prev.gold + 40,
+        totalGoldEarned: prev.totalGoldEarned + 40,
+        openedCaveChestIds: (prev.openedCaveChestIds ?? []).includes(altar.id)
+          ? prev.openedCaveChestIds ?? []
+          : [...(prev.openedCaveChestIds ?? []), altar.id],
+        unlockedWeapons: nextLoadout.unlockedWeapons,
+        weaponSlots: nextLoadout.weaponSlots,
+        equippedWeapon: nextLoadout.equippedWeapon,
+      };
+    });
   }, [addFloatingText, commitSave, spawnParticles]);
 
   const startOfflineArenaWave = useCallback(
@@ -3510,6 +3740,14 @@ export default function App() {
         else handleDig();
       } else if (code === kb.attack) {
         handleAttackLand();
+      } else if (code === kb.reload) {
+        handleReloadWeapon();
+      } else if (code === kb.switchWeapon) {
+        handleSwitchWeapon(1);
+      } else if (code === 'Digit1' && !Object.values(kb).includes('Digit1')) {
+        handleSelectWeaponSlot(0);
+      } else if (code === 'Digit2' && !Object.values(kb).includes('Digit2')) {
+        handleSelectWeaponSlot(1);
       } else if (code === kb.boat) {
         handlePrimaryInteract();
       } else if (code === kb.radar) {
@@ -3549,6 +3787,9 @@ export default function App() {
     handlePrimaryInteract,
     handleQuickSave,
     handleRadar,
+    handleReloadWeapon,
+    handleSelectWeaponSlot,
+    handleSwitchWeapon,
     handleToggleVoiceMute,
     handleTriggerAbility,
     handleUseRepairKit,
@@ -3604,6 +3845,19 @@ export default function App() {
       const budget = perfGovRef.current.update(rawDeltaMs, activeUnitCount, now);
 
       sim.screenShake = Math.max(0, sim.screenShake - dt * 16);
+
+      if (reloadStateRef.current) {
+        const rs = reloadStateRef.current;
+        if (currentSave.equippedWeapon !== rs.weaponId) {
+          reloadStateRef.current = null;
+        } else if (now >= rs.startedAt + rs.durationMs) {
+          const rDef = WEAPONS[rs.weaponId];
+          if (rDef?.magSize) {
+            weaponAmmoRef.current[rs.weaponId] = rDef.magSize;
+          }
+          reloadStateRef.current = null;
+        }
+      }
 
       let ix = sim.joystickVec.x;
       let iy = sim.joystickVec.y;
@@ -4175,14 +4429,19 @@ export default function App() {
                 `Silah Bulundu: ${WEAPONS[wp.weaponId].name}!`,
                 '#FDE047'
               );
-              commitSave((prev) => ({
-                ...prev,
-                collectedPickupIds: [...prev.collectedPickupIds, wp.id],
-                unlockedWeapons: prev.unlockedWeapons.includes(wp.weaponId)
-                  ? prev.unlockedWeapons
-                  : [...prev.unlockedWeapons, wp.weaponId],
-                equippedWeapon: pickStrongerWeapon(prev.equippedWeapon, wp.weaponId),
-              }));
+              if (WEAPONS[wp.weaponId].magSize) {
+                weaponAmmoRef.current[wp.weaponId] = WEAPONS[wp.weaponId].magSize;
+              }
+              commitSave((prev) => {
+                const nextLoadout = applyWeaponAcquire(prev, wp.weaponId, 'PICKUP');
+                return {
+                  ...prev,
+                  collectedPickupIds: [...prev.collectedPickupIds, wp.id],
+                  unlockedWeapons: nextLoadout.unlockedWeapons,
+                  weaponSlots: nextLoadout.weaponSlots,
+                  equippedWeapon: nextLoadout.equippedWeapon,
+                };
+              });
               if (onlineActiveRef.current) {
                 onlineManagerRef.current?.submitLocalCommand({
                   type: 'cmd:pickup_weapon',
@@ -5344,18 +5603,23 @@ export default function App() {
                 '#FBBF24'
               );
               sim.arenaChallenge = null;
-              commitSave((prev) => ({
-                ...prev,
-                gold: prev.gold + rewardGold,
-                totalGoldEarned: prev.totalGoldEarned + rewardGold,
-                arenaWinsCount: (prev.arenaWinsCount ?? 0) + 1,
-                unlockedWeapons: grantHarpoon
-                  ? [...prev.unlockedWeapons, 'ANCIENT_HARPOON']
-                  : prev.unlockedWeapons,
-                equippedWeapon: grantHarpoon
-                  ? pickStrongerWeapon(prev.equippedWeapon, 'ANCIENT_HARPOON')
-                  : prev.equippedWeapon,
-              }));
+              if (grantHarpoon && WEAPONS.ANCIENT_HARPOON.magSize) {
+                weaponAmmoRef.current.ANCIENT_HARPOON = WEAPONS.ANCIENT_HARPOON.magSize;
+              }
+              commitSave((prev) => {
+                const nextLoadout = grantHarpoon
+                  ? applyWeaponAcquire(prev, 'ANCIENT_HARPOON', 'PICKUP')
+                  : null;
+                return {
+                  ...prev,
+                  gold: prev.gold + rewardGold,
+                  totalGoldEarned: prev.totalGoldEarned + rewardGold,
+                  arenaWinsCount: (prev.arenaWinsCount ?? 0) + 1,
+                  unlockedWeapons: nextLoadout ? nextLoadout.unlockedWeapons : prev.unlockedWeapons,
+                  weaponSlots: nextLoadout ? nextLoadout.weaponSlots : prev.weaponSlots,
+                  equippedWeapon: nextLoadout ? nextLoadout.equippedWeapon : prev.equippedWeapon,
+                };
+              });
             }
           }
         }
@@ -7331,6 +7595,26 @@ export default function App() {
           }
         }
 
+        const normWeapons = normalizeWeaponSlots(
+          currentSave.weaponSlots,
+          currentSave.unlockedWeapons,
+          currentSave.equippedWeapon
+        );
+        const eqId = normWeapons.equippedWeapon;
+        const eqDef = eqId ? WEAPONS[eqId] : null;
+        const eqIsRanged = Boolean(eqDef && eqDef.kind === 'RANGED' && eqDef.magSize);
+        const eqMaxAmmo = eqIsRanged ? eqDef!.magSize! : null;
+        const eqAmmo =
+          eqId && eqIsRanged
+            ? typeof weaponAmmoRef.current[eqId] === 'number'
+              ? weaponAmmoRef.current[eqId]!
+              : eqMaxAmmo
+            : null;
+        const rs = reloadStateRef.current;
+        const reloadingNow = Boolean(rs && rs.weaponId === eqId);
+        const reloadProg =
+          reloadingNow && rs ? clamp((now - rs.startedAt) / Math.max(1, rs.durationMs), 0, 1) : 0;
+
         setHudState({
           canBoard: !sim.activeCave && nearBoat,
           canDisembark: Boolean(nearShore),
@@ -7341,7 +7625,12 @@ export default function App() {
           boatHp: Math.round(sim.boatHp),
           maxBoatHp,
           playerHp: Math.round(sim.playerHp),
-          equippedWeapon: currentSave.equippedWeapon,
+          equippedWeapon: eqId,
+          weaponSlots: normWeapons.weaponSlots,
+          activeAmmo: eqAmmo,
+          activeMaxAmmo: eqMaxAmmo,
+          isReloading: reloadingNow,
+          reloadProgress: reloadProg,
           nearbyEnemyCount: sim.isSailing ? nearbySeaEnemies : nearbyLandEnemies,
           currentIslandName: sim.activeCave
             ? sim.activeCave.cave.name
@@ -8021,7 +8310,7 @@ export default function App() {
       gold: save.gold,
       bagCount: save.bag.length,
       nearDock: hudState.nearDock,
-      hasCycleLabel: Boolean(hudState.cycleLabel),
+      hasWeaponPanel: hudState.weaponSlots.length > 0 && !isEditingLayout,
       onlineActive,
       voiceEnabled: voiceState.enabled,
       chatOpen,
@@ -8042,7 +8331,7 @@ export default function App() {
       save.gold,
       save.bag.length,
       hudState.nearDock,
-      hudState.cycleLabel,
+      hudState.weaponSlots.length,
       onlineActive,
       voiceState.enabled,
       chatOpen,
@@ -8063,9 +8352,9 @@ export default function App() {
 
   const openLayoutEditor = useCallback(() => {
     setDraftTouchLayout(settings.touchLayout ? { ...settings.touchLayout } : {});
-    setSelectedTouchButton('digOrFire');
+    setSelectedTouchButton(controlsDisplayMode === 'TOUCH' ? 'digOrFire' : 'weaponPanel');
     setActiveModal('LAYOUT_EDIT');
-  }, [settings.touchLayout]);
+  }, [controlsDisplayMode, settings.touchLayout]);
 
   const updateDraftButtonTransform = useCallback(
     (id: TouchButtonId, next: TouchButtonTransform) => {
@@ -8341,7 +8630,6 @@ export default function App() {
             )}
 
             {(hudState.arenaWaveText ||
-              (!hudState.isSailing && weaponDef) ||
               hudState.nearbyEnemyCount > 0 ||
               (activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent)) && (
               <div
@@ -8359,17 +8647,6 @@ export default function App() {
                   >
                     <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span>{hudState.arenaWaveText}</span>
-                  </div>
-                )}
-
-                {!hudState.isSailing && weaponDef && (
-                  <div
-                    className={`${
-                      isCompactTouch ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-3 py-1.5 text-xs gap-2'
-                    } rounded-xl bg-[#0F2936]/90 border border-white/15 font-medium text-slate-100 flex items-center shadow-md max-w-full`}
-                  >
-                    <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span className="truncate">{weaponDef.name}</span>
                   </div>
                 )}
 
@@ -8445,7 +8722,11 @@ export default function App() {
               kingdomFounded={save.kingdom.founded}
               soldierCount={save.kingdom.soldiers.length}
               journalBadgeCount={claimableMilestoneCount}
-              cycleLabel={hudState.cycleLabel}
+              weaponOffsetRight={
+                !hudLayout.isTopRightCompact && hudLayout.weaponAtDefaultSpot
+                  ? Math.round(hudLayout.weaponPanel.baseW * hudLayout.weaponPanel.scale + 8)
+                  : 0
+              }
               language={settings.language}
               showSettingsButton={isCoarseDevice ? true : settings.desktopShowSettingsButton}
               showHudButtons={isCoarseDevice ? true : settings.desktopShowHudButtons}
@@ -8455,6 +8736,52 @@ export default function App() {
               onOpenJournal={() => setActiveModal('JOURNAL')}
             />
           </div>
+
+          {/* Weapon & Ammo HUD Panel (Independently positioned, movable & resizable in Layout Editor) */}
+          {(hudState.weaponSlots.length > 0 || isEditingLayout) && (
+            <div
+              style={{
+                top: `${hudLayout.weaponPanel.baseTop}px`,
+                right: `${hudLayout.weaponPanel.baseRight}px`,
+              }}
+              className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : 'z-20'}`}
+            >
+              <WeaponHudPanel
+                weaponSlots={
+                  hudState.weaponSlots.length > 0
+                    ? hudState.weaponSlots
+                    : ['PISTOL', 'CUTLASS']
+                }
+                equippedWeapon={
+                  hudState.weaponSlots.length > 0
+                    ? hudState.equippedWeapon
+                    : 'PISTOL'
+                }
+                activeAmmo={hudState.weaponSlots.length > 0 ? hudState.activeAmmo : 6}
+                activeMaxAmmo={hudState.weaponSlots.length > 0 ? hudState.activeMaxAmmo : 6}
+                isReloading={hudState.weaponSlots.length > 0 ? hudState.isReloading : false}
+                reloadProgress={hudState.weaponSlots.length > 0 ? hudState.reloadProgress : 0}
+                isTouchMode={
+                  controlsDisplayMode === 'TOUCH' ||
+                  isCoarseDevice ||
+                  hudLayout.isTopRightCompact
+                }
+                switchKeyLabel={formatKeyCode(settings.keybindings.switchWeapon)}
+                reloadKeyLabel={formatKeyCode(settings.keybindings.reload)}
+                language={settings.language}
+                touchLayout={activeTouchLayout}
+                resolvedGeom={hudLayout.weaponPanel}
+                isEditingLayout={isEditingLayout}
+                isSelected={selectedTouchButton === 'weaponPanel'}
+                onSelectButton={setSelectedTouchButton}
+                onUpdateButtonTransform={updateDraftButtonTransform}
+                onDragResolve={handleDragResolve}
+                onSwitchWeapon={handleSwitchWeapon}
+                onSelectSlot={handleSelectWeaponSlot}
+                onReload={handleReloadWeapon}
+              />
+            </div>
+          )}
 
           {/* TOUCH mode: Unified Non-Overlapping Bottom Stack (Portrait Hint + Tutorial + Online Chat/Voice) */}
           {controlsDisplayMode === 'TOUCH' &&
@@ -8729,6 +9056,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
               </div>
             )}
 
@@ -9106,8 +9434,8 @@ export default function App() {
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-50 truncate">
                         {settings.language === 'en'
-                          ? 'Drag & resize controls or mini map'
-                          : 'Tuşları ve mini haritayı sürükleyip boyutlandır'}
+                          ? 'Drag, resize & set opacity'
+                          : 'Konum, boyut ve opaklık düzenle'}
                       </div>
                       {selectedTouchButton && (
                         <div className="text-[11px] text-amber-300 truncate">
@@ -9146,6 +9474,10 @@ export default function App() {
                             ? settings.language === 'en'
                               ? 'Mini Map'
                               : 'Mini Harita'
+                            : selectedTouchButton === 'weaponPanel'
+                            ? settings.language === 'en'
+                              ? 'Weapon Panel'
+                              : 'Silah Paneli'
                             : settings.language === 'en'
                             ? 'Move Joystick'
                             : 'Hareket Joystick'}
@@ -9160,7 +9492,11 @@ export default function App() {
                         type="button"
                         aria-label="Küçült"
                         onClick={() => {
-                          const minScale = selectedTouchButton === 'minimap' ? 0.65 : 0.75;
+                          const minScale =
+                            selectedTouchButton === 'minimap' ||
+                            selectedTouchButton === 'weaponPanel'
+                              ? 0.65
+                              : 0.75;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
                           const nextScale = Math.max(minScale, Math.round(((cur.scale ?? 1) - 0.1) * 100) / 100);
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
@@ -9177,7 +9513,12 @@ export default function App() {
                         type="button"
                         aria-label="Büyüt"
                         onClick={() => {
-                          const maxScale = selectedTouchButton === 'minimap' ? 1.6 : 1.35;
+                          const maxScale =
+                            selectedTouchButton === 'minimap'
+                              ? 1.6
+                              : selectedTouchButton === 'weaponPanel'
+                              ? 1.45
+                              : 1.35;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
                           const nextScale = Math.min(maxScale, Math.round(((cur.scale ?? 1) + 0.1) * 100) / 100);
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
@@ -9205,8 +9546,66 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Opacity slider for selected element + Apply to All */}
+                {selectedTouchButton && (() => {
+                  const curOpacity = draftTouchLayout[selectedTouchButton]?.opacity ?? 1;
+                  const opacityPct = Math.round(curOpacity * 100);
+                  return (
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                      <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap shrink-0">
+                        {settings.language === 'en' ? 'Opacity' : 'Opaklık'}
+                      </span>
+                      <input
+                        type="range"
+                        min={25}
+                        max={100}
+                        step={5}
+                        value={opacityPct}
+                        aria-label={settings.language === 'en' ? 'Control Opacity' : 'Kontrol Opaklığı'}
+                        onChange={(e) => {
+                          const nextOpacity = Math.max(0.25, Math.min(1, Number(e.target.value) / 100));
+                          const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
+                          updateDraftButtonTransform(selectedTouchButton, {
+                            ...cur,
+                            opacity: nextOpacity,
+                          });
+                        }}
+                        className="flex-1 min-w-0 accent-amber-400 cursor-pointer"
+                      />
+                      <span className="font-mono-num text-[11px] font-bold text-amber-300 w-9 text-right shrink-0">
+                        %{opacityPct}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetIds: TouchButtonId[] =
+                            controlsDisplayMode === 'TOUCH'
+                              ? [...ALL_ACTION_BUTTON_KEYS, 'joystick', 'minimap', 'weaponPanel']
+                              : ['minimap', 'weaponPanel'];
+                          setDraftTouchLayout((prev) => {
+                            const next = { ...prev };
+                            for (const id of targetIds) {
+                              const cur = next[id] ?? { dx: 0, dy: 0, scale: 1 };
+                              next[id] = { ...cur, opacity: curOpacity };
+                            }
+                            return next;
+                          });
+                        }}
+                        title={
+                          settings.language === 'en'
+                            ? 'Apply this opacity to all controls'
+                            : 'Bu opaklığı tüm kontrollere uygula'
+                        }
+                        className="px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[10px] font-semibold text-slate-200 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        {settings.language === 'en' ? 'All' : 'Tümüne'}
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setDraftTouchLayout({})}
@@ -9226,6 +9625,17 @@ export default function App() {
                     >
                       {settings.language === 'en' ? 'Mini Map' : 'Mini Harita'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTouchButton('weaponPanel')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        selectedTouchButton === 'weaponPanel'
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                          : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
+                      }`}
+                    >
+                      {settings.language === 'en' ? 'Weapon Panel' : 'Silah Paneli'}
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -9243,7 +9653,9 @@ export default function App() {
                           ...prev,
                           touchControls:
                             prev.touchControls === 'HIDDEN' &&
-                            Object.keys(draftTouchLayout).some((k) => k !== 'minimap')
+                            Object.keys(draftTouchLayout).some(
+                              (k) => k !== 'minimap' && k !== 'weaponPanel'
+                            )
                               ? 'ALWAYS'
                               : prev.touchControls,
                           touchLayout: draftTouchLayout,
@@ -9296,11 +9708,22 @@ export default function App() {
           caughtFishCount={save.caughtFishCount ?? 0}
           ownedPets={save.ownedPets ?? []}
           activePet={save.activePet ?? null}
+          unlockedWeapons={save.unlockedWeapons}
+          equippedWeapon={save.equippedWeapon}
+          weaponSlots={
+            normalizeWeaponSlots(
+              save.weaponSlots,
+              save.unlockedWeapons,
+              save.equippedWeapon
+            ).weaponSlots
+          }
           language={settings.language}
           onlineMode={onlineActive}
           onSellAll={handleSellAll}
           onSellItem={handleSellItem}
           onBuyUpgrade={handleBuyUpgrade}
+          onEquipWeapon={handleEquipWeapon}
+          onBuyWeapon={handleBuyWeapon}
           onSellResources={handleSellResources}
           onCraftRepairKit={handleCraftRepairKit}
           onUseRepairKit={handleUseRepairKit}

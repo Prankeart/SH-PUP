@@ -4,8 +4,10 @@ import {
   SaveData,
   TouchButtonId,
   TouchLayoutConfig,
+  WeaponId,
 } from '../types/game';
 import { getMaxBoatHp } from './upgrades';
+import { normalizeWeaponSlots } from './weapons';
 
 const SAVE_KEY = 'tropik_ada_save_v1';
 const SETTINGS_KEY = 'tropik_ada_settings_v1';
@@ -26,6 +28,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsConfig = {
   shop: 'KeyT',
   kingdom: 'KeyK',
   journal: 'KeyJ',
+  reload: 'KeyX',
+  switchWeapon: 'KeyZ',
 };
 
 export function createInitialSave(worldSeed?: number): SaveData {
@@ -41,6 +45,7 @@ export function createInitialSave(worldSeed?: number): SaveData {
     boatHp: 100,
     playerHp: 100,
     equippedWeapon: null,
+    weaponSlots: [],
     unlockedWeapons: [],
     collectedPickupIds: [],
     bag: [],
@@ -115,6 +120,17 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
     }
     const boatLevel = Math.max(1, Math.min(8, parsed.upgrades.boatLevel ?? 1));
     const maxHp = getMaxBoatHp(boatLevel);
+    const rawUnlocked = Array.isArray(parsed.unlockedWeapons)
+      ? (parsed.unlockedWeapons as WeaponId[])
+      : [];
+    const rawSlots = Array.isArray(parsed.weaponSlots)
+      ? (parsed.weaponSlots as WeaponId[])
+      : undefined;
+    const weaponState = normalizeWeaponSlots(
+      rawSlots,
+      rawUnlocked,
+      parsed.equippedWeapon ?? null
+    );
     return {
       version: 2,
       worldSeed: parsed.worldSeed,
@@ -130,8 +146,9 @@ export function normalizeSaveData(rawObj: unknown): SaveData | null {
         typeof parsed.boatHp === 'number' ? Math.max(25, Math.min(maxHp, parsed.boatHp)) : maxHp,
       playerHp:
         typeof parsed.playerHp === 'number' ? Math.max(25, Math.min(125, parsed.playerHp)) : 100,
-      equippedWeapon: parsed.equippedWeapon ?? null,
-      unlockedWeapons: Array.isArray(parsed.unlockedWeapons) ? parsed.unlockedWeapons : [],
+      equippedWeapon: weaponState.equippedWeapon,
+      weaponSlots: weaponState.weaponSlots,
+      unlockedWeapons: weaponState.unlockedWeapons,
       collectedPickupIds: Array.isArray(parsed.collectedPickupIds) ? parsed.collectedPickupIds : [],
       bag: Array.isArray(parsed.bag) ? parsed.bag : [],
       upgrades: {
@@ -352,6 +369,7 @@ const VALID_TOUCH_BUTTON_IDS: TouchButtonId[] = [
   'repair',
   'joystick',
   'minimap',
+  'weaponPanel',
 ];
 
 function normalizeTouchLayout(raw: unknown): TouchLayoutConfig {
@@ -365,11 +383,14 @@ function normalizeTouchLayout(raw: unknown): TouchLayoutConfig {
     const dx = typeof obj.dx === 'number' && Number.isFinite(obj.dx) ? obj.dx : 0;
     const dy = typeof obj.dy === 'number' && Number.isFinite(obj.dy) ? obj.dy : 0;
     const rawScale = typeof obj.scale === 'number' && Number.isFinite(obj.scale) ? obj.scale : 1;
-    const minScale = id === 'minimap' ? 0.65 : 0.75;
-    const maxScale = id === 'minimap' ? 1.6 : 1.35;
+    const minScale = id === 'minimap' || id === 'weaponPanel' ? 0.65 : 0.75;
+    const maxScale = id === 'minimap' ? 1.6 : id === 'weaponPanel' ? 1.45 : 1.35;
     const scale = Math.max(minScale, Math.min(maxScale, rawScale));
-    if (dx !== 0 || dy !== 0 || scale !== 1) {
-      clean[id] = { dx, dy, scale };
+    const rawOpacity =
+      typeof obj.opacity === 'number' && Number.isFinite(obj.opacity) ? obj.opacity : 1;
+    const opacity = Math.max(0.25, Math.min(1, Math.round(rawOpacity * 100) / 100));
+    if (dx !== 0 || dy !== 0 || scale !== 1 || opacity !== 1) {
+      clean[id] = { dx, dy, scale, ...(opacity !== 1 ? { opacity } : {}) };
     }
   }
   return clean;

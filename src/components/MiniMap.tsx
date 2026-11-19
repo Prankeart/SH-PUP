@@ -113,6 +113,8 @@ export const MiniMap: React.FC<MiniMapProps> = ({
   const dy = resolvedGeom?.dy ?? fallback.dy;
   const scale = resolvedGeom?.scale ?? fallback.scale;
   const effectiveSize = resolvedGeom?.effectiveSize ?? fallback.effectiveSize;
+  const opacity = resolvedGeom?.opacity ?? touchLayout?.minimap?.opacity ?? 1;
+  const displayOpacity = isEditingLayout ? Math.max(0.35, opacity) : opacity;
   const latestPropsRef = useRef({
     worldManager,
     discoveredIslandIds,
@@ -522,6 +524,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         width: effectiveSize,
         height: effectiveSize,
         transform: `translate(${dx}px, ${dy}px)`,
+        opacity: displayOpacity,
       }}
       className="relative shrink-0"
     >
@@ -559,15 +562,12 @@ export const MiniMap: React.FC<MiniMapProps> = ({
             dx: nextDx,
             dy: nextDy,
             scale: dragRef.current.scale,
+            opacity,
           };
           const resolved = onDragResolve
             ? onDragResolve('minimap', candidate)
-            : clampMiniMapTransform(candidate, baseSize, pad);
-          onUpdateButtonTransform?.('minimap', {
-            dx: resolved.dx,
-            dy: resolved.dy,
-            scale: resolved.scale,
-          });
+            : { ...clampMiniMapTransform(candidate, baseSize, pad), opacity };
+          onUpdateButtonTransform?.('minimap', resolved);
         }}
         onPointerUp={(e) => {
           if (dragRef.current && dragRef.current.pointerId === e.pointerId) {

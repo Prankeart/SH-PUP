@@ -61,6 +61,8 @@ type SettingsTab = 'GENERAL' | 'AUDIO' | 'CONTROLS' | 'SAVE';
 const KEY_LABELS_TR: Array<{ key: keyof KeybindingsConfig; label: string }> = [
   { key: 'digOrFire', label: 'Kazı Yap / Top At' },
   { key: 'attack', label: 'Silahla Saldır' },
+  { key: 'reload', label: 'Mermi Yenile' },
+  { key: 'switchWeapon', label: 'Silah Değiştir' },
   { key: 'boat', label: 'Tekneye Bin / İn' },
   { key: 'radar', label: 'Hazine Radarı' },
   { key: 'ability', label: 'Savaş Emri (Yetenek)' },
@@ -78,6 +80,8 @@ const KEY_LABELS_TR: Array<{ key: keyof KeybindingsConfig; label: string }> = [
 const KEY_LABELS_EN: Array<{ key: keyof KeybindingsConfig; label: string }> = [
   { key: 'digOrFire', label: 'Dig / Fire Cannons' },
   { key: 'attack', label: 'Weapon Attack' },
+  { key: 'reload', label: 'Reload Weapon' },
+  { key: 'switchWeapon', label: 'Switch Weapon' },
   { key: 'boat', label: 'Board / Disembark' },
   { key: 'radar', label: 'Treasure Radar' },
   { key: 'ability', label: 'Tactical War Cry' },
@@ -867,7 +871,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               type="button"
                               onClick={() => {
                                 const nextLayout = { ...(settings.touchLayout ?? {}) };
-                                if (mmLayout && (mmLayout.dx !== 0 || mmLayout.dy !== 0)) {
+                                if (
+                                  mmLayout &&
+                                  (mmLayout.dx !== 0 ||
+                                    mmLayout.dy !== 0 ||
+                                    (mmLayout.opacity !== undefined && mmLayout.opacity !== 1))
+                                ) {
                                   nextLayout.minimap = { ...mmLayout, scale: 1 };
                                 } else {
                                   delete nextLayout.minimap;
@@ -894,7 +903,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           const nextScale = Math.max(0.65, Math.min(1.6, Number(e.target.value) / 100));
                           const nextLayout = { ...(settings.touchLayout ?? {}) };
                           const prevMm = nextLayout.minimap ?? { dx: 0, dy: 0 };
-                          if (nextScale === 1 && prevMm.dx === 0 && prevMm.dy === 0) {
+                          const hasCustomOpacity =
+                            prevMm.opacity !== undefined && prevMm.opacity !== 1;
+                          if (nextScale === 1 && prevMm.dx === 0 && prevMm.dy === 0 && !hasCustomOpacity) {
                             delete nextLayout.minimap;
                           } else {
                             nextLayout.minimap = { ...prevMm, scale: nextScale };
@@ -948,47 +959,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Touch Button & MiniMap Layout Customization (in-game only) */}
-                    {onOpenLayoutEditor && (
-                      <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-100">
-                            {isEn ? 'Controls & Map Layout' : 'Tuş ve Harita Düzeni'}
-                          </div>
-                          <div className="text-xs text-slate-400">
-                            {isEn
-                              ? 'Drag and resize joystick, action buttons, and mini map'
-                              : 'Joystick, aksiyon tuşları ve mini haritanın yerini/boyutunu ayarlayın'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
-                          {Object.keys(settings.touchLayout ?? {}).length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onUpdateSettings({ ...settings, touchLayout: {} });
-                                showToast(
-                                  isEn ? 'Controls layout reset.' : 'Kontrol düzeni sıfırlandı.'
-                                );
-                              }}
-                              className="px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={onOpenLayoutEditor}
-                            className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer whitespace-nowrap"
-                          >
-                            <Move className="w-3.5 h-3.5" />
-                            <span>{isEn ? 'Edit Layout' : 'Düzenle'}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </>
+                )}
+
+                {/* HUD Layout Customization: Position, Size & Opacity (in-game) */}
+                {onOpenLayoutEditor && (
+                  <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">
+                        {isEn
+                          ? 'Controls, Weapon & Map Layout'
+                          : 'Tuş, Silah ve Harita Düzeni'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {isEn
+                          ? 'Adjust position, size, and opacity of controls, weapon panel, and mini map'
+                          : 'Tuşlar, silah paneli ve mini haritanın konumunu, boyutunu ve opaklığını ayarlayın'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                      {Object.keys(settings.touchLayout ?? {}).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onUpdateSettings({ ...settings, touchLayout: {} });
+                            showToast(
+                              isEn ? 'Controls layout reset.' : 'Kontrol düzeni sıfırlandı.'
+                            );
+                          }}
+                          className="px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onOpenLayoutEditor}
+                        className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer whitespace-nowrap"
+                      >
+                        <Move className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Edit Layout' : 'Düzenle'}</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* PC / KEYBOARD-ONLY CONTROLS (Desktop OR Mobile when touch buttons disabled) */}

@@ -215,6 +215,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
     startDx: number;
     startDy: number;
     scale: number;
+    opacity: number;
   } | null>(null);
 
   const radarToastContent = showRadarStatus && lastRadar && (
@@ -475,16 +476,20 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
 
   const getBtnGeom = (id: ActionButtonKey) => {
     const resolved = resolvedButtons?.[id];
+    const fallbackOpacity = Math.max(0.25, Math.min(1, touchLayout?.[id]?.opacity ?? 1));
     if (resolved) {
       return {
         r: resolved.rect,
-        t: { dx: resolved.dx, dy: resolved.dy, scale: resolved.scale },
+        t: { dx: resolved.dx, dy: resolved.dy, scale: resolved.scale, opacity: resolved.opacity },
       };
     }
     const r = rects[id];
     const t = clampActionButtonTransform(id, touchLayout?.[id], compact);
-    return { r, t };
+    return { r, t: { ...t, opacity: fallbackOpacity } };
   };
+
+  const btnDisplayOpacity = (rawOpacity: number) =>
+    isEditingLayout ? Math.max(0.35, rawOpacity) : rawOpacity;
 
   const makeDragHandlers = (id: ActionButtonKey) => {
     if (!isEditingLayout) return {};
@@ -503,6 +508,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           startDx: t.dx,
           startDy: t.dy,
           scale: t.scale,
+          opacity: t.opacity,
         };
       },
       onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -514,10 +520,11 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           dx: nextDx,
           dy: nextDy,
           scale: drag.scale,
+          opacity: drag.opacity,
         };
         const resolved = onDragResolve
           ? onDragResolve(id, candidate)
-          : clampActionButtonTransform(id, candidate, compact);
+          : { ...clampActionButtonTransform(id, candidate, compact), opacity: drag.opacity };
         onUpdateButtonTransform?.(id, resolved);
       },
       onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -618,6 +625,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${repairGeom.r.w}px`,
               height: `${repairGeom.r.h}px`,
               transform: `translate(${repairGeom.t.dx}px, ${repairGeom.t.dy}px) scale(${repairGeom.t.scale})`,
+              opacity: btnDisplayOpacity(repairGeom.t.opacity),
             }}
             className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
               repairKits > 0
@@ -654,6 +662,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${stanceGeom.r.w}px`,
               height: `${stanceGeom.r.h}px`,
               transform: `translate(${stanceGeom.t.dx}px, ${stanceGeom.t.dy}px) scale(${stanceGeom.t.scale})`,
+              opacity: btnDisplayOpacity(stanceGeom.t.opacity),
             }}
             className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
               armyStance === 'FOLLOW'
@@ -702,6 +711,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${fishGeom.r.w}px`,
               height: `${fishGeom.r.h}px`,
               transform: `translate(${fishGeom.t.dx}px, ${fishGeom.t.dy}px) scale(${fishGeom.t.scale})`,
+              opacity: btnDisplayOpacity(fishGeom.t.opacity),
             }}
             className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
               fishingBite
@@ -741,6 +751,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             width: `${abilityGeom.r.w}px`,
             height: `${abilityGeom.r.h}px`,
             transform: `translate(${abilityGeom.t.dx}px, ${abilityGeom.t.dy}px) scale(${abilityGeom.t.scale})`,
+            opacity: btnDisplayOpacity(abilityGeom.t.opacity),
           }}
           className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
             !isEditingLayout && abilityCooldownPct > 0
@@ -782,6 +793,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${attackGeom.r.w}px`,
               height: `${attackGeom.r.h}px`,
               transform: `translate(${attackGeom.t.dx}px, ${attackGeom.t.dy}px) scale(${attackGeom.t.scale})`,
+              opacity: btnDisplayOpacity(attackGeom.t.opacity),
             }}
             className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-shadow duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-red-400 cursor-pointer ${
               !isEditingLayout && attackCooldownPct > 0
@@ -827,6 +839,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             width: `${radarGeom.r.w}px`,
             height: `${radarGeom.r.h}px`,
             transform: `translate(${radarGeom.t.dx}px, ${radarGeom.t.dy}px) scale(${radarGeom.t.scale})`,
+            opacity: btnDisplayOpacity(radarGeom.t.opacity),
           }}
           className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-shadow duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-amber-400 cursor-pointer ${
             !isEditingLayout && radarCooldownPct > 0
@@ -860,6 +873,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${boatGeom.r.w}px`,
               height: `${boatGeom.r.h}px`,
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
+              opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
             className="pointer-events-auto absolute rounded-full border bg-purple-600/95 border-purple-200/70 text-white hover:bg-purple-500 flex flex-col items-center justify-center gap-0.5 shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer"
           >
@@ -895,6 +909,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               width: `${boatGeom.r.w}px`,
               height: `${boatGeom.r.h}px`,
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
+              opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
             className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-lg transition-shadow duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-emerald-400 ${
               isEditingLayout || boatActionEnabled
@@ -952,6 +967,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             width: `${digGeom.r.w}px`,
             height: `${digGeom.r.h}px`,
             transform: `translate(${digGeom.t.dx}px, ${digGeom.t.dy}px) scale(${digGeom.t.scale})`,
+            opacity: btnDisplayOpacity(digGeom.t.opacity),
           }}
           className={`pointer-events-auto absolute rounded-full border-2 flex flex-col items-center justify-center shadow-xl transition-shadow duration-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-amber-300 ${
             compact ? 'gap-0.5' : 'gap-1'

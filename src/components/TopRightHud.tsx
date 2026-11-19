@@ -18,7 +18,7 @@ interface TopRightHudProps {
   kingdomFounded: boolean;
   soldierCount: number;
   journalBadgeCount?: number;
-  cycleLabel?: string;
+  weaponOffsetRight?: number;
   language?: 'tr' | 'en';
   showSettingsButton?: boolean;
   showHudButtons?: boolean;
@@ -37,7 +37,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
   kingdomFounded,
   soldierCount,
   journalBadgeCount = 0,
-  cycleLabel,
+  weaponOffsetRight = 0,
   language = 'tr',
   showSettingsButton = true,
   showHudButtons = true,
@@ -85,7 +85,8 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
         className="pointer-events-none flex flex-col items-end gap-1.5 shrink-0"
       >
         {/* Mobile (Portrait & Landscape) / Narrow Window: 3-dot menu, Gold bar immediately left of Settings */}
-        <div className="pointer-events-auto flex items-center justify-end gap-1.5" ref={mobileMenuRef}>
+        {(showHudButtons || showSettingsButton) && (
+          <div className="pointer-events-auto flex items-center justify-end gap-1.5" ref={mobileMenuRef}>
           {showHudButtons && (
             <>
               <div className="relative">
@@ -226,7 +227,8 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
               <Settings className="w-4 h-4" />
             </button>
           )}
-        </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -315,24 +317,20 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
         </div>
       )}
 
-      {/* Row 2: Season/Day label + Contextual Tüccar button when docked */}
-      {(cycleLabel || (nearDock && showHudButtons)) && (
-        <div className="pointer-events-auto flex items-center gap-2">
-          {cycleLabel && (
-            <div className="h-8 px-3 rounded-lg bg-[#0F2936]/80 border border-white/10 text-[11px] font-medium text-slate-200 flex items-center shadow-sm whitespace-nowrap">
-              {cycleLabel}
-            </div>
-          )}
-          {nearDock && showHudButtons && (
-            <button
-              type="button"
-              onClick={onOpenShop}
-              className="h-10 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 border border-amber-200 text-slate-950 font-semibold text-xs flex items-center gap-1.5 shadow-md transition-transform duration-100 active:scale-95 whitespace-nowrap cursor-pointer"
-            >
-              <Store className="w-4 h-4 shrink-0" />
-              <span>{isEn ? 'Trader' : 'Tüccar'}</span>
-            </button>
-          )}
+      {/* Row 2: Contextual Tüccar button when docked (clears WeaponHudPanel if anchored right) */}
+      {nearDock && showHudButtons && (
+        <div
+          style={weaponOffsetRight > 0 ? { marginRight: `${weaponOffsetRight}px` } : undefined}
+          className="pointer-events-auto flex items-center justify-end"
+        >
+          <button
+            type="button"
+            onClick={onOpenShop}
+            className="h-10 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 border border-amber-200 text-slate-950 font-semibold text-xs flex items-center gap-1.5 shadow-md transition-transform duration-100 active:scale-95 whitespace-nowrap cursor-pointer"
+          >
+            <Store className="w-4 h-4 shrink-0" />
+            <span>{isEn ? 'Trader' : 'Tüccar'}</span>
+          </button>
         </div>
       )}
     </div>
