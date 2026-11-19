@@ -9691,6 +9691,7 @@ export default function App() {
           onlineIslandOwners={onlineIslandOwnersForDisplay}
           colorblindMode={settings.colorblindMode}
           language={settings.language}
+          useMobileLayout={controlsDisplayMode === 'TOUCH' || isCompactTouch}
           onSetMapPin={(pin) => commitSave((prev) => ({ ...prev, mapPin: pin }), false)}
           onClose={() => setActiveModal('NONE')}
         />

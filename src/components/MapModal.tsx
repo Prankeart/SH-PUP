@@ -37,6 +37,7 @@ interface MapModalProps {
   onlineIslandOwners?: Record<string, { shortName: string; color: string }>;
   colorblindMode?: boolean;
   language?: 'tr' | 'en';
+  useMobileLayout?: boolean;
   onSetMapPin?: (pin: MapWaypoint | null) => void;
   onClose: () => void;
 }
@@ -59,6 +60,7 @@ export const MapModal: React.FC<MapModalProps> = ({
   onlineIslandOwners = {},
   colorblindMode = false,
   language = 'tr',
+  useMobileLayout = false,
   onSetMapPin,
   onClose,
 }) => {
@@ -69,6 +71,10 @@ export const MapModal: React.FC<MapModalProps> = ({
   const [showRings, setShowRings] = useState(true);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [legendMenuOpen, setLegendMenuOpen] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768 || window.innerHeight < 540;
+  });
   const [offset, setOffset] = useState<Vec2>({ x: playerPos.x, y: playerPos.y });
   const [canvasTick, setCanvasTick] = useState(0);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +112,15 @@ export const MapModal: React.FC<MapModalProps> = ({
     offsetRef.current = nextOffset;
     setOffset(nextOffset);
   };
+
+  useEffect(() => {
+    const updateViewport = () => {
+      setIsCompactViewport(window.innerWidth < 768 || window.innerHeight < 540);
+    };
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -609,6 +624,7 @@ export const MapModal: React.FC<MapModalProps> = ({
     { id: 'FACTIONS', label: isEn ? 'Nations' : 'Devletler' },
     { id: 'TRADERS', label: isEn ? 'Traders' : 'Tüccar' },
   ];
+  const isMobileView = useMobileLayout || isCompactViewport;
   const activeFilterLabel = filterOptions.find((f) => f.id === filter)?.label ?? filterOptions[0].label;
   const connectedOnlinePlayers = onlineMode ? onlinePlayers.filter((p) => p.connected) : [];
 
@@ -620,143 +636,155 @@ export const MapModal: React.FC<MapModalProps> = ({
       aria-label={isEn ? 'Open World Map' : 'Açık Dünya Haritası'}
     >
       <div className="w-full h-full bg-[#0F2936] flex flex-col overflow-hidden">
-        {/* Header - strictly single row without horizontal or vertical scroll on mobile */}
-        <div className="relative z-30 px-3 sm:px-5 h-12 sm:h-14 border-b border-white/10 flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#0F2936]">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Header - strictly single row without horizontal or vertical scroll */}
+        <div
+          className={`relative z-30 border-b border-white/10 flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#0F2936] ${
+            isMobileView ? 'px-3 h-12' : 'px-5 h-14'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
             <Compass className="w-5 h-5 text-sky-300 shrink-0" />
-            <h2 className="font-display text-sm sm:text-lg font-bold text-slate-50 truncate">
+            <h2
+              className={`font-display font-bold text-slate-50 truncate ${
+                isMobileView ? 'text-sm' : 'text-lg'
+              }`}
+            >
               {isEn ? 'World Map' : 'Dünya Haritası'}
             </h2>
-            <span className="hidden lg:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
-              {discoveredCount} {isEn ? 'Islands' : 'Ada'} · {totalOpened}{' '}
-              {isEn ? 'Treasures' : 'Hazine'} · {kingdom.conqueredIslandIds.length}{' '}
-              {isEn ? 'Conquered' : 'Fetih'}
-            </span>
+            {!isMobileView && (
+              <span className="hidden lg:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
+                {discoveredCount} {isEn ? 'Islands' : 'Ada'} · {totalOpened}{' '}
+                {isEn ? 'Treasures' : 'Hazine'} · {kingdom.conqueredIslandIds.length}{' '}
+                {isEn ? 'Conquered' : 'Fetih'}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Desktop Inline Filter Tabs & Rings Toggle */}
-            <div className="hidden md:flex items-center gap-2">
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950/50 border border-white/10">
-                {filterOptions.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFilter(f.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                      filter === f.id
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowRings((r) => !r)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
-                  showRings
-                    ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
-                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {isEn ? 'Rings' : 'Mesafe'}
-              </button>
-            </div>
-
-            {/* Mobile Collapsible Filter Dropdown */}
-            <div ref={filterMenuRef} className="relative md:hidden">
-              <button
-                type="button"
-                onClick={() => {
-                  setFilterMenuOpen((o) => !o);
-                  setLegendMenuOpen(false);
-                }}
-                aria-expanded={filterMenuOpen}
-                aria-haspopup="menu"
-                className={`h-9 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                  filter !== 'ALL' || filterMenuOpen
-                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                    : 'bg-slate-950/60 border-white/15 text-slate-100 hover:bg-slate-900'
-                }`}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                <span>{filter === 'ALL' ? (isEn ? 'Filters' : 'Filtreler') : activeFilterLabel}</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                    filterMenuOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-
-              {filterMenuOpen && (
-                <div
-                  role="menu"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3 z-50"
-                >
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-[11px] text-slate-300 font-mono-num">
-                    <span>
-                      {discoveredCount} {isEn ? 'Islands' : 'Ada'}
-                    </span>
-                    <span>
-                      {totalOpened} {isEn ? 'Treasures' : 'Hazine'}
-                    </span>
-                    <span>
-                      {kingdom.conqueredIslandIds.length} {isEn ? 'Conquered' : 'Fetih'}
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 px-1">
-                    {isEn ? 'Map Filter' : 'Harita Filtresi'}
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5 mb-2.5">
-                    {filterOptions.map((f) => {
-                      const active = filter === f.id;
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => {
-                            setFilter(f.id);
-                            setFilterMenuOpen(false);
-                          }}
-                          className={`h-9 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer whitespace-nowrap ${
-                            active
-                              ? 'bg-amber-500 border-amber-300 text-slate-950'
-                              : 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10'
-                          }`}
-                        >
-                          <span>{f.label}</span>
-                          {active && <Check className="w-3.5 h-3.5 shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowRings((r) => !r)}
-                    className={`w-full h-9 px-3 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer ${
-                      showRings
-                        ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
-                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-                    }`}
-                  >
-                    <span>{isEn ? 'Distance Rings' : 'Mesafe Halkaları'}</span>
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        showRings ? 'bg-sky-400/25 text-sky-100' : 'bg-white/10 text-slate-400'
+            {!isMobileView ? (
+              /* Desktop Inline Filter Tabs & Rings Toggle */
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950/50 border border-white/10">
+                  {filterOptions.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFilter(f.id)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                        filter === f.id
+                          ? 'bg-amber-500 text-slate-950'
+                          : 'text-slate-300 hover:text-white'
                       }`}
                     >
-                      {showRings ? (isEn ? 'ON' : 'AÇIK') : isEn ? 'OFF' : 'KAPALI'}
-                    </span>
-                  </button>
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRings((r) => !r)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                    showRings
+                      ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {isEn ? 'Rings' : 'Mesafe'}
+                </button>
+              </div>
+            ) : (
+              /* Mobile Collapsible Filter Dropdown */
+              <div ref={filterMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterMenuOpen((o) => !o);
+                    setLegendMenuOpen(false);
+                  }}
+                  aria-expanded={filterMenuOpen}
+                  aria-haspopup="menu"
+                  className={`h-9 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    filter !== 'ALL' || filterMenuOpen
+                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                      : 'bg-slate-950/60 border-white/15 text-slate-100 hover:bg-slate-900'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                  <span>{filter === 'ALL' ? (isEn ? 'Filters' : 'Filtreler') : activeFilterLabel}</span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                      filterMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {filterMenuOpen && (
+                  <div
+                    role="menu"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3 z-50"
+                  >
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-[11px] text-slate-300 font-mono-num">
+                      <span>
+                        {discoveredCount} {isEn ? 'Islands' : 'Ada'}
+                      </span>
+                      <span>
+                        {totalOpened} {isEn ? 'Treasures' : 'Hazine'}
+                      </span>
+                      <span>
+                        {kingdom.conqueredIslandIds.length} {isEn ? 'Conquered' : 'Fetih'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 px-1">
+                      {isEn ? 'Map Filter' : 'Harita Filtresi'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                      {filterOptions.map((f) => {
+                        const active = filter === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              setFilter(f.id);
+                              setFilterMenuOpen(false);
+                            }}
+                            className={`h-9 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer whitespace-nowrap ${
+                              active
+                                ? 'bg-amber-500 border-amber-300 text-slate-950'
+                                : 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10'
+                            }`}
+                          >
+                            <span>{f.label}</span>
+                            {active && <Check className="w-3.5 h-3.5 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowRings((r) => !r)}
+                      className={`w-full h-9 px-3 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer ${
+                        showRings
+                          ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
+                          : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{isEn ? 'Distance Rings' : 'Mesafe Halkaları'}</span>
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          showRings ? 'bg-sky-400/25 text-sky-100' : 'bg-white/10 text-slate-400'
+                        }`}
+                      >
+                        {showRings ? (isEn ? 'ON' : 'AÇIK') : isEn ? 'OFF' : 'KAPALI'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
@@ -1011,155 +1039,161 @@ export const MapModal: React.FC<MapModalProps> = ({
           )}
 
           {/* Mobile Collapsible Legend & Players Drawer */}
-          <div ref={legendMenuRef} className="md:hidden absolute bottom-3 left-3 z-30">
-            <button
-              type="button"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => {
-                setLegendMenuOpen((o) => !o);
-                setFilterMenuOpen(false);
-              }}
-              aria-expanded={legendMenuOpen}
-              aria-haspopup="dialog"
-              className={`min-h-[40px] px-3 py-2 rounded-xl border shadow-lg flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap backdrop-blur-md ${
-                legendMenuOpen
-                  ? 'bg-sky-500/25 border-sky-300/60 text-sky-100'
-                  : 'bg-[#0F2936]/92 border-white/20 text-slate-100 hover:bg-[#173D4F]'
-              }`}
-            >
-              <Layers className="w-4 h-4 text-sky-300 shrink-0" />
-              <span>{isEn ? 'Legend' : 'Belirteçler'}</span>
-              {onlineMode && connectedOnlinePlayers.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-200 text-[10px] font-mono-num">
-                  {connectedOnlinePlayers.length}
-                </span>
-              )}
-              <ChevronUp
-                className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                  legendMenuOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {legendMenuOpen && (
-              <div
+          {isMobileView && (
+            <div ref={legendMenuRef} className="absolute bottom-3 left-3 z-30">
+              <button
+                type="button"
                 onPointerDown={(e) => e.stopPropagation()}
-                className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3.5 text-xs text-slate-200 z-50"
+                onClick={() => {
+                  setLegendMenuOpen((o) => !o);
+                  setFilterMenuOpen(false);
+                }}
+                aria-expanded={legendMenuOpen}
+                aria-haspopup="dialog"
+                className={`min-h-[40px] px-3 py-2 rounded-xl border shadow-lg flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap backdrop-blur-md ${
+                  legendMenuOpen
+                    ? 'bg-sky-500/25 border-sky-300/60 text-sky-100'
+                    : 'bg-[#0F2936]/92 border-white/20 text-slate-100 hover:bg-[#173D4F]'
+                }`}
               >
-                <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
-                  <span className="font-display font-bold text-slate-50">
-                    {isEn ? 'Markers & Players' : 'Belirteçler & Oyuncular'}
+                <Layers className="w-4 h-4 text-sky-300 shrink-0" />
+                <span>{isEn ? 'Legend' : 'Belirteçler'}</span>
+                {onlineMode && connectedOnlinePlayers.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-200 text-[10px] font-mono-num">
+                    {connectedOnlinePlayers.length}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setLegendMenuOpen(false)}
-                    aria-label={isEn ? 'Close Legend' : 'Belirteçleri Kapat'}
-                    className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-3">
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${
-                        colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
-                      }`}
-                    />
-                    {isEn ? 'Player' : 'Oyuncu'}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Ship className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    {isEn ? 'Ship' : 'Tekne'}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Store className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    {isEn ? 'Trader' : 'Tüccar'}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full inline-block bg-sky-400 shrink-0" />
-                    {isEn ? 'City' : 'Kent'}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full inline-block bg-orange-500 shrink-0" />
-                    {isEn ? 'Arena' : 'Arena'}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full inline-block bg-purple-400 shrink-0" />
-                    {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
-                  </span>
-                  {kingdom.founded && (
-                    <span className="col-span-2 flex items-center gap-2">
-                      <Flag className="w-3.5 h-3.5 shrink-0" style={{ color: kingdom.bannerColor }} />
-                      <span className="truncate">{kingdom.name}</span>
-                    </span>
-                  )}
-                </div>
-
-                {!onlineMode && (
-                  <div className="pt-2.5 border-t border-white/10 mb-2.5">
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
-                      {isEn ? 'Nations' : 'Devletler'}
-                    </p>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                      {ENEMY_FACTION_LIST.map((f) => {
-                        const atWar = kingdom.atWarWith.includes(f.id);
-                        return (
-                          <span key={f.id} className="flex items-center gap-1.5 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
-                              style={{ backgroundColor: f.color }}
-                            />
-                            <span className="truncate">{f.shortName}</span>
-                            {atWar && (
-                              <span className="text-[9px] font-bold text-rose-300 shrink-0">
-                                {isEn ? 'War' : 'Savaş'}
-                              </span>
-                            )}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
                 )}
+                <ChevronUp
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                    legendMenuOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
 
-                {onlineMode && (
-                  <div className="pt-2.5 border-t border-white/10 mb-2.5">
-                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
-                      {isEn ? 'Online Players' : 'Çevrimiçi Oyuncular'}
-                    </p>
-                    {connectedOnlinePlayers.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                        {connectedOnlinePlayers.map((p) => (
-                          <span key={p.id} className="flex items-center gap-1.5 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
-                              style={{ backgroundColor: p.bannerColor }}
-                            />
-                            <span className="truncate">{p.name}</span>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-slate-400">
-                        {isEn ? 'No other players connected' : 'Bağlı başka oyuncu yok'}
-                      </p>
+              {legendMenuOpen && (
+                <div
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3.5 text-xs text-slate-200 z-50"
+                >
+                  <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
+                    <span className="font-display font-bold text-slate-50">
+                      {isEn ? 'Markers & Players' : 'Belirteçler & Oyuncular'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLegendMenuOpen(false)}
+                      aria-label={isEn ? 'Close Legend' : 'Belirteçleri Kapat'}
+                      className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-3">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${
+                          colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
+                        }`}
+                      />
+                      {isEn ? 'Player' : 'Oyuncu'}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Ship className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      {isEn ? 'Ship' : 'Tekne'}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Store className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      {isEn ? 'Trader' : 'Tüccar'}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block bg-sky-400 shrink-0" />
+                      {isEn ? 'City' : 'Kent'}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block bg-orange-500 shrink-0" />
+                      {isEn ? 'Arena' : 'Arena'}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block bg-purple-400 shrink-0" />
+                      {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
+                    </span>
+                    {kingdom.founded && (
+                      <span className="col-span-2 flex items-center gap-2">
+                        <Flag className="w-3.5 h-3.5 shrink-0" style={{ color: kingdom.bannerColor }} />
+                        <span className="truncate">{kingdom.name}</span>
+                      </span>
                     )}
                   </div>
-                )}
 
-                <p className="pt-2 border-t border-white/10 text-[11px] text-slate-400 leading-relaxed">
-                  {isEn
-                    ? 'Tap to place/remove waypoint · Drag to pan · Pinch to zoom.'
-                    : 'Dokunarak işaret koyabilir, sürükleyerek gezebilir ve iki parmakla yakınlaştırabilirsiniz.'}
-                </p>
-              </div>
-            )}
-          </div>
+                  {!onlineMode && (
+                    <div className="pt-2.5 border-t border-white/10 mb-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
+                        {isEn ? 'Nations' : 'Devletler'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                        {ENEMY_FACTION_LIST.map((f) => {
+                          const atWar = kingdom.atWarWith.includes(f.id);
+                          return (
+                            <span key={f.id} className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                                style={{ backgroundColor: f.color }}
+                              />
+                              <span className="truncate">{f.shortName}</span>
+                              {atWar && (
+                                <span className="text-[9px] font-bold text-rose-300 shrink-0">
+                                  {isEn ? 'War' : 'Savaş'}
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {onlineMode && (
+                    <div className="pt-2.5 border-t border-white/10 mb-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
+                        {isEn ? 'Online Players' : 'Çevrimiçi Oyuncular'}
+                      </p>
+                      {connectedOnlinePlayers.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                          {connectedOnlinePlayers.map((p) => (
+                            <span key={p.id} className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
+                                style={{ backgroundColor: p.bannerColor }}
+                              />
+                              <span className="truncate">{p.name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">
+                          {isEn ? 'No other players connected' : 'Bağlı başka oyuncu yok'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="pt-2 border-t border-white/10 text-[11px] text-slate-400 leading-relaxed">
+                    {isEn
+                      ? 'Tap to place/remove waypoint · Drag to pan · Pinch to zoom.'
+                      : 'Dokunarak işaret koyabilir, sürükleyerek gezebilir ve iki parmakla yakınlaştırabilirsiniz.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Zoom & Center Controls */}
-          <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 flex flex-col gap-2">
+          <div
+            className={`absolute z-20 flex flex-col gap-2 ${
+              isMobileView ? 'bottom-3 right-3' : 'bottom-4 right-4'
+            }`}
+          >
             <button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
@@ -1191,70 +1225,72 @@ export const MapModal: React.FC<MapModalProps> = ({
           </div>
         </div>
 
-        {/* Desktop Legend Footer (hidden on mobile; replaced by collapsible Belirteçler drawer) */}
-        <div className="hidden md:flex px-5 py-2.5 border-t border-white/10 items-center justify-between gap-x-4 gap-y-1.5 text-xs text-slate-300 shrink-0">
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-            <span className="flex items-center gap-1.5">
-              <span
-                className={`w-2.5 h-2.5 rounded-full inline-block ${
-                  colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
-                }`}
-              />
-              {isEn ? 'Player' : 'Oyuncu'}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Ship className="w-3.5 h-3.5 text-sky-400" />
-              {isEn ? 'Ship' : 'Tekne'}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Store className="w-3.5 h-3.5 text-amber-400" />
-              {isEn ? 'Trader' : 'Tüccar'}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block bg-sky-400" />
-              {isEn ? 'City' : 'Kent'}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block bg-orange-500" />
-              {isEn ? 'Arena' : 'Arena'}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block bg-purple-400" />
-              {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
-            </span>
-            {kingdom.founded && (
+        {/* Desktop Legend Footer */}
+        {!isMobileView && (
+          <div className="flex px-5 py-2.5 border-t border-white/10 items-center justify-between gap-x-4 gap-y-1.5 text-xs text-slate-300 shrink-0">
+            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
               <span className="flex items-center gap-1.5">
-                <Flag className="w-3.5 h-3.5" style={{ color: kingdom.bannerColor }} />
-                {kingdom.name}
+                <span
+                  className={`w-2.5 h-2.5 rounded-full inline-block ${
+                    colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
+                  }`}
+                />
+                {isEn ? 'Player' : 'Oyuncu'}
               </span>
-            )}
-            {!onlineMode &&
-              ENEMY_FACTION_LIST.map((f) => (
-                <span key={f.id} className="flex items-center gap-1.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full inline-block"
-                    style={{ backgroundColor: f.color }}
-                  />
-                  {f.shortName}
+              <span className="flex items-center gap-1.5">
+                <Ship className="w-3.5 h-3.5 text-sky-400" />
+                {isEn ? 'Ship' : 'Tekne'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Store className="w-3.5 h-3.5 text-amber-400" />
+                {isEn ? 'Trader' : 'Tüccar'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-sky-400" />
+                {isEn ? 'City' : 'Kent'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-orange-500" />
+                {isEn ? 'Arena' : 'Arena'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full inline-block bg-purple-400" />
+                {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
+              </span>
+              {kingdom.founded && (
+                <span className="flex items-center gap-1.5">
+                  <Flag className="w-3.5 h-3.5" style={{ color: kingdom.bannerColor }} />
+                  {kingdom.name}
                 </span>
-              ))}
-            {onlineMode &&
-              connectedOnlinePlayers.map((p) => (
-                <span key={p.id} className="flex items-center gap-1.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full inline-block"
-                    style={{ backgroundColor: p.bannerColor }}
-                  />
-                  {p.name}
-                </span>
-              ))}
+              )}
+              {!onlineMode &&
+                ENEMY_FACTION_LIST.map((f) => (
+                  <span key={f.id} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ backgroundColor: f.color }}
+                    />
+                    {f.shortName}
+                  </span>
+                ))}
+              {onlineMode &&
+                connectedOnlinePlayers.map((p) => (
+                  <span key={p.id} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full inline-block"
+                      style={{ backgroundColor: p.bannerColor }}
+                    />
+                    {p.name}
+                  </span>
+                ))}
+            </div>
+            <span className="text-slate-400 whitespace-nowrap">
+              {isEn
+                ? 'Click to place/remove waypoint · Drag to pan'
+                : 'Tıklayarak konum işareti koyabilir · Sürükleyerek gezebilirsiniz'}
+            </span>
           </div>
-          <span className="text-slate-400 whitespace-nowrap">
-            {isEn
-              ? 'Click to place/remove waypoint · Drag to pan'
-              : 'Tıklayarak konum işareti koyabilir · Sürükleyerek gezebilirsiniz'}
-          </span>
-        </div>
+        )}
       </div>
     </div>
   );
