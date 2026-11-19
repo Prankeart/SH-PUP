@@ -50,6 +50,7 @@ export const MapModal: React.FC<MapModalProps> = ({
   const [filter, setFilter] = useState<MapFilter>('ALL');
   const [showRings, setShowRings] = useState(true);
   const [offset, setOffset] = useState<Vec2>({ x: playerPos.x, y: playerPos.y });
+  const [canvasTick, setCanvasTick] = useState(0);
   const dragRef = useRef<{
     active: boolean;
     startX: number;
@@ -65,6 +66,16 @@ export const MapModal: React.FC<MapModalProps> = ({
     lastY: 0,
     moved: false,
   });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      setCanvasTick((t) => t + 1);
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -501,21 +512,26 @@ export const MapModal: React.FC<MapModalProps> = ({
     showRings,
     zoom,
     offset,
+    canvasTick,
   ]);
 
   const discoveredCount = discoveredIslandIds.length;
   const totalOpened = openedTreasureIds.length;
+  const activeCenter = isSailing ? boatPos : playerPos;
+  const pinDistM = mapPin
+    ? Math.round(Math.hypot(mapPin.x - activeCenter.x, mapPin.y - activeCenter.y) / 10)
+    : null;
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 bg-[#083A52] flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Open World Map' : 'Açık Dünya Haritası'}
     >
-      <div className="w-full max-w-4xl h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full h-full bg-[#0F2936] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="px-3 sm:px-5 py-2.5 sm:py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Compass className="w-5 h-5 text-sky-300 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
@@ -575,9 +591,14 @@ export const MapModal: React.FC<MapModalProps> = ({
         </div>
 
         {/* Interactive Map Canvas */}
-        <div className="relative flex-1 bg-[#083A52]">
+        <div className="relative flex-1 min-h-0 bg-[#083A52]">
           <canvas
             ref={canvasRef}
+            onWheel={(e) => {
+              e.preventDefault();
+              const factor = e.deltaY < 0 ? 1.16 : 0.86;
+              setZoom((z) => Math.min(0.28, Math.max(0.025, z * factor)));
+            }}
             onPointerDown={(e) => {
               dragRef.current = {
                 active: true,
@@ -593,7 +614,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               if (!dragRef.current.active) return;
               if (
                 Math.hypot(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY) >
-                6
+                12
               ) {
                 dragRef.current.moved = true;
               }
@@ -614,21 +635,23 @@ export const MapModal: React.FC<MapModalProps> = ({
                 const wy = offset.y + (sy - rect.height / 2) / zoom;
 
                 // Clicking existing pin toggles/removes it
-                if (mapPin && Math.hypot(wx - mapPin.x, wy - mapPin.y) <= 22 / zoom) {
+                if (mapPin && Math.hypot(wx - mapPin.x, wy - mapPin.y) <= Math.max(150, 26 / zoom)) {
                   onSetMapPin(null);
                   return;
                 }
 
-                // Auto-label with discovered nearby island name if close
+                // Auto-label with discovered nearby island (or online starter island) name if close
                 let label = isEn ? 'Waypoint' : 'İşaret';
                 const discoveredSet = new Set(discoveredIslandIds);
-                const nearIsl = worldManager
-                  .getVisibleIslands(wx, wy, 1)
-                  .find(
-                    (isl) =>
-                      discoveredSet.has(isl.id) &&
-                      Math.hypot(wx - isl.centerX, wy - isl.centerY) <= isl.maxRadius + 160
-                  );
+                const candidateIslands = [
+                  ...worldManager.getVisibleIslands(wx, wy, 1),
+                  ...(onlineMode ? worldManager.getStarterIslands() : []),
+                ];
+                const nearIsl = candidateIslands.find(
+                  (isl) =>
+                    (discoveredSet.has(isl.id) || (onlineMode && isl.isStarter)) &&
+                    Math.hypot(wx - isl.centerX, wy - isl.centerY) <= isl.maxRadius + 180
+                );
                 if (nearIsl) {
                   label = nearIsl.name;
                 }
@@ -641,23 +664,43 @@ export const MapModal: React.FC<MapModalProps> = ({
             className="w-full h-full cursor-crosshair active:cursor-grabbing touch-none"
           />
 
-          {/* Active Waypoint Quick Bar */}
-          {mapPin && (
-            <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/92 border border-rose-400/45 shadow-lg text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-              <span className="font-semibold text-rose-100 truncate max-w-[160px]">
+          {/* Active Waypoint Quick Bar / Placement Hint */}
+          {mapPin ? (
+            <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-rose-400/50 shadow-lg text-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 animate-pulse" />
+              <button
+                type="button"
+                onClick={() => setOffset({ x: mapPin.x, y: mapPin.y })}
+                className="font-semibold text-rose-100 hover:text-white truncate max-w-[160px] cursor-pointer text-left"
+                title={isEn ? 'Center on Waypoint' : 'İşarete Odaklan'}
+              >
                 {mapPin.label}
-              </span>
+                {pinDistM !== null && (
+                  <span className="ml-1.5 font-mono-num text-rose-300">
+                    ({pinDistM >= 1000 ? `${(pinDistM / 1000).toFixed(1)}km` : `${pinDistM}m`})
+                  </span>
+                )}
+              </button>
               {onSetMapPin && (
                 <button
                   type="button"
                   onClick={() => onSetMapPin(null)}
                   className="ml-1 p-1 rounded-md bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 cursor-pointer"
                   title={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
+                  aria-label={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
+            </div>
+          ) : (
+            <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/80 border border-white/15 shadow-md text-[11px] text-slate-200">
+              <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>
+                {isEn
+                  ? 'Tap anywhere to place a waypoint'
+                  : 'Konum işaretlemek için haritaya dokun'}
+              </span>
             </div>
           )}
 

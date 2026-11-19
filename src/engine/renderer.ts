@@ -4232,8 +4232,8 @@ function drawMapWaypointCompass(
   let px = cx + ux * t;
   let py = cy + uy * t;
 
-  const tlRight = isCompact ? 185 : 230;
-  const tlBottom = isCompact ? 115 : 140;
+  const tlRight = isCompact ? 235 : 300;
+  const tlBottom = isCompact ? 118 : 155;
   if (px < tlRight && py < tlBottom) {
     if (Math.abs(uy) > Math.abs(ux)) px = tlRight;
     else py = tlBottom;

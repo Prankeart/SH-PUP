@@ -434,92 +434,6 @@ function drawCaveCreature(ctx: CanvasRenderingContext2D, e: CaveEnemy, nowMs: nu
   ctx.restore();
 }
 
-function drawCaveMinimap(
-  ctx: CanvasRenderingContext2D,
-  viewportW: number,
-  viewportH: number,
-  state: CaveRenderState
-) {
-  const { activeCave } = state;
-  const cave = activeCave.cave;
-  const palette = THEME_PALETTES[cave.theme];
-  const isShort = viewportH < 540;
-  const mapW = viewportW < 640 ? 108 : isShort ? 120 : 148;
-  const mapH = Math.round(mapW * (cave.height / cave.width));
-  const mx = viewportW - mapW - (isShort || viewportW < 640 ? 10 : 14);
-  const my = isShort || viewportW < 640 ? 50 : 66;
-  const scale = mapW / cave.width;
-
-  ctx.save();
-  ctx.translate(mx, my);
-  ctx.fillStyle = 'rgba(7, 13, 24, 0.78)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.roundRect(0, 0, mapW, mapH, 10);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = palette.floorInner;
-  ctx.lineCap = 'round';
-  for (const cor of cave.corridors) {
-    ctx.lineWidth = Math.max(3, cor.width * scale);
-    ctx.beginPath();
-    ctx.moveTo(cor.x1 * scale, cor.y1 * scale);
-    ctx.lineTo(cor.x2 * scale, cor.y2 * scale);
-    ctx.stroke();
-  }
-  ctx.fillStyle = palette.floorInner;
-  for (const ch of cave.chambers) {
-    ctx.beginPath();
-    ctx.ellipse(
-      ch.cx * scale,
-      ch.cy * scale,
-      ch.rx * scale,
-      ch.ry * scale,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-
-  // Exit marker
-  ctx.fillStyle = '#38BDF8';
-  ctx.beginPath();
-  ctx.arc(cave.exitPos.x * scale, cave.exitPos.y * scale, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Unopened chests
-  ctx.fillStyle = '#FBBF24';
-  for (const ch of cave.chests) {
-    if (ch.opened) continue;
-    ctx.beginPath();
-    ctx.arc(ch.x * scale, ch.y * scale, ch.tier === 'BOSS' ? 3 : 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Remote allies in cave
-  for (const rp of state.remoteCavePlayers ?? []) {
-    if (rp.caveX === undefined || rp.caveY === undefined) continue;
-    ctx.fillStyle = rp.bannerColor || '#38BDF8';
-    ctx.beginPath();
-    ctx.arc(rp.caveX * scale, rp.caveY * scale, 2.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Self dot
-  ctx.fillStyle = '#10B981';
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.arc(activeCave.playerX * scale, activeCave.playerY * scale, 3.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.restore();
-}
-
 export function renderCaveFrame(
   ctx: CanvasRenderingContext2D,
   viewportW: number,
@@ -1035,9 +949,6 @@ export function renderCaveFrame(
     ? `${cave.name} · Chests ${chestsOpen}/${cave.chests.length} · Foes ${mobsLeft}${allyPart}${dExit > 150 ? ' · Exit West' : ''}`
     : `${cave.name} · Sandık ${chestsOpen}/${cave.chests.length} · Yaratık ${mobsLeft}${allyPart}${dExit > 150 ? ' · Çıkış Batıda' : ''}`;
 
-  // Branching Cave Minimap
-  drawCaveMinimap(ctx, viewportW, viewportH, state);
-
   ctx.save();
   ctx.font = isCompactView
     ? '600 11px "Plus Jakarta Sans", system-ui, sans-serif'
@@ -1045,13 +956,8 @@ export function renderCaveFrame(
   const tw = ctx.measureText(summary).width + (isCompactView ? 20 : 26);
   const pillH = isCompactView ? 24 : 28;
   const isTinyPortrait = viewportW < 560;
-  const isShort = viewportH < 540;
-  const mapW = viewportW < 640 ? 108 : isShort ? 120 : 148;
-  const mapH = Math.round(mapW * (cave.height / cave.width));
-  const mapRight = viewportW - (isShort || viewportW < 640 ? 10 : 14);
-  const mapTop = isShort || viewportW < 640 ? 50 : 66;
-  const pillX = isTinyPortrait ? mapRight - tw : viewportW / 2 - tw / 2;
-  const pillY = isTinyPortrait ? mapTop + mapH + 8 : isCompactView ? 10 : 14;
+  const pillX = isTinyPortrait ? viewportW - 10 - tw : viewportW / 2 - tw / 2;
+  const pillY = isTinyPortrait ? 52 : isCompactView ? 10 : 14;
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
   ctx.strokeStyle = `${palette.accentColor}88`;

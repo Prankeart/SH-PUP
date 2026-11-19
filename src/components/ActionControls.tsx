@@ -24,7 +24,7 @@ import { WEAPONS } from '../engine/weapons';
 
 export type ActionControlsDisplayMode = 'TOUCH' | 'DESKTOP' | 'HIDDEN';
 
-type ActionButtonKey = Exclude<TouchButtonId, 'joystick'>;
+type ActionButtonKey = Exclude<TouchButtonId, 'joystick' | 'minimap'>;
 
 interface ButtonRectSpec {
   left: number;
@@ -37,6 +37,7 @@ const COMPACT_CONTAINER = { w: 176, h: 160, pad: 8 };
 const FULL_CONTAINER = { w: 224, h: 192, pad: 20 };
 
 const COMPACT_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
+  repair: { left: 2, top: -48, w: 44, h: 44 },
   stance: { left: 56, top: -48, w: 44, h: 44 },
   fish: { left: 124, top: -48, w: 44, h: 44 },
   ability: { left: 48, top: 0, w: 44, h: 44 },
@@ -47,6 +48,7 @@ const COMPACT_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
 };
 
 const FULL_RECTS: Record<ActionButtonKey, ButtonRectSpec> = {
+  repair: { left: 44, top: -52, w: 48, h: 48 },
   stance: { left: 104, top: -52, w: 48, h: 48 },
   fish: { left: 172, top: -48, w: 44, h: 44 },
   ability: { left: 64, top: 0, w: 56, h: 56 },
@@ -104,6 +106,16 @@ interface ActionControlsProps {
   colorblindMode?: boolean;
   language?: 'tr' | 'en';
   abilityKeyLabel?: string;
+  keyLabels?: {
+    digOrFire?: string;
+    attack?: string;
+    boat?: string;
+    radar?: string;
+    ability?: string;
+    fish?: string;
+    stance?: string;
+    repair?: string;
+  };
   canFish?: boolean;
   isFishing?: boolean;
   fishingBite?: boolean;
@@ -169,6 +181,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   colorblindMode = false,
   language = 'tr',
   abilityKeyLabel = 'Q',
+  keyLabels,
   canFish = false,
   isFishing = false,
   fishingBite = false,
@@ -234,6 +247,14 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   }
 
   if (displayMode === 'DESKTOP' && !isEditingLayout) {
+    const kStance = keyLabels?.stance ?? 'V';
+    const kRepair = keyLabels?.repair ?? 'H';
+    const kFish = keyLabels?.fish ?? 'G';
+    const kAbility = keyLabels?.ability ?? abilityKeyLabel;
+    const kAttack = keyLabels?.attack ?? 'F';
+    const kRadar = keyLabels?.radar ?? 'R';
+    const kBoat = keyLabels?.boat ?? 'E';
+    const kDig = keyLabels?.digOrFire ?? (isEn ? 'Space' : 'Boşluk');
     return (
       <div className="pointer-events-none relative flex flex-col items-end select-none shrink-0">
         {radarToastContent && (
@@ -244,7 +265,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             <button
               type="button"
               onClick={onCycleStance}
-              title={isEn ? 'Cycle Army Stance (V)' : 'Ordu Düzenini Değiştir (V)'}
+              title={isEn ? `Cycle Army Stance (${kStance})` : `Ordu Düzenini Değiştir (${kStance})`}
               className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
               <Shield className="w-3.5 h-3.5" />
@@ -261,7 +282,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                   ? 'Charge'
                   : 'Saldır'}
               </span>
-              <kbd className="text-[10px] opacity-75 font-mono-num">[V]</kbd>
+              <kbd className="text-[10px] opacity-75 font-mono-num">[{kStance}]</kbd>
             </button>
           )}
 
@@ -269,11 +290,12 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             <button
               type="button"
               onClick={onUseRepairKit}
-              title={isEn ? 'Use Repair Kit' : 'Tamir Kiti Kullan'}
+              title={isEn ? `Use Repair Kit (${kRepair})` : `Tamir Kiti Kullan (${kRepair})`}
               className="h-9 px-2.5 rounded-lg bg-emerald-600/85 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
               <Wrench className="w-3.5 h-3.5" />
               <span className="font-mono-num">{repairKits}</span>
+              <kbd className="text-[10px] opacity-80 font-mono-num">[{kRepair}]</kbd>
             </button>
           )}
 
@@ -281,7 +303,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             <button
               type="button"
               onClick={onFish}
-              title={isEn ? 'Cast / Reel Fishing Line (G)' : 'Olta At / Çek (G)'}
+              title={isEn ? `Cast / Reel Fishing Line (${kFish})` : `Olta At / Çek (${kFish})`}
               className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
                 fishingBite
                   ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 animate-pulse'
@@ -304,7 +326,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                   ? 'Fish'
                   : 'Balık'}
               </span>
-              <kbd className="text-[10px] opacity-80 font-mono-num">[G]</kbd>
+              <kbd className="text-[10px] opacity-80 font-mono-num">[{kFish}]</kbd>
             </button>
           )}
 
@@ -316,8 +338,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             disabled={abilityCooldownPct > 0}
             title={
               isEn
-                ? `Tactical War Cry (${abilityKeyLabel})`
-                : `Savaş Emri / Kalkan (${abilityKeyLabel})`
+                ? `Tactical War Cry (${kAbility})`
+                : `Savaş Emri / Kalkan (${kAbility})`
             }
             className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               abilityCooldownPct > 0
@@ -327,7 +349,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           >
             <Zap className="w-3.5 h-3.5" />
             <span>{isEn ? 'Order' : 'Emir'}</span>
-            <kbd className="text-[10px] opacity-80 font-mono-num">[{abilityKeyLabel}]</kbd>
+            <kbd className="text-[10px] opacity-80 font-mono-num">[{kAbility}]</kbd>
           </button>
 
           {!isSailing && weaponDef && (
@@ -337,7 +359,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 if (attackCooldownPct === 0) onAttackLand();
               }}
               disabled={attackCooldownPct > 0}
-              title={`${weaponDef.name} (F)`}
+              title={`${weaponDef.name} (${kAttack})`}
               className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                 attackCooldownPct > 0
                   ? 'bg-white/5 text-slate-400 cursor-not-allowed'
@@ -350,7 +372,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 <Crosshair className="w-3.5 h-3.5" />
               )}
               <span>{isEn ? 'Attack' : 'Saldır'}</span>
-              <kbd className="text-[10px] opacity-75 font-mono-num">[F]</kbd>
+              <kbd className="text-[10px] opacity-75 font-mono-num">[{kAttack}]</kbd>
             </button>
           )}
 
@@ -358,7 +380,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             type="button"
             onClick={onRadar}
             disabled={radarCooldownPct > 0}
-            title={isEn ? 'Treasure Radar (R)' : 'Hazine Radarı (R)'}
+            title={isEn ? `Treasure Radar (${kRadar})` : `Hazine Radarı (${kRadar})`}
             className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               radarCooldownPct > 0
                 ? 'bg-white/5 text-slate-400 cursor-not-allowed'
@@ -367,19 +389,19 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           >
             <Compass className="w-3.5 h-3.5" />
             <span>{isEn ? 'Radar' : 'Radar'}</span>
-            <kbd className="text-[10px] opacity-75 font-mono-num">[R]</kbd>
+            <kbd className="text-[10px] opacity-75 font-mono-num">[{kRadar}]</kbd>
           </button>
 
           {interactLabel && onInteract ? (
             <button
               type="button"
               onClick={onInteract}
-              title={`${interactLabel} (E)`}
+              title={`${interactLabel} (${kBoat})`}
               className="h-9 px-3 rounded-lg bg-purple-600/95 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shadow-md"
             >
               <DoorOpen className="w-3.5 h-3.5" />
               <span>{interactLabel}</span>
-              <kbd className="text-[10px] opacity-85 font-mono-num">[E]</kbd>
+              <kbd className="text-[10px] opacity-85 font-mono-num">[{kBoat}]</kbd>
             </button>
           ) : (
             boatActionEnabled && (
@@ -389,11 +411,11 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 title={
                   isSailing
                     ? isEn
-                      ? 'Disembark (E)'
-                      : 'Kıyıya İn (E)'
+                      ? `Disembark (${kBoat})`
+                      : `Kıyıya İn (${kBoat})`
                     : isEn
-                    ? 'Board Ship (E)'
-                    : 'Tekneye Bin (E)'
+                    ? `Board Ship (${kBoat})`
+                    : `Tekneye Bin (${kBoat})`
                 }
                 className="h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
               >
@@ -407,7 +429,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                     ? 'Board'
                     : 'Tekneye Bin'}
                 </span>
-                <kbd className="text-[10px] opacity-85 font-mono-num">[E]</kbd>
+                <kbd className="text-[10px] opacity-85 font-mono-num">[{kBoat}]</kbd>
               </button>
             )
           )}
@@ -423,11 +445,11 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             title={
               isSailing
                 ? isEn
-                  ? 'Fire Broadsides (Space)'
-                  : 'Yan Topları Ateşle (Boşluk)'
+                  ? `Fire Broadsides (${kDig})`
+                  : `Yan Topları Ateşle (${kDig})`
                 : isEn
-                ? 'Dig Sand (Space)'
-                : 'Kazı Yap (Boşluk)'
+                ? `Dig Sand (${kDig})`
+                : `Kazı Yap (${kDig})`
             }
             className={`h-9 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               isSailing
@@ -443,9 +465,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             <span>
               {isSailing ? (isEn ? 'Fire' : 'Top At') : isEn ? 'Dig' : 'Kazı Yap'}
             </span>
-            <kbd className="text-[10px] opacity-80 font-mono-num">
-              [{isEn ? 'Space' : 'Boşluk'}]
-            </kbd>
+            <kbd className="text-[10px] opacity-80 font-mono-num">[{kDig}]</kbd>
           </button>
         </div>
       </div>
@@ -513,13 +533,15 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         : 'outline-dashed outline-2 outline-sky-300/75 cursor-move'
       : '';
 
+  const showRepairBtn = isEditingLayout || Boolean(onUseRepairKit && repairKits > 0);
   const showStanceBtn = isEditingLayout || Boolean(onCycleStance && hasSoldiers && !isSailing);
   const showFishBtn = isEditingLayout || Boolean(onFish && (canFish || isFishing));
   const showAttackBtn = isEditingLayout || (!isSailing && Boolean(weaponDef));
 
   // Dynamically compute the top edge of all currently visible touch buttons so the Radar toast
-  // always appears cleanly ABOVE Olta / Ordu Düzeni / Radar / any customized button without overlapping!
+  // always appears cleanly ABOVE Tamir / Olta / Ordu Düzeni / Radar / any customized button without overlapping!
   const visibleKeys: ActionButtonKey[] = ['ability', 'radar', 'boatOrInteract', 'digOrFire'];
+  if (showRepairBtn) visibleKeys.push('repair');
   if (showStanceBtn) visibleKeys.push('stance');
   if (showFishBtn) visibleKeys.push('fish');
   if (showAttackBtn) visibleKeys.push('attack');
@@ -537,6 +559,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   const toastTopCandidate = minVisibleTop - 40;
   const toastFitsAbove = containerScreenTop + toastTopCandidate >= 48;
 
+  const repairGeom = getBtnGeom('repair');
   const stanceGeom = getBtnGeom('stance');
   const fishGeom = getBtnGeom('fish');
   const abilityGeom = getBtnGeom('ability');
@@ -564,6 +587,42 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         style={{ width: `${container.w}px`, height: `${container.h}px` }}
         className="pointer-events-none relative touch-none"
       >
+        {/* Contextual Repair Kit button (H key equivalent) on Touch HUD */}
+        {showRepairBtn && (
+          <button
+            type="button"
+            onPointerDown={
+              isEditingLayout
+                ? makeDragHandlers('repair').onPointerDown
+                : (e) => {
+                    e.preventDefault();
+                    if (repairKits > 0) onUseRepairKit?.();
+                  }
+            }
+            onPointerMove={makeDragHandlers('repair').onPointerMove}
+            onPointerUp={makeDragHandlers('repair').onPointerUp}
+            onPointerCancel={makeDragHandlers('repair').onPointerCancel}
+            aria-label={isEn ? 'Use Repair Kit (H)' : 'Tamir Kiti Kullan (H)'}
+            title={isEn ? 'Use Repair Kit (H)' : 'Tamir Kiti Kullan (H)'}
+            style={{
+              left: `${repairGeom.r.left}px`,
+              top: `${repairGeom.r.top}px`,
+              width: `${repairGeom.r.w}px`,
+              height: `${repairGeom.r.h}px`,
+              transform: `translate(${repairGeom.t.dx}px, ${repairGeom.t.dy}px) scale(${repairGeom.t.scale})`,
+            }}
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-lg transition-shadow duration-100 active:scale-95 cursor-pointer ${
+              repairKits > 0
+                ? 'bg-emerald-600/92 border-emerald-300/70 text-white hover:bg-emerald-500'
+                : 'bg-slate-900/60 border-white/20 text-slate-300'
+            } ${editRingClass('repair')}`}
+          >
+            <Wrench className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+            <span className="text-[8px] font-bold font-mono-num whitespace-nowrap">
+              {isEn ? `Kit (${repairKits})` : `Tamir ${repairKits}`}
+            </span>
+          </button>
+        )}
         {/* Contextual Army Stance button (V key equivalent) on Touch HUD */}
         {showStanceBtn && (
           <button

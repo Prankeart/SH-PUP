@@ -10,13 +10,16 @@ import {
   Keyboard,
   Languages,
   LogOut,
+  Map as MapIcon,
   Maximize2,
   Minimize2,
+  Monitor,
   Move,
   RotateCcw,
   Save,
   Settings,
   Sliders,
+  Smartphone,
   Sparkles,
   Upload,
   Volume2,
@@ -39,6 +42,7 @@ interface SettingsModalProps {
   worldSeed: number;
   onlineMode?: boolean;
   onlineRoomId?: string;
+  isTouchDevice?: boolean;
   onUpdateSettings: (next: GameSettings) => void;
   onResetSave: () => void;
   onQuickSave: () => void;
@@ -62,6 +66,9 @@ const KEY_LABELS_TR: Array<{ key: keyof KeybindingsConfig; label: string }> = [
   { key: 'ability', label: 'Savaş Emri (Yetenek)' },
   { key: 'fish', label: 'Balık Tutma (Olta)' },
   { key: 'stance', label: 'Ordu Düzeni Değiştir' },
+  { key: 'repair', label: 'Tamir Kiti Kullan' },
+  { key: 'chat', label: 'Filo Sohbeti (Online)' },
+  { key: 'voiceMute', label: 'Mikrofon Aç/Kapat (Online)' },
   { key: 'map', label: 'Dünya Haritası' },
   { key: 'shop', label: 'Tüccar & Mağaza' },
   { key: 'kingdom', label: 'Devlet & Ordu' },
@@ -76,6 +83,9 @@ const KEY_LABELS_EN: Array<{ key: keyof KeybindingsConfig; label: string }> = [
   { key: 'ability', label: 'Tactical War Cry' },
   { key: 'fish', label: 'Cast / Reel Fishing' },
   { key: 'stance', label: 'Cycle Army Stance' },
+  { key: 'repair', label: 'Use Repair Kit' },
+  { key: 'chat', label: 'Fleet Chat (Online)' },
+  { key: 'voiceMute', label: 'Toggle Voice Mic (Online)' },
   { key: 'map', label: 'World Map' },
   { key: 'shop', label: 'Merchant Shop' },
   { key: 'kingdom', label: 'Kingdom & Army' },
@@ -94,6 +104,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   worldSeed,
   onlineMode = false,
   onlineRoomId,
+  isTouchDevice = false,
   onUpdateSettings,
   onResetSave,
   onQuickSave,
@@ -107,6 +118,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
 }) => {
   const isEn = settings.language === 'en';
+  const isTouchInterfaceActive =
+    settings.touchControls === 'ALWAYS' ||
+    (settings.touchControls === 'AUTO' && isTouchDevice);
   const [activeTab, setActiveTab] = useState<SettingsTab>('GENERAL');
   const [confirmReset, setConfirmReset] = useState(false);
   const [listeningKey, setListeningKey] = useState<keyof KeybindingsConfig | null>(null);
@@ -753,9 +767,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </>
             )}
 
-            {/* TAB 3: CONTROLS */}
+            {/* TAB 3: CONTROLS (Device-Specific Panel) */}
             {activeTab === 'CONTROLS' && (
               <>
+                {/* Active Device / Control Profile Banner */}
+                <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/50 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {isTouchInterfaceActive ? (
+                      <Smartphone className="w-4 h-4 text-amber-300 shrink-0" />
+                    ) : (
+                      <Monitor className="w-4 h-4 text-sky-300 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-100 truncate">
+                        {isTouchInterfaceActive
+                          ? isEn
+                            ? 'Mobile / Touch Controls Active'
+                            : 'Mobil / Dokunmatik Kontrol Paneli'
+                          : isEn
+                          ? 'PC / Keyboard Controls Active'
+                          : 'Bilgisayar / Klavye Kontrol Paneli'}
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate">
+                        {isTouchInterfaceActive
+                          ? isEn
+                            ? 'Hide touch buttons to switch to keyboard keybindings'
+                            : 'Klavye atamaları için mobil tuşları "Gizle" yapabilirsiniz'
+                          : isEn
+                          ? 'Showing desktop HUD visibility & keyboard keybindings'
+                          : 'Bilgisayara özel arayüz ve klavye ayarları gösteriliyor'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Touch Controls Visibility */}
                 <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
                   <div className="min-w-0">
@@ -792,139 +837,345 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Joystick Mode */}
-                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-100">
-                      {isEn ? 'Joystick Mode' : 'Joystick Modu'}
+                {/* Mini Map Size Adjustment */}
+                {(() => {
+                  const mmLayout = settings.touchLayout?.minimap;
+                  const mmScale = mmLayout?.scale ?? 1;
+                  const mmPct = Math.round(mmScale * 100);
+                  return (
+                    <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <MapIcon className="w-4 h-4 text-sky-300 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-100">
+                              {isEn ? 'Mini Map Size' : 'Mini Harita Boyutu'}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {isEn
+                                ? 'Scale the top-left minimap radar'
+                                : 'Sol üstteki mini haritanın boyutunu ayarlayın'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-mono-num text-xs font-bold text-amber-300 w-11 text-right">
+                            %{mmPct}
+                          </span>
+                          {mmScale !== 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextLayout = { ...(settings.touchLayout ?? {}) };
+                                if (mmLayout && (mmLayout.dx !== 0 || mmLayout.dy !== 0)) {
+                                  nextLayout.minimap = { ...mmLayout, scale: 1 };
+                                } else {
+                                  delete nextLayout.minimap;
+                                }
+                                onUpdateSettings({ ...settings, touchLayout: nextLayout });
+                              }}
+                              title={isEn ? 'Reset Size' : 'Boyutu Sıfırla'}
+                              aria-label={isEn ? 'Reset Mini Map Size' : 'Mini Harita Boyutunu Sıfırla'}
+                              className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-sky-300 flex items-center justify-center cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        min={65}
+                        max={160}
+                        step={5}
+                        value={mmPct}
+                        aria-label={isEn ? 'Mini Map Size' : 'Mini Harita Boyutu'}
+                        onChange={(e) => {
+                          const nextScale = Math.max(0.65, Math.min(1.6, Number(e.target.value) / 100));
+                          const nextLayout = { ...(settings.touchLayout ?? {}) };
+                          const prevMm = nextLayout.minimap ?? { dx: 0, dy: 0 };
+                          if (nextScale === 1 && prevMm.dx === 0 && prevMm.dy === 0) {
+                            delete nextLayout.minimap;
+                          } else {
+                            nextLayout.minimap = { ...prevMm, scale: nextScale };
+                          }
+                          onUpdateSettings({ ...settings, touchLayout: nextLayout });
+                        }}
+                        className="w-full accent-amber-500 cursor-pointer"
+                      />
                     </div>
-                    <div className="text-xs text-slate-400">
-                      {isEn
-                        ? 'Touch thumbstick center behavior'
-                        : 'Dokunmatik kontrol merkezi davranışı'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 p-1 bg-slate-950/60 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onUpdateSettings({ ...settings, joystickMode: 'FIXED' })}
-                      className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                        settings.joystickMode === 'FIXED'
-                          ? 'bg-amber-500 text-slate-950 font-semibold'
-                          : 'text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      {isEn ? 'Fixed' : 'Sabit'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onUpdateSettings({ ...settings, joystickMode: 'DYNAMIC' })}
-                      className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                        settings.joystickMode === 'DYNAMIC'
-                          ? 'bg-amber-500 text-slate-950 font-semibold'
-                          : 'text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      {isEn ? 'Dynamic' : 'Dinamik'}
-                    </button>
-                  </div>
-                </div>
+                  );
+                })()}
 
-                {/* Touch Button Layout Customization (in-game only) */}
-                {onOpenLayoutEditor && (
-                  <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-100">
-                        {isEn ? 'Touch Button Positions & Size' : 'Tuş Konumlarını Düzenle'}
+                {/* MOBILE / TOUCH-ONLY CONTROLS */}
+                {isTouchInterfaceActive && (
+                  <>
+                    {/* Joystick Mode */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {isEn ? 'Joystick Mode' : 'Joystick Modu'}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {isEn
+                            ? 'Touch thumbstick center behavior'
+                            : 'Dokunmatik kontrol merkezi davranışı'}
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400">
-                        {isEn
-                          ? 'Drag joystick and action buttons anywhere on screen'
-                          : 'Joystick ve aksiyon tuşlarını sürükleyip boyutunu ayarlayın'}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
-                      {Object.keys(settings.touchLayout ?? {}).length > 0 && (
+                      <div className="flex items-center gap-1 p-1 bg-slate-950/60 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
                         <button
                           type="button"
-                          onClick={() => {
-                            onUpdateSettings({ ...settings, touchLayout: {} });
-                            showToast(
-                              isEn ? 'Button layout reset.' : 'Tuş düzeni sıfırlandı.'
-                            );
-                          }}
-                          className="px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                          onClick={() => onUpdateSettings({ ...settings, joystickMode: 'FIXED' })}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                            settings.joystickMode === 'FIXED'
+                              ? 'bg-amber-500 text-slate-950 font-semibold'
+                              : 'text-slate-300 hover:text-white'
+                          }`}
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
+                          {isEn ? 'Fixed' : 'Sabit'}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={onOpenLayoutEditor}
-                        className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer whitespace-nowrap"
-                      >
-                        <Move className="w-3.5 h-3.5" />
-                        <span>{isEn ? 'Edit Layout' : 'Düzenle'}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Remappable Keybindings */}
-                <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-100">
-                      <Keyboard className="w-4 h-4 text-sky-300 shrink-0" />
-                      <span>
-                        {isEn
-                          ? 'Keyboard Keybindings (WASD / Arrows · F5 Save)'
-                          : 'Klavye Tuşları (WASD/Yön · F5 Hızlı Kayıt)'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateSettings({
-                          ...settings,
-                          keybindings: { ...DEFAULT_KEYBINDINGS },
-                        })
-                      }
-                      className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer shrink-0"
-                    >
-                      {isEn ? 'Reset Keys' : 'Varsayılanlar'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {keyLabels.map((item) => {
-                      const active = listeningKey === item.key;
-                      return (
-                        <div
-                          key={item.key}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10 text-xs"
+                        <button
+                          type="button"
+                          onClick={() => onUpdateSettings({ ...settings, joystickMode: 'DYNAMIC' })}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                            settings.joystickMode === 'DYNAMIC'
+                              ? 'bg-amber-500 text-slate-950 font-semibold'
+                              : 'text-slate-300 hover:text-white'
+                          }`}
                         >
-                          <span className="text-slate-300 truncate">{item.label}</span>
+                          {isEn ? 'Dynamic' : 'Dinamik'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Touch Button & MiniMap Layout Customization (in-game only) */}
+                    {onOpenLayoutEditor && (
+                      <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-100">
+                            {isEn ? 'Controls & Map Layout' : 'Tuş ve Harita Düzeni'}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {isEn
+                              ? 'Drag and resize joystick, action buttons, and mini map'
+                              : 'Joystick, aksiyon tuşları ve mini haritanın yerini/boyutunu ayarlayın'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                          {Object.keys(settings.touchLayout ?? {}).length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onUpdateSettings({ ...settings, touchLayout: {} });
+                                showToast(
+                                  isEn ? 'Controls layout reset.' : 'Kontrol düzeni sıfırlandı.'
+                                );
+                              }}
+                              className="px-2.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>{isEn ? 'Reset' : 'Sıfırla'}</span>
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => setListeningKey(active ? null : item.key)}
-                            className={`px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer ${
-                              active
-                                ? 'bg-amber-500 text-slate-950 animate-pulse'
-                                : 'bg-white/10 hover:bg-white/20 text-amber-200'
-                            }`}
+                            onClick={onOpenLayoutEditor}
+                            className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer whitespace-nowrap"
                           >
-                            {active
-                              ? isEn
-                                ? 'Press key...'
-                                : 'Tuşa bas...'
-                              : formatKeyCode(settings.keybindings[item.key])}
+                            <Move className="w-3.5 h-3.5" />
+                            <span>{isEn ? 'Edit Layout' : 'Düzenle'}</span>
                           </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* PC / KEYBOARD-ONLY CONTROLS (Desktop OR Mobile when touch buttons disabled) */}
+                {!isTouchInterfaceActive && (
+                  <>
+                    {/* Desktop HUD Element Visibility (PC devices only) */}
+                    {!isTouchDevice && (
+                      <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-slate-100">
+                            <Monitor className="w-4 h-4 text-sky-300 shrink-0" />
+                            <span>
+                              {isEn
+                                ? 'Desktop HUD Visibility'
+                                : 'Bilgisayar Arayüzü Görünümü'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400">
+                            {isEn ? 'Press ESC for Settings' : 'Ayarlar: ESC'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10">
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-100">
+                                {isEn ? 'Bottom-Right Controls Bar' : 'Sağ Alt Kontrol Menüsü'}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">
+                                {isEn
+                                  ? 'Show or hide bottom-right action dock on PC'
+                                  : 'Sağ alttaki aksiyon çubuğunu göster / gizle'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateSettings({
+                                  ...settings,
+                                  desktopShowActionBar: !settings.desktopShowActionBar,
+                                })
+                              }
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                                settings.desktopShowActionBar
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : 'bg-slate-800 text-slate-300 border border-white/10'
+                              }`}
+                            >
+                              {settings.desktopShowActionBar
+                                ? isEn
+                                  ? 'Shown'
+                                  : 'Açık'
+                                : isEn
+                                ? 'Hidden'
+                                : 'Gizli'}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10">
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-100">
+                                {isEn ? 'Top-Right Settings Button' : 'Ayarlar Butonu'}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">
+                                {isEn
+                                  ? 'Hide settings gear (ESC always opens settings)'
+                                  : 'Gizlendiğinde ESC tuşuyla ayarları açabilirsiniz'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateSettings({
+                                  ...settings,
+                                  desktopShowSettingsButton: !settings.desktopShowSettingsButton,
+                                })
+                              }
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                                settings.desktopShowSettingsButton
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : 'bg-slate-800 text-slate-300 border border-white/10'
+                              }`}
+                            >
+                              {settings.desktopShowSettingsButton
+                                ? isEn
+                                  ? 'Shown'
+                                  : 'Açık'
+                                : isEn
+                                ? 'Hidden'
+                                : 'Gizli'}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10">
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-100">
+                                {isEn ? 'Top-Right Menu Buttons' : 'Diğer Menü Butonları'}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">
+                                {isEn
+                                  ? 'Journal, Nation, Gold/Bag & Trader buttons (J, K, T)'
+                                  : 'Defter, Devlet, Altın/Çanta ve Tüccar butonları (J, K, T)'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateSettings({
+                                  ...settings,
+                                  desktopShowHudButtons: !settings.desktopShowHudButtons,
+                                })
+                              }
+                              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                                settings.desktopShowHudButtons
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : 'bg-slate-800 text-slate-300 border border-white/10'
+                              }`}
+                            >
+                              {settings.desktopShowHudButtons
+                                ? isEn
+                                  ? 'Shown'
+                                  : 'Açık'
+                                : isEn
+                                ? 'Hidden'
+                                : 'Gizli'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remappable Keybindings */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/35 border border-white/10 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-100">
+                          <Keyboard className="w-4 h-4 text-sky-300 shrink-0" />
+                          <span>
+                            {isEn
+                              ? 'Keyboard Keybindings (WASD / Arrows · F5 Save · ESC Settings)'
+                              : 'Klavye Tuşları (WASD/Yön · F5 Kayıt · ESC Ayarlar)'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateSettings({
+                              ...settings,
+                              keybindings: { ...DEFAULT_KEYBINDINGS },
+                            })
+                          }
+                          className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer shrink-0"
+                        >
+                          {isEn ? 'Reset Keys' : 'Varsayılanlar'}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {keyLabels.map((item) => {
+                          const active = listeningKey === item.key;
+                          return (
+                            <div
+                              key={item.key}
+                              className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-slate-950/55 border border-white/10 text-xs"
+                            >
+                              <span className="text-slate-300 truncate">{item.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => setListeningKey(active ? null : item.key)}
+                                className={`px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer ${
+                                  active
+                                    ? 'bg-amber-500 text-slate-950 animate-pulse'
+                                    : 'bg-white/10 hover:bg-white/20 text-amber-200'
+                                }`}
+                              >
+                                {active
+                                  ? isEn
+                                    ? 'Press key...'
+                                    : 'Tuşa bas...'
+                                  : formatKeyCode(settings.keybindings[item.key])}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 

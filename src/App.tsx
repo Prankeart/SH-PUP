@@ -154,6 +154,7 @@ import { VoiceChatManager, VoiceStateSnapshot } from './engine/voiceChat';
 import { VirtualJoystick } from './components/VirtualJoystick';
 import { ActionControls, ActionControlsDisplayMode } from './components/ActionControls';
 import { TopRightHud } from './components/TopRightHud';
+import { MiniMap, MiniMapLiveSnapshot } from './components/MiniMap';
 import { MapModal } from './components/MapModal';
 import { ShopModal } from './components/ShopModal';
 import { KingdomModal } from './components/KingdomModal';
@@ -842,6 +843,7 @@ export default function App() {
       cavesExploredCount: prof.cavesExploredCount ?? 0,
       conquestHistory: saveRef.current?.conquestHistory ?? [],
       armyStance: saveRef.current?.armyStance ?? 'CHARGE',
+      mapPin: saveRef.current?.mapPin ?? null,
       fortTurretIslandIds: [],
       harvestedNodeIds: [],
       player: prof.player,
@@ -3136,6 +3138,15 @@ export default function App() {
     const maxBoat = getMaxBoatHp(saveRef.current.upgrades.boatLevel);
     const relicB = getRelicSetBonuses(saveRef.current.collectedRelicIds ?? []);
     const maxCap = MAX_PLAYER_HP + relicB.extraPlayerMaxHp;
+    if (sim.boatHp >= maxBoat && sim.playerHp >= maxCap) {
+      addFloatingText(
+        sim.isSailing ? sim.boatX : sim.playerX,
+        (sim.isSailing ? sim.boatY : sim.playerY) - 28,
+        settingsRef.current.language === 'en' ? 'HP is already full!' : 'Gemi ve Kaptan tam can!',
+        '#FCD34D'
+      );
+      return;
+    }
     soundEngine.playUpgrade();
     spawnParticles(
       sim.isSailing ? sim.boatX : sim.playerX,
@@ -3414,8 +3425,12 @@ export default function App() {
 
       simRef.current.keys.add(code);
 
-      if (code === 'Escape' && activeModal !== 'NONE') {
-        setActiveModal('NONE');
+      if (code === 'Escape') {
+        if (activeModal !== 'NONE') {
+          setActiveModal('NONE');
+        } else if (phaseRef.current === 'PLAYING') {
+          setActiveModal('SETTINGS');
+        }
         return;
       }
       if (phaseRef.current !== 'PLAYING') return;
@@ -3461,6 +3476,12 @@ export default function App() {
         handleFishAction();
       } else if (code === kb.stance) {
         handleCycleStance();
+      } else if (code === kb.repair) {
+        handleUseRepairKit();
+      } else if (code === kb.chat && onlineActiveRef.current) {
+        setChatOpen((prev) => !prev);
+      } else if (code === kb.voiceMute && onlineActiveRef.current) {
+        handleToggleVoiceMute();
       }
     };
 
@@ -3484,7 +3505,9 @@ export default function App() {
     handlePrimaryInteract,
     handleQuickSave,
     handleRadar,
+    handleToggleVoiceMute,
     handleTriggerAbility,
+    handleUseRepairKit,
   ]);
 
   // Main 60fps Loop
@@ -7141,6 +7164,7 @@ export default function App() {
               fortTurretIslandIds: new Set(currentSave.fortTurretIslandIds ?? []),
               harvestedNodeIds: sim.harvestedNodeIds,
               interactionHint,
+              mapWaypoint: currentSave.mapPin ?? null,
             });
           }
         }
@@ -7841,11 +7865,13 @@ export default function App() {
     ? 'TOUCH'
     : settings.touchControls === 'ALWAYS'
     ? 'TOUCH'
-    : settings.touchControls === 'HIDDEN'
-    ? 'HIDDEN'
     : isCoarseDevice
-    ? 'TOUCH'
-    : 'DESKTOP';
+    ? settings.touchControls === 'HIDDEN'
+      ? 'HIDDEN'
+      : 'TOUCH'
+    : settings.desktopShowActionBar
+    ? 'DESKTOP'
+    : 'HIDDEN';
   const activeTouchLayout = isEditingLayout ? draftTouchLayout : settings.touchLayout;
 
   const openLayoutEditor = useCallback(() => {
@@ -7863,6 +7889,20 @@ export default function App() {
     },
     []
   );
+
+  const getMiniMapLiveSnapshot = useCallback((): MiniMapLiveSnapshot => {
+    const s = simRef.current;
+    return {
+      playerX: s.playerX,
+      playerY: s.playerY,
+      playerAngle: s.playerAngle,
+      boatX: s.boatX,
+      boatY: s.boatY,
+      boatAngle: s.boatAngle,
+      isSailing: s.isSailing,
+      activeCave: s.activeCave,
+    };
+  }, []);
 
   useEffect(() => {
     hasTouchControlsRef.current = controlsDisplayMode === 'TOUCH';
@@ -7973,14 +8013,41 @@ export default function App() {
             </div>
           )}
 
-          {/* Top-Left HUD Stack (independently anchored so it never shifts bottom controls) */}
+          {/* Top-Left HUD: Minimap + Status Stack (independently anchored so it never shifts bottom controls) */}
           <div
             className={`pointer-events-auto absolute ${
+              isEditingLayout ? 'z-30' : ''
+            } ${
               isCompactTouch
-                ? 'top-[max(0.5rem,env(safe-area-inset-top))] left-[max(0.5rem,env(safe-area-inset-left))] gap-1 max-w-[46vw]'
-                : 'top-5 left-5 gap-2 max-w-[36vw]'
-            } flex flex-col items-start min-w-0`}
+                ? 'top-[max(0.5rem,env(safe-area-inset-top))] left-[max(0.5rem,env(safe-area-inset-left))] gap-2 max-w-[58vw]'
+                : 'top-5 left-5 gap-3 max-w-[44vw]'
+            } flex flex-row items-start min-w-0`}
           >
+            <MiniMap
+              size={isCompactTouch ? 86 : 124}
+              worldManager={worldManagerRef.current}
+              discoveredIslandIds={save.discoveredIslandIds}
+              kingdom={save.kingdom}
+              mapPin={save.mapPin ?? null}
+              onlineMode={onlineActive}
+              onlinePlayers={onlineLobbyPlayers.filter((p) => p.id !== identity.playerId)}
+              onlineIslandOwners={onlineIslandOwnersForDisplay}
+              colorblindMode={settings.colorblindMode}
+              language={settings.language}
+              touchLayout={activeTouchLayout}
+              isEditingLayout={isEditingLayout}
+              isSelected={selectedTouchButton === 'minimap'}
+              onSelectButton={setSelectedTouchButton}
+              onUpdateButtonTransform={updateDraftButtonTransform}
+              getLiveSnapshot={getMiniMapLiveSnapshot}
+              onOpenMap={() => setActiveModal('MAP')}
+            />
+
+            <div
+              className={`flex flex-col items-start min-w-0 ${
+                isCompactTouch ? 'gap-1' : 'gap-2'
+              } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
+            >
             {onlineActive && onlineRoomInfo && (
               <div
                 className={`${
@@ -8127,20 +8194,23 @@ export default function App() {
               </div>
             )}
 
-            {hudState.nearDock && !isCompactHud && (
-              <button
-                type="button"
-                onClick={() => setActiveModal('SHOP')}
-                className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
-              >
-                <Store className="w-4 h-4" />
-                <span>
-                  {settings.language === 'en'
-                    ? 'Merchant Dock Open (T)'
-                    : 'Tüccar İskelesi Açık (T)'}
-                </span>
-              </button>
-            )}
+            {hudState.nearDock &&
+              !isCompactHud &&
+              (isCoarseDevice || settings.desktopShowHudButtons) && (
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('SHOP')}
+                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer"
+                >
+                  <Store className="w-4 h-4" />
+                  <span>
+                    {settings.language === 'en'
+                      ? 'Merchant Dock Open (T)'
+                      : 'Tüccar İskelesi Açık (T)'}
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Top-Right HUD (independently anchored) */}
@@ -8161,8 +8231,9 @@ export default function App() {
               journalBadgeCount={claimableMilestoneCount}
               cycleLabel={hudState.cycleLabel}
               language={settings.language}
+              showSettingsButton={isCoarseDevice ? true : settings.desktopShowSettingsButton}
+              showHudButtons={isCoarseDevice ? true : settings.desktopShowHudButtons}
               onOpenSettings={() => setActiveModal('SETTINGS')}
-              onOpenMap={() => setActiveModal('MAP')}
               onOpenShop={() => setActiveModal('SHOP')}
               onOpenKingdom={() => setActiveModal('KINGDOM')}
               onOpenJournal={() => setActiveModal('JOURNAL')}
@@ -8334,6 +8405,11 @@ export default function App() {
                       ? 'Sohbet'
                       : 'Sohbet & İfade'}
                   </span>
+                  {controlsDisplayMode === 'DESKTOP' && (
+                    <span className="text-[10px] font-mono-num text-sky-300/80">
+                      [{formatKeyCode(settings.keybindings.chat)}]
+                    </span>
+                  )}
                   {onlineChat.length > 0 && !chatOpen && (
                     <span className="px-1.5 py-0.2 rounded-full bg-sky-500/30 text-[10px] font-mono-num text-sky-100">
                       {onlineChat.length}
@@ -8397,7 +8473,7 @@ export default function App() {
                           ? 'Mute Mic'
                           : 'Mikrofonu Kapat'
                       }
-                      className={`p-1.5 rounded-xl border shadow-lg cursor-pointer ${
+                      className={`p-1.5 rounded-xl border shadow-lg cursor-pointer flex items-center gap-1 ${
                         voiceState.muted
                           ? 'bg-red-950/90 border-red-400/50 text-red-200'
                           : 'bg-[#0F2936]/90 border-emerald-400/40 text-emerald-200'
@@ -8407,6 +8483,11 @@ export default function App() {
                         <MicOff className="w-3.5 h-3.5" />
                       ) : (
                         <Mic className="w-3.5 h-3.5" />
+                      )}
+                      {controlsDisplayMode === 'DESKTOP' && (
+                        <span className="text-[10px] font-mono-num opacity-85">
+                          [{formatKeyCode(settings.keybindings.voiceMute)}]
+                        </span>
                       )}
                     </button>
 
@@ -8498,6 +8579,16 @@ export default function App() {
               colorblindMode={settings.colorblindMode}
               language={settings.language}
               abilityKeyLabel={formatKeyCode(settings.keybindings.ability)}
+              keyLabels={{
+                digOrFire: formatKeyCode(settings.keybindings.digOrFire),
+                attack: formatKeyCode(settings.keybindings.attack),
+                boat: formatKeyCode(settings.keybindings.boat),
+                radar: formatKeyCode(settings.keybindings.radar),
+                ability: formatKeyCode(settings.keybindings.ability),
+                fish: formatKeyCode(settings.keybindings.fish),
+                stance: formatKeyCode(settings.keybindings.stance),
+                repair: formatKeyCode(settings.keybindings.repair),
+              }}
               canFish={hudState.canFish}
               isFishing={hudState.isFishing}
               fishingBite={hudState.fishingBite}
@@ -8534,8 +8625,8 @@ export default function App() {
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-50 truncate">
                         {settings.language === 'en'
-                          ? 'Drag buttons to reposition'
-                          : 'Tuşları sürükleyerek yerini değiştir'}
+                          ? 'Drag & resize controls or mini map'
+                          : 'Tuşları ve mini haritayı sürükleyip boyutlandır'}
                       </div>
                       {selectedTouchButton && (
                         <div className="text-[11px] text-amber-300 truncate">
@@ -8564,8 +8655,16 @@ export default function App() {
                               : 'Olta'
                             : selectedTouchButton === 'stance'
                             ? settings.language === 'en'
-                              ? 'Army Stance (V)'
-                              : 'Ordu Düzeni (V)'
+                              ? 'Army Stance'
+                              : 'Ordu Düzeni'
+                            : selectedTouchButton === 'repair'
+                            ? settings.language === 'en'
+                              ? 'Repair Kit'
+                              : 'Tamir Kiti'
+                            : selectedTouchButton === 'minimap'
+                            ? settings.language === 'en'
+                              ? 'Mini Map'
+                              : 'Mini Harita'
                             : settings.language === 'en'
                             ? 'Move Joystick'
                             : 'Hareket Joystick'}
@@ -8580,8 +8679,9 @@ export default function App() {
                         type="button"
                         aria-label="Küçült"
                         onClick={() => {
+                          const minScale = selectedTouchButton === 'minimap' ? 0.65 : 0.75;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
-                          const nextScale = Math.max(0.75, Math.round(((cur.scale ?? 1) - 0.1) * 100) / 100);
+                          const nextScale = Math.max(minScale, Math.round(((cur.scale ?? 1) - 0.1) * 100) / 100);
                           updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
                         }}
                         className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
@@ -8595,8 +8695,9 @@ export default function App() {
                         type="button"
                         aria-label="Büyüt"
                         onClick={() => {
+                          const maxScale = selectedTouchButton === 'minimap' ? 1.6 : 1.35;
                           const cur = draftTouchLayout[selectedTouchButton] ?? { dx: 0, dy: 0, scale: 1 };
-                          const nextScale = Math.min(1.35, Math.round(((cur.scale ?? 1) + 0.1) * 100) / 100);
+                          const nextScale = Math.min(maxScale, Math.round(((cur.scale ?? 1) + 0.1) * 100) / 100);
                           updateDraftButtonTransform(selectedTouchButton, { ...cur, scale: nextScale });
                         }}
                         className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
@@ -8605,7 +8706,7 @@ export default function App() {
                       </button>
                       <button
                         type="button"
-                        title={settings.language === 'en' ? 'Reset Selected' : 'Seçili Tuşu Sıfırla'}
+                        title={settings.language === 'en' ? 'Reset Selected' : 'Seçili Öğeyi Sıfırla'}
                         onClick={() => {
                           setDraftTouchLayout((prev) => {
                             const next = { ...prev };
@@ -8622,14 +8723,27 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setDraftTouchLayout({})}
-                    className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>{settings.language === 'en' ? 'Reset All' : 'Varsayılan'}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDraftTouchLayout({})}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>{settings.language === 'en' ? 'Reset All' : 'Varsayılan'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTouchButton('minimap')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        selectedTouchButton === 'minimap'
+                          ? 'bg-sky-500/25 border-sky-400 text-sky-200'
+                          : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
+                      }`}
+                    >
+                      {settings.language === 'en' ? 'Mini Map' : 'Mini Harita'}
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     <button
@@ -8645,7 +8759,10 @@ export default function App() {
                         setSettings((prev) => ({
                           ...prev,
                           touchControls:
-                            prev.touchControls === 'HIDDEN' ? 'ALWAYS' : prev.touchControls,
+                            prev.touchControls === 'HIDDEN' &&
+                            Object.keys(draftTouchLayout).some((k) => k !== 'minimap')
+                              ? 'ALWAYS'
+                              : prev.touchControls,
                           touchLayout: draftTouchLayout,
                         }));
                         setActiveModal('NONE');
@@ -8687,11 +8804,13 @@ export default function App() {
           playerPos={{ x: simRef.current.playerX, y: simRef.current.playerY }}
           boatPos={{ x: simRef.current.boatX, y: simRef.current.boatY }}
           isSailing={simRef.current.isSailing}
+          mapPin={save.mapPin ?? null}
           onlineMode={onlineActive}
           onlinePlayers={onlineLobbyPlayers.filter((p) => p.id !== identity.playerId)}
           onlineIslandOwners={onlineIslandOwnersForDisplay}
           colorblindMode={settings.colorblindMode}
           language={settings.language}
+          onSetMapPin={(pin) => commitSave((prev) => ({ ...prev, mapPin: pin }), false)}
           onClose={() => setActiveModal('NONE')}
         />
       )}
@@ -8766,6 +8885,7 @@ export default function App() {
           worldSeed={save.worldSeed}
           onlineMode={onlineActive}
           onlineRoomId={onlineRoomInfo?.roomId}
+          isTouchDevice={isCoarseDevice}
           onUpdateSettings={setSettings}
           onResetSave={handleResetSave}
           onQuickSave={handleQuickSave}

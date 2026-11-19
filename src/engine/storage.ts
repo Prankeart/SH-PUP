@@ -19,6 +19,9 @@ export const DEFAULT_KEYBINDINGS: KeybindingsConfig = {
   ability: 'KeyQ',
   fish: 'KeyG',
   stance: 'KeyV',
+  repair: 'KeyH',
+  chat: 'KeyC',
+  voiceMute: 'KeyB',
   map: 'KeyM',
   shop: 'KeyT',
   kingdom: 'KeyK',
@@ -329,7 +332,9 @@ const VALID_TOUCH_BUTTON_IDS: TouchButtonId[] = [
   'ability',
   'fish',
   'stance',
+  'repair',
   'joystick',
+  'minimap',
 ];
 
 function normalizeTouchLayout(raw: unknown): TouchLayoutConfig {
@@ -343,7 +348,9 @@ function normalizeTouchLayout(raw: unknown): TouchLayoutConfig {
     const dx = typeof obj.dx === 'number' && Number.isFinite(obj.dx) ? obj.dx : 0;
     const dy = typeof obj.dy === 'number' && Number.isFinite(obj.dy) ? obj.dy : 0;
     const rawScale = typeof obj.scale === 'number' && Number.isFinite(obj.scale) ? obj.scale : 1;
-    const scale = Math.max(0.75, Math.min(1.35, rawScale));
+    const minScale = id === 'minimap' ? 0.65 : 0.75;
+    const maxScale = id === 'minimap' ? 1.6 : 1.35;
+    const scale = Math.max(minScale, Math.min(maxScale, rawScale));
     if (dx !== 0 || dy !== 0 || scale !== 1) {
       clean[id] = { dx, dy, scale };
     }
@@ -367,6 +374,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   showWaves: true,
   touchControls: 'AUTO',
   touchLayout: {},
+  desktopShowActionBar: true,
+  desktopShowSettingsButton: true,
+  desktopShowHudButtons: true,
   colorblindMode: false,
   screenShakeIntensity: 100,
   showTutorialHints: true,
@@ -399,6 +409,9 @@ export function loadSettings(): GameSettings {
           ? parsed.touchControls
           : 'AUTO',
       touchLayout: normalizeTouchLayout(parsed.touchLayout),
+      desktopShowActionBar: parsed.desktopShowActionBar ?? true,
+      desktopShowSettingsButton: parsed.desktopShowSettingsButton ?? true,
+      desktopShowHudButtons: parsed.desktopShowHudButtons ?? true,
       colorblindMode: parsed.colorblindMode ?? false,
       screenShakeIntensity:
         typeof parsed.screenShakeIntensity === 'number'

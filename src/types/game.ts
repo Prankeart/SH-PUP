@@ -42,6 +42,9 @@ export interface KeybindingsConfig {
   ability: string;
   fish: string;
   stance: string;
+  repair: string;
+  chat: string;
+  voiceMute: string;
   map: string;
   shop: string;
   kingdom: string;
@@ -532,7 +535,9 @@ export type TouchButtonId =
   | 'ability'
   | 'fish'
   | 'stance'
-  | 'joystick';
+  | 'repair'
+  | 'joystick'
+  | 'minimap';
 
 export interface TouchButtonTransform {
   dx: number;
@@ -553,6 +558,9 @@ export interface GameSettings {
   showWaves: boolean;
   touchControls: 'AUTO' | 'ALWAYS' | 'HIDDEN';
   touchLayout?: TouchLayoutConfig;
+  desktopShowActionBar: boolean;
+  desktopShowSettingsButton: boolean;
+  desktopShowHudButtons: boolean;
   colorblindMode: boolean;
   screenShakeIntensity: number;
   showTutorialHints: boolean;
