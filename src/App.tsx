@@ -13,7 +13,6 @@ import {
   Radio,
   RotateCcw,
   RotateCw,
-  Send,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -165,6 +164,7 @@ import { JournalModal } from './components/JournalModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { OnlineLobbyModal } from './components/OnlineLobbyModal';
 import { WeaponHudPanel } from './components/WeaponHudPanel';
+import { ChatPanel } from './components/ChatPanel';
 import {
   ActionButtonKey,
   ALL_ACTION_BUTTON_KEYS,
@@ -254,6 +254,8 @@ export default function App() {
   const [onlineChat, setOnlineChat] = useState<OnlineChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState<boolean>(false);
   const [chatInput, setChatInput] = useState<string>('');
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+  const lastReadChatIdRef = useRef<string | null>(null);
   const voiceManagerRef = useRef<VoiceChatManager | null>(null);
   const voicePeersRef = useRef<VoicePeerInfo[]>([]);
   const lastVoiceProxUpdateRef = useRef<number>(0);
@@ -285,6 +287,24 @@ export default function App() {
     return {
       vw: Math.round(window.visualViewport?.width ?? window.innerWidth),
       vh: Math.round(window.visualViewport?.height ?? window.innerHeight),
+    };
+  });
+  const [visualViewportRect, setVisualViewportRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+    keyboardOpen: boolean;
+  }>(() => {
+    if (typeof window === 'undefined') {
+      return { top: 0, left: 0, width: 1024, height: 768, keyboardOpen: false };
+    }
+    return {
+      top: Math.round(window.visualViewport?.offsetTop ?? 0),
+      left: Math.round(window.visualViewport?.offsetLeft ?? 0),
+      width: Math.round(window.visualViewport?.width ?? window.innerWidth),
+      height: Math.round(window.visualViewport?.height ?? window.innerHeight),
+      keyboardOpen: false,
     };
   });
   const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() => {
@@ -688,9 +708,13 @@ export default function App() {
 
   useEffect(() => {
     let focusOutTimer: number | null = null;
+    let focusInTimer: number | null = null;
     const checkViewport = () => {
-      const rawVw = Math.round(window.visualViewport?.width ?? window.innerWidth);
-      const rawVh = Math.round(window.visualViewport?.height ?? window.innerHeight);
+      const vv = window.visualViewport;
+      const vvTop = Math.round(vv?.offsetTop ?? 0);
+      const vvLeft = Math.round(vv?.offsetLeft ?? 0);
+      const rawVw = Math.round(vv?.width ?? window.innerWidth);
+      const rawVh = Math.round(vv?.height ?? window.innerHeight);
       const layoutVh = Math.round(window.innerHeight);
       const activeEl = document.activeElement as HTMLElement | null;
       const isTextInputFocused = Boolean(
@@ -704,6 +728,22 @@ export default function App() {
       const keyboardLikelyOpen =
         isTextInputFocused &&
         (rawVh < layoutVh - 110 || (prevLocked !== null && rawVh < prevLocked.vh - 110));
+
+      setVisualViewportRect((prev) =>
+        prev.top === vvTop &&
+        prev.left === vvLeft &&
+        prev.width === rawVw &&
+        prev.height === rawVh &&
+        prev.keyboardOpen === keyboardLikelyOpen
+          ? prev
+          : {
+              top: vvTop,
+              left: vvLeft,
+              width: rawVw,
+              height: rawVh,
+              keyboardOpen: keyboardLikelyOpen,
+            }
+      );
 
       let vw = rawVw;
       let vh = rawVh;
@@ -720,6 +760,11 @@ export default function App() {
       setIsNarrowViewport(vw < 640 || vh < 500);
       setIsShortViewport(vh < 540);
     };
+    const handleFocusIn = () => {
+      if (focusInTimer !== null) window.clearTimeout(focusInTimer);
+      checkViewport();
+      focusInTimer = window.setTimeout(checkViewport, 180);
+    };
     const handleFocusOut = () => {
       if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
       focusOutTimer = window.setTimeout(checkViewport, 90);
@@ -727,16 +772,47 @@ export default function App() {
     checkViewport();
     window.addEventListener('resize', checkViewport);
     window.addEventListener('orientationchange', checkViewport);
+    window.addEventListener('focusin', handleFocusIn);
     window.addEventListener('focusout', handleFocusOut);
     window.visualViewport?.addEventListener('resize', checkViewport);
+    window.visualViewport?.addEventListener('scroll', checkViewport);
     return () => {
+      if (focusInTimer !== null) window.clearTimeout(focusInTimer);
       if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
       window.removeEventListener('resize', checkViewport);
       window.removeEventListener('orientationchange', checkViewport);
+      window.removeEventListener('focusin', handleFocusIn);
       window.removeEventListener('focusout', handleFocusOut);
       window.visualViewport?.removeEventListener('resize', checkViewport);
+      window.visualViewport?.removeEventListener('scroll', checkViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (!onlineActive) {
+      lastReadChatIdRef.current = null;
+      setUnreadChatCount(0);
+      return;
+    }
+    const latestId = onlineChat[onlineChat.length - 1]?.id ?? null;
+    if (chatOpen) {
+      lastReadChatIdRef.current = latestId;
+      setUnreadChatCount(0);
+      return;
+    }
+    if (onlineChat.length === 0) {
+      setUnreadChatCount(0);
+      return;
+    }
+    const lastReadIdx = lastReadChatIdRef.current
+      ? onlineChat.findIndex((m) => m.id === lastReadChatIdRef.current)
+      : -1;
+    const unseenSlice = lastReadIdx >= 0 ? onlineChat.slice(lastReadIdx + 1) : onlineChat;
+    const incomingCount = unseenSlice.filter(
+      (m) => m.senderId !== 'SYSTEM' && m.senderId !== identity.playerId
+    ).length;
+    setUnreadChatCount(incomingCount);
+  }, [onlineActive, onlineChat, chatOpen, identity.playerId]);
 
   useEffect(() => {
     const coarseMql = window.matchMedia('(pointer: coarse)');
@@ -8780,6 +8856,8 @@ export default function App() {
     : settings.desktopShowActionBar
     ? 'DESKTOP'
     : 'HIDDEN';
+  const useTopMobileChatOverlay =
+    isCoarseDevice || controlsDisplayMode === 'TOUCH' || visualViewportRect.keyboardOpen;
   const activeTouchLayout = isEditingLayout ? draftTouchLayout : settings.touchLayout;
 
   const visibleTouchActionKeys = useMemo<ActionButtonKey[]>(() => {
@@ -9381,92 +9459,20 @@ export default function App() {
                         : 'items-start'
                     }`}
                   >
-                    {chatOpen && (
-                      <div className="w-72 max-w-full rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
-                        <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
-                          <span className="text-xs font-bold text-sky-200">
-                            {settings.language === 'en' ? 'Fleet Chat & Emotes' : 'Filo Sohbeti & İfadeler'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setChatOpen(false)}
-                            className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
-                          >
-                            <XIcon className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        <div className="max-h-28 overflow-y-auto px-3 py-2 space-y-1 text-xs">
-                          {onlineChat.length === 0 ? (
-                            <div className="text-slate-400 text-[11px]">
-                              {settings.language === 'en'
-                                ? 'No messages yet. Say ahoy!'
-                                : 'Henüz mesaj yok. Kaptanlara selam ver!'}
-                            </div>
-                          ) : (
-                            onlineChat.map((m) => (
-                              <div key={m.id} className="leading-snug break-words">
-                                {m.senderId === 'SYSTEM' ? (
-                                  <span className="text-amber-300/90 italic">{m.text}</span>
-                                ) : (
-                                  <>
-                                    <span
-                                      className="font-bold mr-1.5"
-                                      style={{ color: m.bannerColor || '#38BDF8' }}
-                                    >
-                                      {m.senderName}:
-                                    </span>
-                                    <span className="text-slate-100">{m.text}</span>
-                                  </>
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        <div className="px-2.5 py-1.5 border-t border-white/10 flex items-center justify-between gap-1 bg-slate-900/40">
-                          {['👋', '⚔️', '💰', '🏴‍☠️', '🆘', '❤️'].map((em) => (
-                            <button
-                              key={em}
-                              type="button"
-                              onClick={() => onlineManagerRef.current?.sendEmote(em)}
-                              className="flex-1 py-1 rounded-lg hover:bg-white/15 active:scale-90 transition text-sm cursor-pointer"
-                              title="İfade Gönder"
-                            >
-                              {em}
-                            </button>
-                          ))}
-                        </div>
-
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            const trimmed = chatInput.trim();
-                            if (!trimmed) return;
-                            onlineManagerRef.current?.sendChat(trimmed);
-                            setChatInput('');
-                          }}
-                          className="p-2 border-t border-white/10 flex items-center gap-1.5"
-                        >
-                          <input
-                            type="text"
-                            value={chatInput}
-                            maxLength={140}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            placeholder={
-                              settings.language === 'en' ? 'Message fleet...' : 'Filoya mesaj yaz...'
-                            }
-                            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-white/15 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400"
-                          />
-                          <button
-                            type="submit"
-                            className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold cursor-pointer"
-                            aria-label="Send"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                          </button>
-                        </form>
-                      </div>
+                    {chatOpen && !useTopMobileChatOverlay && (
+                      <ChatPanel
+                        messages={onlineChat}
+                        currentPlayerId={identity.playerId}
+                        playerCount={onlineLobbyPlayers.filter((p) => p.connected).length}
+                        chatInput={chatInput}
+                        onChatInputChange={setChatInput}
+                        onSendChat={(text) => onlineManagerRef.current?.sendChat(text)}
+                        onSendEmote={(emote) => onlineManagerRef.current?.sendEmote(emote)}
+                        onClose={() => setChatOpen(false)}
+                        language={settings.language}
+                        isTouchOrMobile={false}
+                        className="w-[340px] max-w-full max-h-[340px]"
+                      />
                     )}
 
                     {voiceState.error && (
@@ -9492,13 +9498,17 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setChatOpen((prev) => !prev)}
-                        className="px-2.5 py-1 text-[11px] rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                        className={`px-2.5 py-1 text-[11px] rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                          chatOpen
+                            ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
+                            : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-sky-400/40 text-sky-200'
+                        }`}
                       >
                         <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
                         <span>{settings.language === 'en' ? 'Chat' : 'Sohbet'}</span>
-                        {onlineChat.length > 0 && !chatOpen && (
-                          <span className="px-1.5 py-0.2 rounded-full bg-sky-500/30 text-[10px] font-mono-num text-sky-100">
-                            {onlineChat.length}
+                        {unreadChatCount > 0 && !chatOpen && (
+                          <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-sky-400 text-[10px] font-bold font-mono-num text-slate-950">
+                            {unreadChatCount}
                           </span>
                         )}
                       </button>
@@ -9621,6 +9631,31 @@ export default function App() {
             </div>
           )}
 
+          {/* MOBILE / TOUCH / VIRTUAL KEYBOARD: Top-anchored Chat Overlay so keyboard never hides typed text */}
+          {onlineActive && !isEditingLayout && chatOpen && useTopMobileChatOverlay && (
+            <ChatPanel
+              messages={onlineChat}
+              currentPlayerId={identity.playerId}
+              playerCount={onlineLobbyPlayers.filter((p) => p.connected).length}
+              chatInput={chatInput}
+              onChatInputChange={setChatInput}
+              onSendChat={(text) => onlineManagerRef.current?.sendChat(text)}
+              onSendEmote={(emote) => onlineManagerRef.current?.sendEmote(emote)}
+              onClose={() => setChatOpen(false)}
+              language={settings.language}
+              isTouchOrMobile={true}
+              keyboardOpen={visualViewportRect.keyboardOpen}
+              compactHeight={visualViewportRect.height < 260}
+              style={{
+                top: `${Math.max(8, visualViewportRect.top + 8)}px`,
+                left: `${Math.round(visualViewportRect.left + visualViewportRect.width / 2)}px`,
+                width: `${Math.min(400, Math.max(250, visualViewportRect.width - 16))}px`,
+                maxHeight: `${Math.min(360, Math.max(118, visualViewportRect.height - 16))}px`,
+              }}
+              className="absolute -translate-x-1/2 z-40"
+            />
+          )}
+
           {/* DESKTOP / HIDDEN mode: Online Chat & Quick Emotes Widget */}
           {controlsDisplayMode !== 'TOUCH' && onlineActive && !isEditingLayout && (
             <div
@@ -9632,92 +9667,23 @@ export default function App() {
               }}
               className="pointer-events-auto absolute z-30 flex flex-col gap-1.5 items-start"
             >
-              {chatOpen && (
-                <div className="w-72 max-w-full rounded-2xl bg-[#0F2936]/95 border border-sky-400/35 shadow-2xl overflow-hidden backdrop-blur-md">
-                  <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-200">
-                      {settings.language === 'en' ? 'Fleet Chat & Emotes' : 'Filo Sohbeti & İfadeler'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setChatOpen(false)}
-                      className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
-                    >
-                      <XIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="max-h-36 overflow-y-auto px-3 py-2 space-y-1 text-xs">
-                    {onlineChat.length === 0 ? (
-                      <div className="text-slate-400 text-[11px]">
-                        {settings.language === 'en'
-                          ? 'No messages yet. Say ahoy!'
-                          : 'Henüz mesaj yok. Kaptanlara selam ver!'}
-                      </div>
-                    ) : (
-                      onlineChat.map((m) => (
-                        <div key={m.id} className="leading-snug break-words">
-                          {m.senderId === 'SYSTEM' ? (
-                            <span className="text-amber-300/90 italic">{m.text}</span>
-                          ) : (
-                            <>
-                              <span
-                                className="font-bold mr-1.5"
-                                style={{ color: m.bannerColor || '#38BDF8' }}
-                              >
-                                {m.senderName}:
-                              </span>
-                              <span className="text-slate-100">{m.text}</span>
-                            </>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="px-2.5 py-1.5 border-t border-white/10 flex items-center justify-between gap-1 bg-slate-900/40">
-                    {['👋', '⚔️', '💰', '🏴‍☠️', '🆘', '❤️'].map((em) => (
-                      <button
-                        key={em}
-                        type="button"
-                        onClick={() => onlineManagerRef.current?.sendEmote(em)}
-                        className="flex-1 py-1 rounded-lg hover:bg-white/15 active:scale-90 transition text-sm cursor-pointer"
-                        title="İfade Gönder"
-                      >
-                        {em}
-                      </button>
-                    ))}
-                  </div>
-
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const trimmed = chatInput.trim();
-                      if (!trimmed) return;
-                      onlineManagerRef.current?.sendChat(trimmed);
-                      setChatInput('');
-                    }}
-                    className="p-2 border-t border-white/10 flex items-center gap-1.5"
-                  >
-                    <input
-                      type="text"
-                      value={chatInput}
-                      maxLength={140}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder={
-                        settings.language === 'en' ? 'Message fleet...' : 'Filoya mesaj yaz...'
-                      }
-                      className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-white/15 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400"
-                    />
-                    <button
-                      type="submit"
-                      className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold cursor-pointer"
-                      aria-label="Send"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
-                </div>
+              {chatOpen && !useTopMobileChatOverlay && (
+                <ChatPanel
+                  messages={onlineChat}
+                  currentPlayerId={identity.playerId}
+                  playerCount={onlineLobbyPlayers.filter((p) => p.connected).length}
+                  chatInput={chatInput}
+                  onChatInputChange={setChatInput}
+                  onSendChat={(text) => onlineManagerRef.current?.sendChat(text)}
+                  onSendEmote={(emote) => onlineManagerRef.current?.sendEmote(emote)}
+                  onClose={() => setChatOpen(false)}
+                  language={settings.language}
+                  isTouchOrMobile={false}
+                  style={{
+                    maxHeight: `${Math.min(360, Math.max(160, hudLayout.desktopChatPlacement.maxHeight - 44))}px`,
+                  }}
+                  className="w-[340px] max-w-full"
+                />
               )}
 
               {voiceState.error && (
@@ -9737,18 +9703,22 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className="px-3 py-1.5 text-xs rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/40 text-sky-200 font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                  className={`px-3 py-1.5 text-xs rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                    chatOpen
+                      ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
+                      : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-sky-400/40 text-sky-200'
+                  }`}
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
-                  <span>{settings.language === 'en' ? 'Chat & Emotes' : 'Sohbet & İfade'}</span>
+                  <span>{settings.language === 'en' ? 'Chat' : 'Sohbet'}</span>
                   {controlsDisplayMode === 'DESKTOP' && (
                     <span className="text-[10px] font-mono-num text-sky-300/80">
                       [{formatKeyCode(settings.keybindings.chat)}]
                     </span>
                   )}
-                  {onlineChat.length > 0 && !chatOpen && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-sky-500/30 text-[10px] font-mono-num text-sky-100">
-                      {onlineChat.length}
+                  {unreadChatCount > 0 && !chatOpen && (
+                    <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-sky-400 text-[10px] font-bold font-mono-num text-slate-950">
+                      {unreadChatCount}
                     </span>
                   )}
                 </button>
