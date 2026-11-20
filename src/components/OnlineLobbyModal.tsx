@@ -88,6 +88,15 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   const [crestError, setCrestError] = useState(false);
   const [keyartError, setKeyartError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   const refreshSavedRooms = async () => {
     const rooms = await listRoomLedgers();
@@ -102,7 +111,13 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     try {
       await navigator.clipboard.writeText(text);
       setCopiedKind(kind);
-      window.setTimeout(() => setCopiedKind(null), 1800);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopiedKind(null);
+        copyTimerRef.current = null;
+      }, 1800);
     } catch {
       // Clipboard blocked in some contexts; ignore cleanly
     }
@@ -185,8 +200,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#041824]/90 via-[#062233]/75 to-[#03121b]/95"
       />
 
-      {/* Full-Viewport Container (scrolls on tiny portrait phones, single-screen cockpit on >=600px) */}
-      <div className="relative z-10 h-full w-full max-w-6xl mx-auto px-3 sm:px-5 lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-y-auto [@media(min-width:600px)]:overflow-hidden">
+      {/* Full-Viewport Container (scrolls on portrait & short landscape phones, single-screen cockpit when >=600x520) */}
+      <div className="relative z-10 h-full w-full max-w-6xl mx-auto pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:pl-[max(1.25rem,env(safe-area-inset-left))] sm:pr-[max(1.25rem,env(safe-area-inset-right))] lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-y-auto [@media(min-width:600px)_and_(min-height:520px)]:overflow-hidden">
         {/* Compact Top Navigation Header */}
         <header className="h-11 sm:h-12 shrink-0 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -703,7 +718,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       <div className="text-[11px] text-sky-300 shrink-0">{importNotice}</div>
                     )}
 
-                    <div className="flex-1 min-h-0 overflow-y-auto pr-0.5">
+                    <div className="flex-1 min-h-[120px] [@media(min-width:600px)_and_(min-height:520px)]:min-h-0 overflow-y-auto pr-0.5">
                       {savedRooms.length === 0 ? (
                         <div className="h-full min-h-[60px] px-3 py-2 rounded-xl bg-slate-950/35 border border-white/10 text-[11px] sm:text-xs text-slate-400 flex items-center justify-center text-center">
                           {isEn

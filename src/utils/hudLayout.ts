@@ -129,6 +129,7 @@ export interface HudLayoutInput {
   bagCount: number;
   nearDock: boolean;
   hasWeaponPanel: boolean;
+  hasMultipleWeapons?: boolean;
   onlineActive: boolean;
   voiceEnabled: boolean;
   chatOpen: boolean;
@@ -136,6 +137,17 @@ export interface HudLayoutInput {
   showPortraitHint: boolean;
   hasWorldEvent: boolean;
   activeDragId?: TouchButtonId | null;
+}
+
+export interface HudCompassSafeZones {
+  tlRight: number;
+  tlBottom: number;
+  trLeft: number;
+  trBottom: number;
+  blRight: number;
+  blTop: number;
+  brLeft: number;
+  brTop: number;
 }
 
 export interface UnifiedHudLayout {
@@ -152,6 +164,7 @@ export interface UnifiedHudLayout {
     maxHeight: number;
     stackBelowMinimap: boolean;
   };
+  compassSafeZones: HudCompassSafeZones;
   showTopCenterEvent: boolean;
   topCenterEventMaxWidth: number;
   minimap: ResolvedMiniMapGeom;
@@ -642,7 +655,8 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
   const wpRaw = layout.weaponPanel;
   const wpScale = clampVal(wpRaw?.scale ?? 1, 0.65, 1.45);
   const wpBaseW = isTopRightCompact ? Math.round(clampVal(vw * 0.52, 184, 212)) : 256;
-  const wpBaseH = isTopRightCompact ? 80 : 108;
+  const multiWep = Boolean(input.hasMultipleWeapons);
+  const wpBaseH = isTopRightCompact ? (multiWep ? 104 : 78) : (multiWep ? 112 : 84);
   const wpBaseRight = pad;
   const wpBaseTop = pad + (topRightRow1H > 0 ? topRightRow1H + (isTopRightCompact ? 6 : 8) : 0);
   const wpBaseCx = vw - wpBaseRight - wpBaseW / 2;
@@ -891,8 +905,19 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
       : minimapBox.right + 10
     : pad;
   const statusTop = minimapInTopLeft && stackBelowMinimap ? minimapBox.bottom + 8 : pad;
-  const statusRightLimit =
-    statusTop < topRightBox.bottom + 4 ? topRightBox.left - 10 : vw - pad;
+  const rightObstacles: number[] = [];
+  if (statusTop < topRightBox.bottom + 6 && topRightBox.left > statusLeft + 60) {
+    rightObstacles.push(topRightBox.left - 10);
+  }
+  if (
+    (input.hasWeaponPanel || input.isEditingLayout) &&
+    weaponBox.top < statusTop + 102 &&
+    weaponBox.bottom > statusTop - 4 &&
+    weaponBox.left > statusLeft + 76
+  ) {
+    rightObstacles.push(weaponBox.left - 10);
+  }
+  const statusRightLimit = rightObstacles.length > 0 ? Math.min(...rightObstacles) : vw - pad;
   const statusMaxWidth = Math.max(115, statusRightLimit - statusLeft);
 
   const bottomLimitForTopLeft =
@@ -902,6 +927,60 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
       ? vh - 120
       : vh - 64;
   const statusMaxHeight = Math.max(64, bottomLimitForTopLeft - statusTop);
+
+  const hasMiniTL = minimapBox.top < vh * 0.45 && minimapBox.left < vw * 0.45;
+  const hasWeaponTR =
+    (input.hasWeaponPanel || input.isEditingLayout) &&
+    weaponBox.right > vw * 0.52 &&
+    weaponBox.top < vh * 0.45;
+  const compassSafeZones: HudCompassSafeZones = {
+    tlRight: Math.max(
+      hasMiniTL ? minimapBox.right + 16 : 0,
+      statusLeft < vw * 0.48 && statusTop < vh * 0.45
+        ? Math.min(vw * 0.55, statusLeft + Math.min(statusMaxWidth, 230)) + 16
+        : 0
+    ),
+    tlBottom: Math.max(
+      hasMiniTL ? minimapBox.bottom + 16 : 0,
+      statusTop < vh * 0.45 ? statusTop + Math.min(statusMaxHeight, 96) + 16 : 0
+    ),
+    trLeft: Math.min(
+      topRightEstW > 0 ? topRightBox.left - 18 : vw,
+      hasWeaponTR ? weaponBox.left - 18 : vw
+    ),
+    trBottom: Math.max(
+      topRightEstW > 0 ? topRightBox.bottom + 18 : 0,
+      hasWeaponTR ? weaponBox.bottom + 18 : 0
+    ),
+    blRight:
+      input.controlsDisplayMode === 'TOUCH' &&
+      joystickBox.left < vw * 0.45 &&
+      joystickBox.bottom > vh * 0.55
+        ? joystickBox.right + 18
+        : input.onlineActive
+        ? Math.min(vw * 0.42, 220)
+        : 0,
+    blTop:
+      input.controlsDisplayMode === 'TOUCH' &&
+      joystickBox.left < vw * 0.45 &&
+      joystickBox.bottom > vh * 0.55
+        ? joystickBox.top - 18
+        : input.onlineActive
+        ? vh - 76
+        : vh,
+    brLeft:
+      input.controlsDisplayMode === 'TOUCH'
+        ? actionsBounds.left - 18
+        : input.controlsDisplayMode === 'DESKTOP'
+        ? vw - pad - desktopActionEstW - 18
+        : vw,
+    brTop:
+      input.controlsDisplayMode === 'TOUCH'
+        ? actionsBounds.top - 18
+        : input.controlsDisplayMode === 'DESKTOP'
+        ? vh - pad - desktopActionEstH - 18
+        : vh,
+  };
 
   // Top-Center World Event fits cleanly only if wide gap between Top-Left and Top-Right
   const topLeftOccupiedRight = minimapInTopLeft
@@ -1111,6 +1190,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
       maxHeight: statusMaxHeight,
       stackBelowMinimap,
     },
+    compassSafeZones,
     showTopCenterEvent,
     topCenterEventMaxWidth,
     minimap,

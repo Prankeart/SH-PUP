@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ArrowLeftRight, Move, RotateCw } from 'lucide-react';
 import { TouchButtonId, TouchButtonTransform, TouchLayoutConfig, WeaponId } from '../types/game';
 import { WEAPONS } from '../engine/weapons';
@@ -170,6 +170,15 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
     opacity: number;
   } | null>(null);
 
+  useEffect(() => {
+    const clearGestures = () => {
+      gestureRef.current = null;
+      editDragRef.current = null;
+    };
+    window.addEventListener('blur', clearGestures);
+    return () => window.removeEventListener('blur', clearGestures);
+  }, []);
+
   if (!equippedWeapon || !WEAPONS[equippedWeapon] || weaponSlots.length === 0) {
     return null;
   }
@@ -200,7 +209,11 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
     if (isEditingLayout) {
       e.preventDefault();
       e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore capture failure
+      }
       onSelectButton?.('weaponPanel');
       editDragRef.current = {
         pointerId: e.pointerId,
@@ -215,6 +228,13 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
     }
     const target = e.target as HTMLElement | null;
     const startedOnSwapBar = Boolean(target?.closest('[data-slot-control="true"]'));
+    if (!startedOnSwapBar) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore capture failure
+      }
+    }
     gestureRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -261,13 +281,15 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
       return;
     }
 
-    if (!g.startedOnSwapBar && Math.hypot(moveDx, moveDy) < 14) {
+    if (isTouchMode && isRanged && !g.startedOnSwapBar && Math.hypot(moveDx, moveDy) < 14) {
       onReload();
     }
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
-    gestureRef.current = null;
+    if (gestureRef.current && gestureRef.current.pointerId === e.pointerId) {
+      gestureRef.current = null;
+    }
     if (editDragRef.current && editDragRef.current.pointerId === e.pointerId) {
       editDragRef.current = null;
     }
@@ -296,6 +318,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handlePointerCancel}
         role="region"
         aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
         style={wrapperStyle}
@@ -479,6 +502,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handlePointerCancel}
       role="region"
       aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
       style={wrapperStyle}
@@ -494,7 +518,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
       {/* CS2 Primary Active Readout: Big Left Ammo + Right Silhouette & Name */}
       <div
         onClick={(e) => {
-          if (isEditingLayout) return;
+          if (isEditingLayout || !isRanged) return;
           e.stopPropagation();
           onReload();
         }}

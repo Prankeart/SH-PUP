@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Anchor,
   Compass,
@@ -42,8 +42,10 @@ export function clampActionButtonTransform(
   raw: TouchButtonTransform | undefined,
   compact: boolean
 ): { dx: number; dy: number; scale: number } {
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 800;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 600;
+  const vw =
+    typeof window !== 'undefined' ? window.visualViewport?.width ?? window.innerWidth : 800;
+  const vh =
+    typeof window !== 'undefined' ? window.visualViewport?.height ?? window.innerHeight : 600;
   const container = compact ? COMPACT_CONTAINER : FULL_CONTAINER;
   const rect = compact ? COMPACT_RECTS[id] : FULL_RECTS[id];
   const scale = Math.max(0.75, Math.min(1.35, raw?.scale ?? 1));
@@ -217,6 +219,14 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
     scale: number;
     opacity: number;
   } | null>(null);
+
+  useEffect(() => {
+    const clearDrag = () => {
+      dragStateRef.current = null;
+    };
+    window.addEventListener('blur', clearDrag);
+    return () => window.removeEventListener('blur', clearDrag);
+  }, []);
 
   const radarToastContent = showRadarStatus && lastRadar && (
     <div
@@ -494,11 +504,20 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   const makeDragHandlers = (id: ActionButtonKey) => {
     if (!isEditingLayout) return {};
     const { t } = getBtnGeom(id);
+    const clearIfMatch = (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (dragStateRef.current?.pointerId === e.pointerId) {
+        dragStateRef.current = null;
+      }
+    };
     return {
       onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore capture failure
+        }
         onSelectButton?.(id);
         dragStateRef.current = {
           id,
@@ -527,16 +546,9 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           : { ...clampActionButtonTransform(id, candidate, compact), opacity: drag.opacity };
         onUpdateButtonTransform?.(id, resolved);
       },
-      onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
-        if (dragStateRef.current?.pointerId === e.pointerId) {
-          dragStateRef.current = null;
-        }
-      },
-      onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => {
-        if (dragStateRef.current?.pointerId === e.pointerId) {
-          dragStateRef.current = null;
-        }
-      },
+      onPointerUp: clearIfMatch,
+      onPointerCancel: clearIfMatch,
+      onLostPointerCapture: clearIfMatch,
     };
   };
 
@@ -567,7 +579,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
     if (btnTop < minVisibleTop) minVisibleTop = btnTop;
   }
 
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 600;
+  const vh =
+    typeof window !== 'undefined' ? window.visualViewport?.height ?? window.innerHeight : 600;
   const containerScreenTop = vh - container.pad - container.h;
   const fallbackToastTop = minVisibleTop - 40;
   const fallbackFitsAbove = containerScreenTop + fallbackToastTop >= 52;

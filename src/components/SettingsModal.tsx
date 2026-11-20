@@ -134,6 +134,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(() => isCurrentlyFullscreen());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const syncFs = () => setIsFullscreen(isCurrentlyFullscreen());
@@ -157,11 +166,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (!listeningKey) return;
+    const IGNORED_CODES = new Set([
+      'ShiftLeft',
+      'ShiftRight',
+      'ControlLeft',
+      'ControlRight',
+      'AltLeft',
+      'AltRight',
+      'MetaLeft',
+      'MetaRight',
+      'CapsLock',
+      'NumLock',
+      'ScrollLock',
+      'Tab',
+      'PrintScreen',
+      'ContextMenu',
+      'Pause',
+      'Unidentified',
+    ]);
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (e.code === 'Escape') {
         setListeningKey(null);
+        return;
+      }
+      if (!e.code || IGNORED_CODES.has(e.code) || /^F([1-9]|1[0-2])$/.test(e.code)) {
         return;
       }
       onUpdateSettings({
@@ -173,13 +203,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       setListeningKey(null);
     };
+    const onBlur = () => setListeningKey(null);
     window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', onBlur);
+    };
   }, [listeningKey, onUpdateSettings, settings]);
 
   const showToast = (msg: string) => {
     setStatusMsg(msg);
-    window.setTimeout(() => setStatusMsg(null), 2600);
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setStatusMsg(null);
+      toastTimerRef.current = null;
+    }, 2600);
   };
 
   const handleCopySeed = () => {
@@ -187,7 +228,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       void navigator.clipboard.writeText(String(worldSeed));
     }
     setCopiedSeed(true);
-    window.setTimeout(() => setCopiedSeed(false), 1800);
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopiedSeed(false);
+      copyTimerRef.current = null;
+    }, 1800);
   };
 
   const handleDownloadJson = () => {
@@ -265,7 +312,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-5"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Game Settings' : 'Oyun Ayarları'}

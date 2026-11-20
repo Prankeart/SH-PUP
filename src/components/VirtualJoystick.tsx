@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Move } from 'lucide-react';
 import { TouchButtonId, TouchButtonTransform, TouchLayoutConfig, Vec2 } from '../types/game';
 import { ResolvedJoystickGeom } from '../utils/hudLayout';
@@ -24,8 +24,10 @@ function clampJoystickTransform(
   size: number,
   pad: number
 ): { dx: number; dy: number; scale: number } {
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 800;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 600;
+  const vw =
+    typeof window !== 'undefined' ? window.visualViewport?.width ?? window.innerWidth : 800;
+  const vh =
+    typeof window !== 'undefined' ? window.visualViewport?.height ?? window.innerHeight : 600;
   const scale = Math.max(0.75, Math.min(1.35, raw?.scale ?? 1));
   const scaledSize = size * scale;
   const halfExtra = (scaledSize - size) / 2;
@@ -103,11 +105,30 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
     });
   };
 
+  const resetJoystickState = useCallback(() => {
+    activePointerId.current = null;
+    dragStartRef.current = null;
+    setIsActive(false);
+    setDynamicOrigin(null);
+    setKnobOffset({ x: 0, y: 0 });
+    onChange({ x: 0, y: 0 });
+  }, [onChange]);
+
+  useEffect(() => {
+    const onBlur = () => resetJoystickState();
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, [resetJoystickState]);
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isEditingLayout) {
       e.preventDefault();
       e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore capture failure
+      }
       activePointerId.current = e.pointerId;
       onSelectButton?.('joystick');
       dragStartRef.current = {
@@ -120,7 +141,11 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       return;
     }
     if (activePointerId.current !== null) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore capture failure
+    }
     activePointerId.current = e.pointerId;
     setIsActive(true);
 
@@ -165,12 +190,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
 
   const releasePointer = (e: React.PointerEvent<HTMLDivElement>) => {
     if (activePointerId.current !== e.pointerId) return;
-    activePointerId.current = null;
-    dragStartRef.current = null;
-    setIsActive(false);
-    setDynamicOrigin(null);
-    setKnobOffset({ x: 0, y: 0 });
-    onChange({ x: 0, y: 0 });
+    resetJoystickState();
   };
 
   const basePositionStyle =
@@ -189,6 +209,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={releasePointer}
       onPointerCancel={releasePointer}
+      onLostPointerCapture={releasePointer}
       aria-label="Hareket Joystick"
       style={{
         width: `${boxSize}px`,

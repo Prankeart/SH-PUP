@@ -129,8 +129,51 @@ export const MapModal: React.FC<MapModalProps> = ({
       setCanvasTick((t) => t + 1);
     });
     observer.observe(canvas);
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.16 : 0.86;
+      const oldZoom = zoomRef.current;
+      const newZoom = applyZoom(oldZoom * factor);
+      if (newZoom !== oldZoom) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const wx = offsetRef.current.x + (sx - rect.width / 2) / oldZoom;
+        const wy = offsetRef.current.y + (sy - rect.height / 2) / oldZoom;
+        applyOffset({
+          x: wx - (sx - rect.width / 2) / newZoom,
+          y: wy - (sy - rect.height / 2) / newZoom,
+        });
+      }
+    };
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    const clearPointers = () => {
+      activePointersRef.current.clear();
+      pinchRef.current = null;
+      dragRef.current.active = false;
+      wasPinchRef.current = false;
+    };
+    window.addEventListener('blur', clearPointers);
+
+    let dprMedia: MediaQueryList | null = null;
+    const bindDprWatcher = () => {
+      if (typeof window.matchMedia !== 'function') return;
+      dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      const onDprChange = () => {
+        setCanvasTick((t) => t + 1);
+        dprMedia?.removeEventListener('change', onDprChange);
+        bindDprWatcher();
+      };
+      dprMedia.addEventListener('change', onDprChange, { once: true });
+    };
+    bindDprWatcher();
+
     return () => {
       observer.disconnect();
+      canvas.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('blur', clearPointers);
       canvas.width = 0;
       canvas.height = 0;
     };
@@ -801,23 +844,6 @@ export const MapModal: React.FC<MapModalProps> = ({
         <div className="relative flex-1 min-h-0 bg-[#083A52]">
           <canvas
             ref={canvasRef}
-            onWheel={(e) => {
-              e.preventDefault();
-              const factor = e.deltaY < 0 ? 1.16 : 0.86;
-              const oldZoom = zoomRef.current;
-              const newZoom = applyZoom(oldZoom * factor);
-              if (canvasRef.current && newZoom !== oldZoom) {
-                const rect = canvasRef.current.getBoundingClientRect();
-                const sx = e.clientX - rect.left;
-                const sy = e.clientY - rect.top;
-                const wx = offsetRef.current.x + (sx - rect.width / 2) / oldZoom;
-                const wy = offsetRef.current.y + (sy - rect.height / 2) / oldZoom;
-                applyOffset({
-                  x: wx - (sx - rect.width / 2) / newZoom,
-                  y: wy - (sy - rect.height / 2) / newZoom,
-                });
-              }
-            }}
             onPointerDown={(e) => {
               try {
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -991,6 +1017,14 @@ export const MapModal: React.FC<MapModalProps> = ({
                   moved: true,
                 };
               } else if (activePointersRef.current.size === 0) {
+                dragRef.current.active = false;
+                wasPinchRef.current = false;
+              }
+            }}
+            onLostPointerCapture={(e) => {
+              activePointersRef.current.delete(e.pointerId);
+              if (activePointersRef.current.size === 0) {
+                pinchRef.current = null;
                 dragRef.current.active = false;
                 wasPinchRef.current = false;
               }

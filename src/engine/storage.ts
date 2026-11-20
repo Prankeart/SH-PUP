@@ -407,7 +407,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   masterVolume: 100,
   sfxVolume: 100,
   ambientVolume: 80,
-  autoFullscreen: true,
+  autoFullscreen: false,
   joystickMode: 'FIXED',
   showWaves: true,
   touchControls: 'AUTO',
@@ -439,7 +439,7 @@ export function loadSettings(): GameSettings {
       masterVolume: clampVolume(parsed.masterVolume, 100),
       sfxVolume: clampVolume(parsed.sfxVolume, 100),
       ambientVolume: clampVolume(parsed.ambientVolume, 80),
-      autoFullscreen: parsed.autoFullscreen ?? true,
+      autoFullscreen: parsed.autoFullscreen ?? false,
       joystickMode: parsed.joystickMode === 'DYNAMIC' ? 'DYNAMIC' : 'FIXED',
       showWaves: parsed.showWaves ?? true,
       touchControls:

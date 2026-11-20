@@ -124,7 +124,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overscroll-none"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Harbor Merchant & Upgrades' : 'Liman Tüccarı ve Geliştirmeler'}

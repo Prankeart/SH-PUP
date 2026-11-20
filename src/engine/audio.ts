@@ -70,7 +70,7 @@ class SoundEngine {
       }
     }
     if (!this.ctx) return null;
-    if (this.ctx.state === 'suspended') {
+    if ((this.ctx.state as string) !== 'running') {
       this.ctx.resume().catch(() => {});
     }
     if (!this.masterGain) {
@@ -134,6 +134,17 @@ class SoundEngine {
       this.ambientStarted = true;
     } catch {
       // Ignore WebAudio restriction
+    }
+  }
+
+  public resumeOnGesture() {
+    if (!this.enabled) return;
+    const ctx = this.ensureAudioContext();
+    if (ctx && (ctx.state as string) !== 'running') {
+      ctx.resume().catch(() => {});
+    }
+    if (this.ambientEnabled && this.masterVolume > 0) {
+      this.ensureAmbientOcean();
     }
   }
 

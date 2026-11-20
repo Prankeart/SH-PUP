@@ -59,8 +59,10 @@ function clampMiniMapTransform(
   baseSize: number,
   pad: number
 ): { dx: number; dy: number; scale: number; effectiveSize: number } {
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 800;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 600;
+  const vw =
+    typeof window !== 'undefined' ? window.visualViewport?.width ?? window.innerWidth : 800;
+  const vh =
+    typeof window !== 'undefined' ? window.visualViewport?.height ?? window.innerHeight : 600;
   const scale = Math.max(0.65, Math.min(1.6, raw?.scale ?? 1));
   const effectiveSize = Math.round(baseSize * scale);
   const minDx = Math.min(0, 8 - pad);
@@ -138,6 +140,14 @@ export const MiniMap: React.FC<MiniMapProps> = ({
     colorblindMode,
     getLiveSnapshot,
   };
+
+  useEffect(() => {
+    const clearDrag = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('blur', clearDrag);
+    return () => window.removeEventListener('blur', clearDrag);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -541,7 +551,11 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           if (!isEditingLayout) return;
           e.preventDefault();
           e.stopPropagation();
-          e.currentTarget.setPointerCapture(e.pointerId);
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            // Ignore capture failure
+          }
           onSelectButton?.('minimap');
           dragRef.current = {
             pointerId: e.pointerId,
@@ -575,6 +589,11 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           }
         }}
         onPointerCancel={(e) => {
+          if (dragRef.current && dragRef.current.pointerId === e.pointerId) {
+            dragRef.current = null;
+          }
+        }}
+        onLostPointerCapture={(e) => {
           if (dragRef.current && dragRef.current.pointerId === e.pointerId) {
             dragRef.current = null;
           }

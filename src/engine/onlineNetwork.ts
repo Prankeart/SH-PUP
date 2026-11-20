@@ -2,6 +2,7 @@ import Peer, { DataConnection } from 'peerjs';
 import {
   ClientToHostMessage,
   HostToClientMessage,
+  OnlineCaveSnapshot,
   OnlineChatMessage,
   OnlineConnectionStatus,
   OnlineModeRule,
@@ -17,7 +18,8 @@ import {
   StarterSlot,
   VoicePeerInfo,
 } from '../types/online';
-import { SoldierType, WeaponId } from '../types/game';
+import { CaveInterior, SoldierType, WeaponId } from '../types/game';
+import { generateCaveInterior, isPointInsideCaveWalkable, resolveCaveCollision } from './caves';
 import {
   computeNextStarterSlot,
   getIslandRadiusAtAngle,
@@ -86,6 +88,32 @@ export interface OnlineCallbacks {
   onChat: (msg: OnlineChatMessage) => void;
   onPingUpdate: (rttMs: number) => void;
   onVoicePeers?: (peers: VoicePeerInfo[]) => void;
+  onCaveSnapshot?: (snapshot: OnlineCaveSnapshot) => void;
+}
+
+interface HostActiveCaveRoom {
+  cave: CaveInterior;
+  entranceX: number;
+  entranceY: number;
+  occupantIds: Set<string>;
+  bossDefeated: boolean;
+  hitFlashUntilByEnemyId: Map<string, number>;
+}
+
+interface HostCaveProjectile {
+  id: string;
+  caveId: string;
+  ownerId: string;
+  kind: 'PLAYER' | 'ENEMY';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  color: string;
+  life: number;
+  splashRadius?: number;
+  lifesteal?: number;
 }
 
 export class OnlineSessionManager {
@@ -110,6 +138,8 @@ export class OnlineSessionManager {
   private playerEscortShips = new Map<string, RemoteEscortShipSnapshot[]>();
   private projectiles: OnlineProjectileSnapshot[] = [];
   private hitFlashUntilByPlayer = new Map<string, number>();
+  private activeCaves = new Map<string, HostActiveCaveRoom>();
+  private caveProjectiles: HostCaveProjectile[] = [];
   private hostTickTimer: number | null = null;
   private hostSaveTimer: number | null = null;
   private lastTickMs = 0;
@@ -118,6 +148,7 @@ export class OnlineSessionManager {
   private hostConn: DataConnection | null = null;
   private currentRoomId = '';
   private reconnectTimer: number | null = null;
+  private reconnectAttempts = 0;
   private pingTimer: number | null = null;
   private poseSeq = 0;
   private destroyed = false;
@@ -293,6 +324,16 @@ export class OnlineSessionManager {
         this.setupHostConnection(conn);
       });
 
+      peer.on('disconnected', () => {
+        if (!this.destroyed && !peer.destroyed) {
+          try {
+            peer.reconnect();
+          } catch {
+            // Ignore transient signaling reconnect failure
+          }
+        }
+      });
+
       peer.on('error', (err) => {
         const msg =
           err.type === 'unavailable-id'
@@ -307,6 +348,7 @@ export class OnlineSessionManager {
   public joinRoom(roomIdRaw: string, identity: PlayerIdentity): void {
     this.disconnect();
     this.destroyed = false;
+    this.reconnectAttempts = 0;
     this.role = 'CLIENT';
     this.identity = identity;
     this.currentRoomId = roomIdRaw.trim().toUpperCase();
@@ -321,6 +363,16 @@ export class OnlineSessionManager {
     peer.on('open', () => {
       if (this.destroyed) return;
       this.connectToHost();
+    });
+
+    peer.on('disconnected', () => {
+      if (this.destroyed || peer.destroyed) return;
+      this.setStatus('RECONNECTING', 'Sinyal sunucusuna yeniden bağlanılıyor...');
+      try {
+        peer.reconnect();
+      } catch {
+        // Fallback to scheduled reconnect
+      }
     });
 
     peer.on('error', (err) => {
@@ -342,6 +394,7 @@ export class OnlineSessionManager {
 
     conn.on('open', () => {
       if (this.destroyed || !this.identity) return;
+      this.reconnectAttempts = 0;
       if (this.reconnectTimer !== null) {
         window.clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
@@ -376,12 +429,25 @@ export class OnlineSessionManager {
   private scheduleReconnect() {
     if (this.destroyed || this.role !== 'CLIENT') return;
     if (this.reconnectTimer !== null) return;
+    if (this.reconnectAttempts >= 8) {
+      this.setStatus('ERROR', 'Kurucuya yeniden bağlanılamadı. Odayı kapatıp tekrar deneyin.');
+      return;
+    }
+    const delayMs = Math.min(12000, Math.round(1800 * Math.pow(1.45, this.reconnectAttempts)));
+    this.reconnectAttempts += 1;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.destroyed && this.peer && !this.peer.destroyed) {
+        if (this.peer.disconnected) {
+          try {
+            this.peer.reconnect();
+          } catch {
+            // Ignore
+          }
+        }
         this.connectToHost();
       }
-    }, 2200);
+    }, delayMs);
   }
 
   private startClientPingLoop() {
@@ -405,6 +471,7 @@ export class OnlineSessionManager {
       this.peerToPlayerId.delete(conn.peer);
       if (pid) {
         this.playerToConn.delete(pid);
+        this.removePlayerFromAllCaves(pid);
         const pose = this.playerPoses.get(pid);
         if (pose) {
           pose.connected = false;
@@ -670,6 +737,9 @@ export class OnlineSessionManager {
     pose.digAnimProgress = msg.digAnimProgress;
     pose.attackAnimProgress = msg.attackAnimProgress;
     pose.inCaveId = msg.inCaveId;
+    pose.caveX = msg.caveX;
+    pose.caveY = msg.caveY;
+    pose.caveAngle = msg.caveAngle;
     pose.connected = true;
 
     if (msg.soldiers) {
@@ -1141,10 +1211,10 @@ export class OnlineSessionManager {
     }
 
     if (msg.type === 'cmd:recruit_soldier') {
-      if (!prof.kingdomFounded) return;
+      if (!prof.kingdomFounded || !Number.isFinite(msg.count)) return;
       const spec = SOLDIER_SPECS[msg.soldierType as SoldierType];
       if (!spec) return;
-      const qty = Math.max(1, Math.min(25, msg.count));
+      const qty = Math.max(1, Math.min(25, Math.floor(msg.count)));
       const cost = spec.cost * qty;
       if (prof.gold < cost) return;
       const { hpMult } = getSoldierPowerMultiplier(Math.max(1, prof.armyLevel));
@@ -1181,8 +1251,8 @@ export class OnlineSessionManager {
     }
 
     if (msg.type === 'cmd:recruit_ship') {
-      if (!prof.kingdomFounded) return;
-      const qty = Math.max(1, Math.min(10, msg.count));
+      if (!prof.kingdomFounded || !Number.isFinite(msg.count)) return;
+      const qty = Math.max(1, Math.min(10, Math.floor(msg.count)));
       const cost = KINGDOM_COSTS.ESCORT_SHIP * qty;
       if (prof.gold < cost) return;
       prof.gold -= cost;
@@ -1192,7 +1262,13 @@ export class OnlineSessionManager {
     }
 
     if (msg.type === 'cmd:heal_army') {
-      if (!prof.kingdomFounded || prof.gold < KINGDOM_COSTS.HEAL_ARMY) return;
+      if (
+        !prof.kingdomFounded ||
+        prof.gold < KINGDOM_COSTS.HEAL_ARMY ||
+        !prof.soldiers.some((s) => s.hp < s.maxHp)
+      ) {
+        return;
+      }
       prof.gold -= KINGDOM_COSTS.HEAL_ARMY;
       prof.soldiers = prof.soldiers.map((s) => ({ ...s, hp: s.maxHp }));
       this.syncProfileToPlayer(pid, prof);
@@ -1576,6 +1652,197 @@ export class OnlineSessionManager {
           }
         }
       }
+      return;
+    }
+
+    if (msg.type === 'cmd:enter_cave') {
+      if (!this.ledger) return;
+      this.removePlayerFromAllCaves(pid);
+      let room = this.activeCaves.get(msg.caveId);
+      if (!room) {
+        const openedSet = new Set<string>();
+        for (const p of Object.values(this.ledger.playersById)) {
+          for (const cid of p.openedCaveChestIds ?? []) {
+            openedSet.add(cid);
+          }
+        }
+        const cave = generateCaveInterior(
+          {
+            id: msg.caveId,
+            islandId: msg.islandId,
+            name: msg.entranceName,
+            x: msg.entranceX,
+            y: msg.entranceY,
+            tier: msg.tier,
+            theme: msg.theme,
+            biome: msg.biome,
+          },
+          this.ledger.roomInfo.worldSeed,
+          openedSet,
+          new Set(prof.unlockedWeapons)
+        );
+        room = {
+          cave,
+          entranceX: msg.entranceX,
+          entranceY: msg.entranceY,
+          occupantIds: new Set([pid]),
+          bossDefeated: false,
+          hitFlashUntilByEnemyId: new Map(),
+        };
+        this.activeCaves.set(msg.caveId, room);
+      } else {
+        room.occupantIds.add(pid);
+      }
+      const pose = this.playerPoses.get(pid);
+      if (pose) {
+        pose.inCaveId = msg.caveId;
+        pose.caveX = room.cave.entryPos.x;
+        pose.caveY = room.cave.entryPos.y;
+        pose.caveAngle = 0;
+      }
+      this.sendCaveSnapshotToPlayer(pid, this.buildCaveSnapshot(room, performance.now()));
+      return;
+    }
+
+    if (msg.type === 'cmd:exit_cave') {
+      const room = this.activeCaves.get(msg.caveId);
+      if (room) {
+        room.occupantIds.delete(pid);
+        if (room.occupantIds.size === 0) {
+          this.activeCaves.delete(msg.caveId);
+          this.caveProjectiles = this.caveProjectiles.filter((pr) => pr.caveId !== msg.caveId);
+        }
+      }
+      const pose = this.playerPoses.get(pid);
+      if (pose) {
+        pose.inCaveId = null;
+        pose.caveX = undefined;
+        pose.caveY = undefined;
+        pose.caveAngle = undefined;
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:cave_attack') {
+      const room = this.activeCaves.get(msg.caveId);
+      const pose = this.playerPoses.get(pid);
+      if (!room || !pose || pose.inCaveId !== msg.caveId) return;
+      const now = performance.now();
+      const safeDmg = clamp(Math.round(msg.damage), 1, 280);
+      const safeRange = clamp(msg.range, 20, 460);
+
+      if (!msg.isRanged) {
+        for (let ei = room.cave.enemies.length - 1; ei >= 0; ei--) {
+          const ce = room.cave.enemies[ei];
+          const d = dist(msg.x, msg.y, ce.x, ce.y);
+          if (d <= safeRange + ce.radius + 10) {
+            const dx = (ce.x - msg.x) / Math.max(1, d);
+            const dy = (ce.y - msg.y) / Math.max(1, d);
+            const dot = Math.cos(msg.angle) * dx + Math.sin(msg.angle) * dy;
+            if (dot >= -0.25 || d < 28) {
+              this.applyCaveEnemyDamage(room, ce, ei, safeDmg, pid, now, msg.lifesteal);
+              const kAng = Math.atan2(ce.y - msg.y, ce.x - msg.x);
+              const pushed = resolveCaveCollision(
+                room.cave,
+                ce.x + Math.cos(kAng) * 14,
+                ce.y + Math.sin(kAng) * 14,
+                ce.radius
+              );
+              ce.x = pushed.x;
+              ce.y = pushed.y;
+            }
+          }
+        }
+        this.broadcastCaveRoomSnapshot(room, now);
+      } else {
+        const pellets = clamp(Math.round(msg.pellets ?? 1), 1, 7);
+        const spreadRad = clamp(msg.spreadRad ?? 0, 0, 0.85);
+        const speed = clamp(msg.projectileSpeed ?? 440, 220, 720);
+        const life = clamp(safeRange / speed + 0.14, 0.25, 1.5);
+        for (let pi = 0; pi < pellets; pi++) {
+          const offsetA =
+            pellets === 1 ? 0 : (pi / (pellets - 1) - 0.5) * spreadRad;
+          const ang = msg.angle + offsetA;
+          this.caveProjectiles.push({
+            id: `ocp_${pid}_${Date.now()}_${pi}_${Math.random().toString(36).slice(2, 5)}`,
+            caveId: msg.caveId,
+            ownerId: pid,
+            kind: 'PLAYER',
+            x: msg.x + Math.cos(ang) * 14,
+            y: msg.y + Math.sin(ang) * 14,
+            vx: Math.cos(ang) * speed,
+            vy: Math.sin(ang) * speed,
+            damage: safeDmg,
+            color: msg.projColor || prof.bannerColor || '#38BDF8',
+            life,
+            splashRadius: msg.splashRadius,
+            lifesteal: msg.lifesteal,
+          });
+        }
+      }
+      return;
+    }
+
+    if (msg.type === 'cmd:cave_interact') {
+      const room = this.activeCaves.get(msg.caveId);
+      const pose = this.playerPoses.get(pid);
+      if (!room || !pose || pose.inCaveId !== msg.caveId) return;
+      const now = performance.now();
+
+      if (msg.targetKind === 'CHEST') {
+        const chest = room.cave.chests.find((c) => c.id === msg.targetId);
+        if (!chest || chest.opened) return;
+        chest.opened = true;
+        const safeGold = clamp(Math.round(chest.goldValue), 10, 450);
+        const recipients = Array.from(room.occupantIds);
+        if (!recipients.includes(pid)) recipients.push(pid);
+        for (const rPid of recipients) {
+          const rProf = this.ledger.playersById[rPid];
+          if (!rProf) continue;
+          const opened = rProf.openedCaveChestIds ?? [];
+          if (opened.includes(chest.id)) continue;
+          const isFirstInThisCave = !opened.some((cid) => cid.startsWith(`${room.cave.caveId}_chest`));
+          rProf.openedCaveChestIds = [...opened, chest.id];
+          rProf.gold += safeGold;
+          rProf.totalGoldEarned += safeGold;
+          if (chest.tier === 'BOSS' || isFirstInThisCave) {
+            rProf.cavesExploredCount = (rProf.cavesExploredCount ?? 0) + 1;
+          }
+          this.syncProfileToPlayer(rPid, rProf);
+        }
+        this.broadcastCaveRoomSnapshot(room, now);
+        void saveRoomLedger(this.ledger);
+      } else if (msg.targetKind === 'ALTAR') {
+        const altar = room.cave.weaponAltar;
+        if (!altar || altar.id !== msg.targetId || altar.claimed) return;
+        altar.claimed = true;
+        const recipients = Array.from(room.occupantIds);
+        if (!recipients.includes(pid)) recipients.push(pid);
+        for (const rPid of recipients) {
+          const rProf = this.ledger.playersById[rPid];
+          if (!rProf) continue;
+          const opened = rProf.openedCaveChestIds ?? [];
+          if (opened.includes(altar.id)) continue;
+          rProf.openedCaveChestIds = [...opened, altar.id];
+          if (WEAPONS[altar.weaponId]) {
+            const alreadyUnlocked = rProf.unlockedWeapons.includes(altar.weaponId);
+            if (!alreadyUnlocked) {
+              const res = applyWeaponAcquire(rProf, altar.weaponId, 'PICKUP');
+              rProf.unlockedWeapons = res.unlockedWeapons;
+              rProf.weaponSlots = res.weaponSlots;
+              rProf.equippedWeapon = res.equippedWeapon;
+              const rPose = this.playerPoses.get(rPid);
+              if (rPose) rPose.equippedWeapon = rProf.equippedWeapon;
+            } else {
+              rProf.gold += 60;
+              rProf.totalGoldEarned += 60;
+            }
+          }
+          this.syncProfileToPlayer(rPid, rProf);
+        }
+        this.broadcastCaveRoomSnapshot(room, now);
+        void saveRoomLedger(this.ledger);
+      }
     }
   }
 
@@ -1763,6 +2030,301 @@ export class OnlineSessionManager {
     this.syncProfileToPlayer(pid, prof);
   }
 
+  private removePlayerFromAllCaves(pid: string) {
+    for (const [caveId, room] of this.activeCaves.entries()) {
+      if (room.occupantIds.delete(pid) && room.occupantIds.size === 0) {
+        this.activeCaves.delete(caveId);
+        this.caveProjectiles = this.caveProjectiles.filter((pr) => pr.caveId !== caveId);
+      }
+    }
+  }
+
+  private buildCaveSnapshot(room: HostActiveCaveRoom, now: number): OnlineCaveSnapshot {
+    return {
+      caveId: room.cave.caveId,
+      enemies: room.cave.enemies.map((ce) => ({
+        id: ce.id,
+        x: Math.round(ce.x),
+        y: Math.round(ce.y),
+        angle: Math.round(ce.angle * 100) / 100,
+        hp: ce.hp,
+        maxHp: ce.maxHp,
+        walkPhase: Math.round(ce.walkPhase * 100) / 100,
+        hitFlash: (room.hitFlashUntilByEnemyId.get(ce.id) ?? 0) > now,
+      })),
+      projectiles: this.caveProjectiles
+        .filter((pr) => pr.caveId === room.cave.caveId)
+        .map((pr) => ({
+          id: pr.id,
+          ownerId: pr.ownerId,
+          x: Math.round(pr.x),
+          y: Math.round(pr.y),
+          color: pr.color,
+        })),
+      openedChestIds: room.cave.chests.filter((c) => c.opened).map((c) => c.id),
+      altarClaimed: Boolean(room.cave.weaponAltar?.claimed),
+      bossDefeated: room.bossDefeated,
+    };
+  }
+
+  private sendCaveSnapshotToPlayer(pid: string, snapshot: OnlineCaveSnapshot) {
+    if (this.identity && pid === this.identity.playerId) {
+      this.callbacks.onCaveSnapshot?.(snapshot);
+      return;
+    }
+    const conn = this.playerToConn.get(pid);
+    if (conn?.open) {
+      conn.send({ type: 'cave:snapshot', snapshot } satisfies HostToClientMessage);
+    }
+  }
+
+  private broadcastCaveRoomSnapshot(room: HostActiveCaveRoom, now: number) {
+    const snapshot = this.buildCaveSnapshot(room, now);
+    for (const pid of room.occupantIds) {
+      this.sendCaveSnapshotToPlayer(pid, snapshot);
+    }
+  }
+
+  private applyCaveEnemyDamage(
+    room: HostActiveCaveRoom,
+    ce: CaveInterior['enemies'][number],
+    enemyIdx: number,
+    damage: number,
+    attackerId: string,
+    now: number,
+    lifesteal?: number
+  ) {
+    if (!this.ledger) return;
+    const prof = this.ledger.playersById[attackerId];
+    ce.hp = Math.max(0, ce.hp - damage);
+    room.hitFlashUntilByEnemyId.set(ce.id, now + 150);
+
+    if (prof && lifesteal && lifesteal > 0 && prof.playerHp < 100) {
+      prof.playerHp = Math.min(100, prof.playerHp + Math.max(2, Math.round(damage * lifesteal)));
+      const pose = this.playerPoses.get(attackerId);
+      if (pose) pose.playerHp = prof.playerHp;
+      this.syncProfileToPlayer(attackerId, prof);
+    }
+
+    if (ce.hp <= 0) {
+      room.cave.enemies.splice(enemyIdx, 1);
+      if (ce.isBoss) {
+        room.bossDefeated = true;
+      }
+      if (prof) {
+        prof.gold += ce.goldBounty;
+        prof.totalGoldEarned += ce.goldBounty;
+        prof.landEnemiesDefeated += 1;
+        this.syncProfileToPlayer(attackerId, prof);
+      }
+    }
+  }
+
+  private damagePlayerInCave(
+    room: HostActiveCaveRoom,
+    targetId: string,
+    damage: number
+  ) {
+    if (!this.ledger) return;
+    const prof = this.ledger.playersById[targetId];
+    const pose = this.playerPoses.get(targetId);
+    if (!prof || !pose) return;
+
+    this.hitFlashUntilByPlayer.set(targetId, performance.now() + 180);
+    prof.playerHp = Math.max(0, prof.playerHp - damage);
+    pose.playerHp = prof.playerHp;
+
+    if (prof.playerHp <= 0) {
+      room.occupantIds.delete(targetId);
+      pose.inCaveId = null;
+      pose.caveX = undefined;
+      pose.caveY = undefined;
+      pose.caveAngle = undefined;
+      prof.playerHp = 70;
+      pose.playerHp = 70;
+      prof.player = {
+        x: room.entranceX,
+        y: room.entranceY + 42,
+        angle: Math.PI * 0.5,
+        isSailing: false,
+      };
+      pose.x = prof.player.x;
+      pose.y = prof.player.y;
+      pose.isSailing = false;
+
+      this.emitAndBroadcastEvent({
+        eventId: `resp_cave_${targetId}_${Date.now()}`,
+        type: 'player:respawn',
+        payload: {
+          playerId: targetId,
+          name: prof.name,
+          x: prof.player.x,
+          y: prof.player.y,
+          boatX: pose.boatX,
+          boatY: pose.boatY,
+          isSailing: false,
+          fromCave: true,
+        },
+      });
+    }
+    this.syncProfileToPlayer(targetId, prof);
+  }
+
+  private stepHostCaves(dt: number, now: number) {
+    if (!this.ledger || this.activeCaves.size === 0) return;
+
+    // 1. Step cave projectiles
+    for (let i = this.caveProjectiles.length - 1; i >= 0; i--) {
+      const p = this.caveProjectiles[i];
+      const room = this.activeCaves.get(p.caveId);
+      if (!room) {
+        this.caveProjectiles.splice(i, 1);
+        continue;
+      }
+
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      let remove = p.life <= 0 || !isPointInsideCaveWalkable(room.cave, p.x, p.y, 4);
+
+      if (!remove && p.kind === 'PLAYER') {
+        for (let ei = room.cave.enemies.length - 1; ei >= 0; ei--) {
+          const ce = room.cave.enemies[ei];
+          if (dist(p.x, p.y, ce.x, ce.y) <= ce.radius + 9) {
+            if (p.splashRadius && p.splashRadius > 0) {
+              for (let sei = room.cave.enemies.length - 1; sei >= 0; sei--) {
+                const sce = room.cave.enemies[sei];
+                if (dist(p.x, p.y, sce.x, sce.y) <= p.splashRadius + sce.radius) {
+                  this.applyCaveEnemyDamage(
+                    room,
+                    sce,
+                    sei,
+                    Math.round(p.damage * 0.85),
+                    p.ownerId,
+                    now,
+                    p.lifesteal
+                  );
+                }
+              }
+            } else {
+              this.applyCaveEnemyDamage(room, ce, ei, p.damage, p.ownerId, now, p.lifesteal);
+            }
+            remove = true;
+            break;
+          }
+        }
+      } else if (!remove && p.kind === 'ENEMY') {
+        for (const occId of room.occupantIds) {
+          const pose = this.playerPoses.get(occId);
+          if (!pose || !pose.connected || pose.inCaveId !== room.cave.caveId) continue;
+          const px = pose.caveX ?? room.cave.entryPos.x;
+          const py = pose.caveY ?? room.cave.entryPos.y;
+          if (dist(p.x, p.y, px, py) <= 15) {
+            this.damagePlayerInCave(room, occId, p.damage);
+            remove = true;
+            break;
+          }
+        }
+      }
+
+      if (remove) {
+        this.caveProjectiles.splice(i, 1);
+      }
+    }
+
+    // 2. Step cave creatures & broadcast room snapshots
+    for (const [caveId, room] of this.activeCaves.entries()) {
+      const occupants: Array<{ id: string; x: number; y: number }> = [];
+      for (const occId of room.occupantIds) {
+        const pose = this.playerPoses.get(occId);
+        if (!pose || !pose.connected || pose.inCaveId !== caveId) continue;
+        occupants.push({
+          id: occId,
+          x: pose.caveX ?? room.cave.entryPos.x,
+          y: pose.caveY ?? room.cave.entryPos.y,
+        });
+      }
+      if (occupants.length === 0) {
+        this.activeCaves.delete(caveId);
+        this.caveProjectiles = this.caveProjectiles.filter((pr) => pr.caveId !== caveId);
+        continue;
+      }
+
+      for (const ce of room.cave.enemies) {
+        let nearest: { id: string; x: number; y: number } | null = null;
+        let nearestD = Infinity;
+        for (const occ of occupants) {
+          const d = dist(ce.x, ce.y, occ.x, occ.y);
+          if (d < nearestD) {
+            nearestD = d;
+            nearest = occ;
+          }
+        }
+
+        if (nearest && nearestD < 460) {
+          const chaseA = Math.atan2(nearest.y - ce.y, nearest.x - ce.x);
+          ce.angle = chaseA;
+
+          if (ce.isBoss && nearestD > 130 && nearestD < 410 && now - ce.lastAttackTime > 1800) {
+            ce.lastAttackTime = now;
+            for (const spread of [-0.26, 0, 0.26]) {
+              const ba = chaseA + spread;
+              this.caveProjectiles.push({
+                id: `ocbp_${ce.id}_${Date.now()}_${spread}`,
+                caveId,
+                ownerId: ce.id,
+                kind: 'ENEMY',
+                x: ce.x + Math.cos(ba) * 20,
+                y: ce.y + Math.sin(ba) * 20,
+                vx: Math.cos(ba) * 255,
+                vy: Math.sin(ba) * 255,
+                damage: Math.round(ce.damage * 0.72),
+                color: room.cave.theme === 'VOLCANIC_CALDERA' ? '#F97316' : '#E879F9',
+                life: 1.5,
+              });
+            }
+          }
+
+          if (nearestD > ce.radius + 13) {
+            const step = ce.speed * dt;
+            const resolved = resolveCaveCollision(
+              room.cave,
+              ce.x + Math.cos(chaseA) * step,
+              ce.y + Math.sin(chaseA) * step,
+              ce.radius
+            );
+            ce.x = resolved.x;
+            ce.y = resolved.y;
+            ce.walkPhase += dt * 7.5;
+          } else if (now - ce.lastAttackTime > 1050) {
+            ce.lastAttackTime = now;
+            this.damagePlayerInCave(room, nearest.id, ce.damage);
+          }
+        } else {
+          const dh = dist(ce.x, ce.y, ce.homePos.x, ce.homePos.y);
+          if (dh > 26) {
+            const ha = Math.atan2(ce.homePos.y - ce.y, ce.homePos.x - ce.x);
+            ce.angle = ha;
+            const resolved = resolveCaveCollision(
+              room.cave,
+              ce.x + Math.cos(ha) * ce.speed * 0.45 * dt,
+              ce.y + Math.sin(ha) * ce.speed * 0.45 * dt,
+              ce.radius
+            );
+            ce.x = resolved.x;
+            ce.y = resolved.y;
+            ce.walkPhase += dt * 4;
+          }
+        }
+      }
+
+      if (this.activeCaves.has(caveId)) {
+        this.broadcastCaveRoomSnapshot(room, now);
+      }
+    }
+  }
+
   private startHostLoops() {
     if (this.hostTickTimer !== null) window.clearInterval(this.hostTickTimer);
     if (this.hostSaveTimer !== null) window.clearInterval(this.hostSaveTimer);
@@ -1774,6 +2336,7 @@ export class OnlineSessionManager {
       const dt = Math.min(0.1, (now - this.lastTickMs) / 1000);
       this.lastTickMs = now;
       this.stepHostProjectiles(dt, now);
+      this.stepHostCaves(dt, now);
       this.broadcastSnapshots(now);
     }, 50);
 
@@ -1803,7 +2366,7 @@ export class OnlineSessionManager {
       const ownerY = ownerPose ? (ownerPose.isSailing ? ownerPose.boatY : ownerPose.y) : p.y;
 
       for (const [targetId, targetPose] of this.playerPoses.entries()) {
-        if (targetId === p.ownerId || !targetPose.connected) continue;
+        if (targetId === p.ownerId || !targetPose.connected || targetPose.inCaveId) continue;
         const tgtX = targetPose.isSailing ? targetPose.boatX : targetPose.x;
         const tgtY = targetPose.isSailing ? targetPose.boatY : targetPose.y;
         const dmgRule = this.canPlayersDamageEachOther(
@@ -2027,6 +2590,10 @@ export class OnlineSessionManager {
     // Send interest-culled snapshots to each connected client
     for (const [pid, conn] of this.playerToConn.entries()) {
       if (!conn.open) continue;
+      const dc = (conn as unknown as { dataChannel?: RTCDataChannel }).dataChannel;
+      if (dc && dc.bufferedAmount > 256 * 1024) {
+        continue; // Skip snapshot when peer data channel is backlogged
+      }
       const viewer = this.playerPoses.get(pid);
       const vx = viewer ? (viewer.isSailing ? viewer.boatX : viewer.x) : 0;
       const vy = viewer ? (viewer.isSailing ? viewer.boatY : viewer.y) : 0;
@@ -2149,6 +2716,10 @@ export class OnlineSessionManager {
       this.callbacks.onVoicePeers?.(msg.peers);
       return;
     }
+    if (msg.type === 'cave:snapshot') {
+      this.callbacks.onCaveSnapshot?.(msg.snapshot);
+      return;
+    }
     if (msg.type === 'error') {
       this.setStatus('ERROR', msg.message);
     }
@@ -2156,6 +2727,7 @@ export class OnlineSessionManager {
 
   public disconnect() {
     this.destroyed = true;
+    this.reconnectAttempts = 0;
     if (this.hostTickTimer !== null) {
       window.clearInterval(this.hostTickTimer);
       this.hostTickTimer = null;
@@ -2189,6 +2761,8 @@ export class OnlineSessionManager {
     this.playerPoses.clear();
     this.playerSoldierPoses.clear();
     this.playerEscortShips.clear();
+    this.activeCaves.clear();
+    this.caveProjectiles = [];
     this.projectiles = [];
     this.callbacks.onVoicePeers?.([]);
     if (this.hostConn) {

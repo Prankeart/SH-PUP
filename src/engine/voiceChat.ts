@@ -19,6 +19,9 @@ interface ActiveMediaPeer {
   peerId: string;
   call: MediaConnection;
   audioEl: HTMLAudioElement;
+  currentGain: number;
+  mediaSource?: MediaStreamAudioSourceNode;
+  gainNode?: GainNode;
   analyser?: AnalyserNode;
   dataArr?: Uint8Array<ArrayBuffer>;
 }
@@ -199,7 +202,7 @@ export class VoiceChatManager {
     this.mode = mode;
     if (mode === 'ROOM') {
       for (const mp of this.peersByPlayerId.values()) {
-        mp.audioEl.volume = 1;
+        this.applyPeerVolume(mp, 1);
       }
     }
     this.emit();
@@ -212,6 +215,51 @@ export class VoiceChatManager {
     }
   }
 
+  public resumePlaybackOnGesture() {
+    if (!this.enabled) return;
+    if (this.audioCtx && (this.audioCtx.state as string) !== 'running') {
+      this.audioCtx.resume().catch(() => {});
+    }
+    for (const mp of this.peersByPlayerId.values()) {
+      if (mp.audioEl.srcObject && mp.audioEl.paused) {
+        void mp.audioEl.play().catch(() => {});
+      }
+    }
+  }
+
+  private ensureVoiceAudioContext(): AudioContext | null {
+    try {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) return null;
+      if (!this.audioCtx) {
+        this.audioCtx = new AudioContextCtor();
+      }
+      if ((this.audioCtx.state as string) !== 'running') {
+        this.audioCtx.resume().catch(() => {});
+      }
+      return this.audioCtx;
+    } catch {
+      return null;
+    }
+  }
+
+  private applyPeerVolume(mp: ActiveMediaPeer, vol: number) {
+    const clamped = Math.max(0, Math.min(1, vol));
+    mp.currentGain = clamped;
+    if (mp.gainNode && this.audioCtx) {
+      try {
+        mp.gainNode.gain.setTargetAtTime(clamped, this.audioCtx.currentTime, 0.04);
+      } catch {
+        // Ignore scheduling error
+      }
+    } else if (!mp.gainNode) {
+      mp.audioEl.muted = false;
+      mp.audioEl.volume = clamped;
+    }
+  }
+
   public updateProximityVolumes(
     selfX: number,
     selfY: number,
@@ -220,35 +268,32 @@ export class VoiceChatManager {
     if (!this.enabled) return;
     for (const [pid, mp] of this.peersByPlayerId.entries()) {
       if (this.mode === 'ROOM') {
-        mp.audioEl.volume = 1;
+        this.applyPeerVolume(mp, 1);
         continue;
       }
       const rp = remotePlayers.get(pid);
       if (!rp || !rp.connected) {
-        mp.audioEl.volume = 0.25;
+        this.applyPeerVolume(mp, 0.25);
         continue;
       }
       const rx = rp.isSailing ? rp.boatX : rp.x;
       const ry = rp.isSailing ? rp.boatY : rp.y;
       const d = dist(selfX, selfY, rx, ry);
       if (d >= PROXIMITY_MAX_DIST) {
-        mp.audioEl.volume = 0;
+        this.applyPeerVolume(mp, 0);
       } else {
         const ratio = 1 - d / PROXIMITY_MAX_DIST;
-        mp.audioEl.volume = Math.max(0.05, Math.min(1, ratio * ratio));
+        this.applyPeerVolume(mp, Math.max(0.05, Math.min(1, ratio * ratio)));
       }
     }
   }
 
   private setupLocalAnalyser(stream: MediaStream) {
     try {
-      const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextCtor) return;
-      if (!this.audioCtx) {
-        this.audioCtx = new AudioContextCtor();
-      }
-      const src = this.audioCtx.createMediaStreamSource(stream);
-      const analyser = this.audioCtx.createAnalyser();
+      const ctx = this.ensureVoiceAudioContext();
+      if (!ctx) return;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       src.connect(analyser);
       this.localAnalyser = analyser;
@@ -258,17 +303,26 @@ export class VoiceChatManager {
     }
   }
 
-  private setupRemoteAnalyser(mp: ActiveMediaPeer, stream: MediaStream) {
+  private setupRemoteAudioGraph(mp: ActiveMediaPeer, stream: MediaStream) {
     try {
-      if (!this.audioCtx) return;
-      const src = this.audioCtx.createMediaStreamSource(stream);
-      const analyser = this.audioCtx.createAnalyser();
+      const ctx = this.ensureVoiceAudioContext();
+      if (!ctx) return;
+      const src = ctx.createMediaStreamSource(stream);
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = mp.currentGain;
+      const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       src.connect(analyser);
+      src.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      mp.mediaSource = src;
+      mp.gainNode = gainNode;
       mp.analyser = analyser;
       mp.dataArr = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+      mp.audioEl.muted = true;
     } catch {
-      // Ignore
+      mp.audioEl.muted = false;
+      mp.audioEl.volume = mp.currentGain;
     }
   }
 
@@ -291,7 +345,7 @@ export class VoiceChatManager {
       }
 
       for (const [pid, mp] of this.peersByPlayerId.entries()) {
-        if (mp.analyser && mp.dataArr && mp.audioEl.volume > 0.02) {
+        if (mp.analyser && mp.dataArr && mp.currentGain > 0.02) {
           mp.analyser.getByteTimeDomainData(mp.dataArr);
           let sum = 0;
           for (let i = 0; i < mp.dataArr.length; i++) {
@@ -360,7 +414,10 @@ export class VoiceChatManager {
   private registerMediaCall(playerId: string, peerId: string, call: MediaConnection) {
     const audioEl = new Audio();
     audioEl.autoplay = true;
-    const mp: ActiveMediaPeer = { playerId, peerId, call, audioEl };
+    audioEl.muted = true;
+    audioEl.setAttribute('playsinline', 'true');
+    audioEl.setAttribute('webkit-playsinline', 'true');
+    const mp: ActiveMediaPeer = { playerId, peerId, call, audioEl, currentGain: 1 };
     this.peersByPlayerId.set(playerId, mp);
 
     call.on('stream', (remoteStream: MediaStream) => {
@@ -368,7 +425,7 @@ export class VoiceChatManager {
       void audioEl.play().catch(() => {
         // Autoplay policy fallback handled on user gesture
       });
-      this.setupRemoteAnalyser(mp, remoteStream);
+      this.setupRemoteAudioGraph(mp, remoteStream);
       this.emit();
     });
 
@@ -388,6 +445,13 @@ export class VoiceChatManager {
   private closeMediaPeer(playerId: string) {
     const mp = this.peersByPlayerId.get(playerId);
     if (!mp) return;
+    try {
+      mp.mediaSource?.disconnect();
+      mp.gainNode?.disconnect();
+      mp.analyser?.disconnect();
+    } catch {
+      // Ignore
+    }
     try {
       mp.call.close();
     } catch {

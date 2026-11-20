@@ -213,6 +213,8 @@ export async function loadRoomLedger(roomId: string): Promise<RoomLedger | null>
 }
 
 export async function listRoomLedgers(): Promise<RoomLedger[]> {
+  const merged = new Map<string, RoomLedger>();
+
   try {
     const db = await openDb();
     const res = await new Promise<RoomLedger[]>((resolve, reject) => {
@@ -221,19 +223,43 @@ export async function listRoomLedgers(): Promise<RoomLedger[]> {
       const req = store.getAll();
       req.onsuccess = () => {
         db.close();
-        const all = (req.result as RoomLedger[] | undefined) ?? [];
-        all.sort((a, b) => (b.roomInfo.updatedAt ?? 0) - (a.roomInfo.updatedAt ?? 0));
-        resolve(all);
+        resolve((req.result as RoomLedger[] | undefined) ?? []);
       };
       req.onerror = () => {
         db.close();
         reject(req.error);
       };
     });
-    return res;
+    for (const r of res) {
+      if (r?.roomInfo?.roomId) {
+        merged.set(r.roomInfo.roomId, r);
+      }
+    }
   } catch {
-    return [];
+    // Fallback to localStorage below
   }
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith('tropik_room_')) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as RoomLedger;
+      const id = parsed?.roomInfo?.roomId;
+      if (!id) continue;
+      const existing = merged.get(id);
+      if (!existing || (parsed.roomInfo.updatedAt ?? 0) > (existing.roomInfo.updatedAt ?? 0)) {
+        merged.set(id, parsed);
+      }
+    }
+  } catch {
+    // Ignore storage read error
+  }
+
+  const all = Array.from(merged.values());
+  all.sort((a, b) => (b.roomInfo.updatedAt ?? 0) - (a.roomInfo.updatedAt ?? 0));
+  return all;
 }
 
 export async function deleteRoomLedger(roomId: string): Promise<void> {

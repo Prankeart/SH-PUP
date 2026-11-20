@@ -113,6 +113,16 @@ export interface RenderState {
   harvestedNodeIds?: Set<string>;
   interactionHint?: { x: number; y: number; label: string; color?: string } | null;
   mapWaypoint?: { x: number; y: number; label: string } | null;
+  hudSafeZones?: {
+    tlRight: number;
+    tlBottom: number;
+    trLeft: number;
+    trBottom: number;
+    blRight: number;
+    blTop: number;
+    brLeft: number;
+    brTop: number;
+  };
 }
 
 const HEAT_COLORS: Record<HeatTier, string> = {
@@ -4087,22 +4097,32 @@ function drawHomeIslandCompass(
   let px = cx + ux * t;
   let py = cy + uy * t;
 
-  // Keep clear of the 4 corner HUD zones
-  const tlRight = isCompact ? 185 : 230;
-  const tlBottom = isCompact ? 115 : 140;
+  // Keep clear of the 4 corner HUD zones (prefer live solved HUD bounds when provided)
+  const sz = state.hudSafeZones;
+  const tlRight = sz ? sz.tlRight : isCompact ? 185 : 230;
+  const tlBottom = sz ? sz.tlBottom : isCompact ? 115 : 140;
   if (px < tlRight && py < tlBottom) {
     if (Math.abs(uy) > Math.abs(ux)) px = tlRight;
     else py = tlBottom;
   }
 
-  const trLeft = width - (isCompact ? 205 : 370);
-  const trBottom = isCompact ? 68 : 82;
+  const trLeft = sz ? sz.trLeft : width - (isCompact ? 205 : 370);
+  const trBottom = sz ? sz.trBottom : isCompact ? 68 : 82;
   if (px > trLeft && py < trBottom) {
     if (Math.abs(uy) > Math.abs(ux)) px = trLeft;
     else py = trBottom;
   }
 
-  if (state.hasTouchControls || isCompact) {
+  if (sz) {
+    if (px < sz.blRight && py > sz.blTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = sz.blRight;
+      else py = sz.blTop;
+    }
+    if (px > sz.brLeft && py > sz.brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = sz.brLeft;
+      else py = sz.brTop;
+    }
+  } else if (state.hasTouchControls || isCompact) {
     const blRight = isCompact ? 148 : 165;
     const blTop = height - (isCompact ? 148 : 165);
     if (px < blRight && py > blTop) {
@@ -4307,19 +4327,29 @@ function drawMapWaypointCompass(
   let px = cx + ux * t;
   let py = cy + uy * t;
 
-  const tlRight = isCompact ? 235 : 300;
-  const tlBottom = isCompact ? 118 : 155;
+  const sz = state.hudSafeZones;
+  const tlRight = sz ? sz.tlRight : isCompact ? 235 : 300;
+  const tlBottom = sz ? sz.tlBottom : isCompact ? 118 : 155;
   if (px < tlRight && py < tlBottom) {
     if (Math.abs(uy) > Math.abs(ux)) px = tlRight;
     else py = tlBottom;
   }
-  const trLeft = width - (isCompact ? 205 : 370);
-  const trBottom = isCompact ? 68 : 82;
+  const trLeft = sz ? sz.trLeft : width - (isCompact ? 205 : 370);
+  const trBottom = sz ? sz.trBottom : isCompact ? 68 : 82;
   if (px > trLeft && py < trBottom) {
     if (Math.abs(uy) > Math.abs(ux)) px = trLeft;
     else py = trBottom;
   }
-  if (state.hasTouchControls || isCompact) {
+  if (sz) {
+    if (px < sz.blRight && py > sz.blTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = sz.blRight;
+      else py = sz.blTop;
+    }
+    if (px > sz.brLeft && py > sz.brTop) {
+      if (Math.abs(uy) > Math.abs(ux)) px = sz.brLeft;
+      else py = sz.brTop;
+    }
+  } else if (state.hasTouchControls || isCompact) {
     const blRight = isCompact ? 148 : 165;
     const blTop = height - (isCompact ? 148 : 165);
     if (px < blRight && py > blTop) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Anchor,
   ArrowUpCircle,
@@ -79,6 +79,13 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
   const isEn = language === 'en';
   const [draftName, setDraftName] = useState(kingdom.name || 'Turkuaz Cumhuriyeti');
   const [draftColor, setDraftColor] = useState(kingdom.bannerColor || '#10B981');
+  const lastPurchaseClickRef = useRef<number>(0);
+  const runGuardedPurchase = (fn: () => void) => {
+    const now = performance.now();
+    if (now - lastPurchaseClickRef.current < 120) return;
+    lastPurchaseClickRef.current = now;
+    fn();
+  };
   const incomingWarNames =
     onlineMode && onlineRule === 'PVP' && onlineSelfId
       ? onlinePlayers
@@ -102,7 +109,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label="Devlet ve Ordu Yönetimi"
@@ -260,7 +267,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                     <button
                       type="button"
                       disabled={!hasInjuredSoldiers || gold < KINGDOM_COSTS.HEAL_ARMY}
-                      onClick={onHealArmy}
+                      onClick={() => runGuardedPurchase(onHealArmy)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                         hasInjuredSoldiers && gold >= KINGDOM_COSTS.HEAL_ARMY
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
@@ -323,7 +330,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                   <button
                     type="button"
                     disabled={armyLevel >= MAX_ARMY_LEVEL || gold < armyUpgradeCost}
-                    onClick={onUpgradeArmy}
+                    onClick={() => runGuardedPurchase(onUpgradeArmy)}
                     className={`px-3.5 py-2 rounded-lg text-xs font-bold font-mono-num shrink-0 transition-colors whitespace-nowrap ${
                       armyLevel < MAX_ARMY_LEVEL && gold >= armyUpgradeCost
                         ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
@@ -367,7 +374,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                 key={qty}
                                 type="button"
                                 disabled={!canBuy}
-                                onClick={() => onRecruitSoldier(type, qty)}
+                                onClick={() => runGuardedPurchase(() => onRecruitSoldier(type, qty))}
                                 title={`${qty} ${spec.name} al (${cost} Altın)`}
                                 className={`px-2.5 py-2 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
                                   canBuy
@@ -408,7 +415,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                             key={qty}
                             type="button"
                             disabled={!canBuy}
-                            onClick={() => onRecruitShip(qty)}
+                            onClick={() => runGuardedPurchase(() => onRecruitShip(qty))}
                             className={`px-3 py-2 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
                               canBuy
                                 ? qty === 1

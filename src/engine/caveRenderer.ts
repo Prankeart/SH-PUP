@@ -953,11 +953,19 @@ export function renderCaveFrame(
   ctx.font = isCompactView
     ? '600 11px "Plus Jakarta Sans", system-ui, sans-serif'
     : '600 12px "Plus Jakarta Sans", system-ui, sans-serif';
-  const tw = ctx.measureText(summary).width + (isCompactView ? 20 : 26);
+  const maxAllowedW = Math.max(140, viewportW - 20);
+  let displaySummary = summary;
+  let tw = ctx.measureText(displaySummary).width + (isCompactView ? 20 : 26);
+  if (tw > maxAllowedW) {
+    while (displaySummary.length > 8 && tw > maxAllowedW) {
+      displaySummary = `${displaySummary.slice(0, -2)}…`;
+      tw = ctx.measureText(displaySummary).width + (isCompactView ? 20 : 26);
+    }
+  }
   const pillH = isCompactView ? 24 : 28;
-  const isTinyPortrait = viewportW < 560;
-  const pillX = isTinyPortrait ? viewportW - 10 - tw : viewportW / 2 - tw / 2;
-  const pillY = isTinyPortrait ? 52 : isCompactView ? 10 : 14;
+  const isTinyPortrait = viewportW < 560 && viewportH >= 500;
+  const pillX = Math.max(10, Math.min(viewportW - 10 - tw, viewportW / 2 - tw / 2));
+  const pillY = isTinyPortrait ? 162 : isCompactView ? 10 : 14;
 
   ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
   ctx.strokeStyle = `${palette.accentColor}88`;
@@ -969,6 +977,6 @@ export function renderCaveFrame(
   ctx.fillStyle = '#F8FAFC';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(summary, pillX + tw / 2, pillY + pillH / 2);
+  ctx.fillText(displaySummary, pillX + tw / 2, pillY + pillH / 2);
   ctx.restore();
 }

@@ -132,6 +132,9 @@ import {
   requestAppFullscreen,
 } from './utils/fullscreen';
 import {
+  OnlineCaveEnemySnapshot,
+  OnlineCaveProjectileSnapshot,
+  OnlineCaveSnapshot,
   OnlineChatMessage,
   OnlineConnectionStatus,
   OnlineModeRule,
@@ -167,6 +170,7 @@ import {
   ALL_ACTION_BUTTON_KEYS,
   computeUnifiedHudLayout,
   resolveDraggedTouchTransform,
+  UnifiedHudLayout,
 } from './utils/hudLayout';
 
 const PLAYER_SPEED = 175;
@@ -270,10 +274,12 @@ export default function App() {
     if (typeof window === 'undefined') return false;
     return (
       window.matchMedia('(pointer: coarse)').matches ||
-      (navigator.maxTouchPoints > 0 && (window.innerWidth < 768 || window.innerHeight <= 600))
+      (window.matchMedia('(any-pointer: coarse)').matches && navigator.maxTouchPoints > 0)
     );
   });
   const isCoarseDeviceRef = useRef<boolean>(isCoarseDevice);
+  const lastTouchAtRef = useRef<number>(0);
+  const preKeyboardViewportRef = useRef<{ vw: number; vh: number } | null>(null);
   const [viewport, setViewport] = useState<{ vw: number; vh: number }>(() => {
     if (typeof window === 'undefined') return { vw: 1024, vh: 768 };
     return {
@@ -334,6 +340,9 @@ export default function App() {
   const activeWorldEventRef = useRef<ActiveWorldEvent | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hudLayoutRef = useRef<UnifiedHudLayout | null>(null);
+  const prevHudStateRef = useRef<typeof hudState | null>(null);
+  const voiceActiveSpeakersRef = useRef<Set<string>>(new Set());
   const saveRef = useRef<SaveData>(save);
   const settingsRef = useRef<GameSettings>(settings);
   const phaseRef = useRef<GamePhase>(phase);
@@ -350,7 +359,11 @@ export default function App() {
   const onlineWarDeclarationsRef = useRef<Record<string, string[]>>({});
   const onlineAtWarSetRef = useRef<Set<string>>(new Set());
   const remotePlayersRef = useRef<Map<string, RemotePlayerView>>(new Map());
+  const remoteCaveTargetsRef = useRef<Map<string, { x: number; y: number; angle: number }>>(
+    new Map()
+  );
   const onlineProjectilesRef = useRef<OnlineProjectileSnapshot[]>([]);
+  const onlineCaveProjectilesRef = useRef<OnlineCaveProjectileSnapshot[]>([]);
   const lastPoseSendRef = useRef<number>(0);
   const lastArmyPoseSendRef = useRef<number>(0);
   const lastRosterUiSyncRef = useRef<number>(0);
@@ -473,8 +486,12 @@ export default function App() {
     durationMs: number;
   } | null>(null);
 
+  const pendingGoldReserveRef = useRef<{ amount: number; at: number }>({ amount: 0, at: 0 });
+  const onlinePurchaseLockUntilRef = useRef<number>(0);
+
   useEffect(() => {
     saveRef.current = save;
+    pendingGoldReserveRef.current = { amount: 0, at: 0 };
     worldManagerRef.current.setSeed(save.worldSeed);
     worldManagerRef.current.setLuckLevel(save.upgrades.luckLevel);
     openedTreasureSetRef.current = new Set(save.openedTreasureIds);
@@ -594,8 +611,8 @@ export default function App() {
 
       const now = Date.now();
       if (now - lastTouchEndAt <= 350) {
-        // Prevent iOS Safari double-tap-to-zoom while keeping ActionControls/Joystick pointerdown instant
-        if (modalRef.current === 'NONE' || target?.tagName === 'CANVAS') {
+        // Prevent iOS Safari double-tap-to-zoom on canvas while keeping HUD button taps & synthetic clicks crisp
+        if (target?.tagName === 'CANVAS') {
           e.preventDefault();
         }
       }
@@ -663,22 +680,60 @@ export default function App() {
   }, [initialSave]);
 
   useEffect(() => {
+    if (activeModal !== 'NONE' || phase !== 'PLAYING') {
+      simRef.current.keys.clear();
+      simRef.current.joystickVec = { x: 0, y: 0 };
+    }
+  }, [activeModal, phase]);
+
+  useEffect(() => {
+    let focusOutTimer: number | null = null;
     const checkViewport = () => {
-      const vw = Math.round(window.visualViewport?.width ?? window.innerWidth);
-      const vh = Math.round(window.visualViewport?.height ?? window.innerHeight);
-      const portrait = vw < 720 && vh > vw;
+      const rawVw = Math.round(window.visualViewport?.width ?? window.innerWidth);
+      const rawVh = Math.round(window.visualViewport?.height ?? window.innerHeight);
+      const layoutVh = Math.round(window.innerHeight);
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTextInputFocused = Boolean(
+        activeEl &&
+          (activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.tagName === 'SELECT' ||
+            activeEl.isContentEditable)
+      );
+      const prevLocked = preKeyboardViewportRef.current;
+      const keyboardLikelyOpen =
+        isTextInputFocused &&
+        (rawVh < layoutVh - 110 || (prevLocked !== null && rawVh < prevLocked.vh - 110));
+
+      let vw = rawVw;
+      let vh = rawVh;
+      if (keyboardLikelyOpen && prevLocked) {
+        vw = prevLocked.vw;
+        vh = prevLocked.vh;
+      } else if (!isTextInputFocused || !prevLocked || rawVh >= prevLocked.vh - 80) {
+        preKeyboardViewportRef.current = { vw: rawVw, vh: rawVh };
+      }
+
+      const portrait = vw < 860 && vh > vw;
       setViewport((prev) => (prev.vw === vw && prev.vh === vh ? prev : { vw, vh }));
       setIsPortrait(portrait);
       setIsNarrowViewport(vw < 640 || vh < 500);
       setIsShortViewport(vh < 540);
     };
+    const handleFocusOut = () => {
+      if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
+      focusOutTimer = window.setTimeout(checkViewport, 90);
+    };
     checkViewport();
     window.addEventListener('resize', checkViewport);
     window.addEventListener('orientationchange', checkViewport);
+    window.addEventListener('focusout', handleFocusOut);
     window.visualViewport?.addEventListener('resize', checkViewport);
     return () => {
+      if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
       window.removeEventListener('resize', checkViewport);
       window.removeEventListener('orientationchange', checkViewport);
+      window.removeEventListener('focusout', handleFocusOut);
       window.visualViewport?.removeEventListener('resize', checkViewport);
     };
   }, []);
@@ -689,27 +744,73 @@ export default function App() {
       setIsCoarseDevice(e.matches);
     };
     const handlePointerDown = (e: PointerEvent) => {
+      soundEngine.resumeOnGesture();
+      void voiceManagerRef.current?.resumePlaybackOnGesture();
       if (e.pointerType === 'touch') {
+        lastTouchAtRef.current = performance.now();
         setIsCoarseDevice(true);
+      } else if (e.pointerType === 'mouse' && performance.now() - lastTouchAtRef.current > 450) {
+        setIsCoarseDevice(false);
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      soundEngine.resumeOnGesture();
+      void voiceManagerRef.current?.resumePlaybackOnGesture();
+      const target = e.target as HTMLElement | null;
       if (
-        !coarseMql.matches &&
-        ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(
-          e.code
-        )
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (
+        e.isComposing ||
+        [
+          'ShiftLeft',
+          'ShiftRight',
+          'ControlLeft',
+          'ControlRight',
+          'AltLeft',
+          'AltRight',
+          'MetaLeft',
+          'MetaRight',
+          'CapsLock',
+          'Tab',
+          'Escape',
+        ].includes(e.code)
+      ) {
+        return;
+      }
+      const kbValues = Object.values(settingsRef.current.keybindings);
+      if (
+        [
+          'KeyW',
+          'KeyA',
+          'KeyS',
+          'KeyD',
+          'ArrowUp',
+          'ArrowDown',
+          'ArrowLeft',
+          'ArrowRight',
+          'Space',
+          'Digit1',
+          'Digit2',
+        ].includes(e.code) ||
+        kbValues.includes(e.code)
       ) {
         setIsCoarseDevice(false);
       }
     };
 
     coarseMql.addEventListener('change', handleMediaChange);
-    window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+    window.addEventListener('pointerdown', handlePointerDown, { passive: true, capture: true });
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       coarseMql.removeEventListener('change', handleMediaChange);
-      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -719,13 +820,25 @@ export default function App() {
   }, [isCoarseDevice]);
 
   useEffect(() => {
+    const clearTransientInputs = () => {
+      simRef.current.keys.clear();
+      simRef.current.joystickVec = { x: 0, y: 0 };
+    };
     const handleVisibilityOrPageShow = () => {
       if (document.visibilityState === 'visible') {
         clearRenderCaches();
+        soundEngine.resumeOnGesture();
+      } else {
+        clearTransientInputs();
       }
     };
     const handlePageShow = () => {
       clearRenderCaches();
+    };
+    const handlePageHide = () => {
+      clearTransientInputs();
+      voiceManagerRef.current?.disable();
+      onlineManagerRef.current?.disconnect();
     };
     const canvas = canvasRef.current;
     const handleContextLost = (e: Event) => {
@@ -735,13 +848,33 @@ export default function App() {
     const handleContextRestored = () => {
       clearRenderCaches();
     };
+
+    let dprMql: MediaQueryList | null = null;
+    const handleDprChange = () => {
+      clearRenderCaches();
+      bindDprWatcher();
+    };
+    const bindDprWatcher = () => {
+      dprMql?.removeEventListener('change', handleDprChange);
+      if (typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number') {
+        dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        dprMql.addEventListener('change', handleDprChange);
+      }
+    };
+    bindDprWatcher();
+
     document.addEventListener('visibilitychange', handleVisibilityOrPageShow);
     window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('blur', clearTransientInputs);
     canvas?.addEventListener('contextlost', handleContextLost);
     canvas?.addEventListener('contextrestored', handleContextRestored);
     return () => {
+      dprMql?.removeEventListener('change', handleDprChange);
       document.removeEventListener('visibilitychange', handleVisibilityOrPageShow);
       window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('blur', clearTransientInputs);
       canvas?.removeEventListener('contextlost', handleContextLost);
       canvas?.removeEventListener('contextrestored', handleContextRestored);
     };
@@ -818,6 +951,7 @@ export default function App() {
   const commitSave = useCallback((updater: (prev: SaveData) => SaveData, skipDiskFlush = false) => {
     setSave((prev) => {
       const next = updater(prev);
+      if (next === prev) return prev;
       if (!onlineActiveRef.current) {
         next.worldTimeSec = simRef.current.worldTimeSec;
         next.playTimeSec = simRef.current.playTimeSec;
@@ -828,6 +962,26 @@ export default function App() {
       }
       return next;
     });
+  }, []);
+
+  const getAvailableGold = useCallback(() => {
+    const res = pendingGoldReserveRef.current;
+    const reserved = res.amount > 0 && performance.now() - res.at < 300 ? res.amount : 0;
+    return saveRef.current.gold - reserved;
+  }, []);
+
+  const reserveGoldSpend = useCallback((cost: number) => {
+    const now = performance.now();
+    const res = pendingGoldReserveRef.current;
+    const prevAmt = res.amount > 0 && now - res.at < 300 ? res.amount : 0;
+    pendingGoldReserveRef.current = { amount: prevAmt + Math.max(0, cost), at: now };
+  }, []);
+
+  const canSubmitOnlinePurchase = useCallback(() => {
+    const now = performance.now();
+    if (now < onlinePurchaseLockUntilRef.current) return false;
+    onlinePurchaseLockUntilRef.current = now + 850;
+    return true;
   }, []);
 
   const markTutorialStep = useCallback(
@@ -1067,6 +1221,7 @@ export default function App() {
         }
       },
       onProfileSync: (prof) => {
+        onlinePurchaseLockUntilRef.current = 0;
         const sim = simRef.current;
         const prevSave = saveRef.current;
         const boatLevelUp = prof.upgrades.boatLevel > prevSave.upgrades.boatLevel;
@@ -1261,6 +1416,24 @@ export default function App() {
             existing.isHost = p.isHost;
             existing.starterSlotIndex = p.starterSlotIndex;
             existing.conqueredCount = p.conqueredCount;
+            existing.inCaveId = p.inCaveId ?? null;
+            if (p.inCaveId && typeof p.caveX === 'number' && typeof p.caveY === 'number') {
+              remoteCaveTargetsRef.current.set(p.id, {
+                x: p.caveX,
+                y: p.caveY,
+                angle: p.caveAngle ?? 0,
+              });
+              if (typeof existing.caveX !== 'number' || typeof existing.caveY !== 'number') {
+                existing.caveX = p.caveX;
+                existing.caveY = p.caveY;
+                existing.caveAngle = p.caveAngle ?? 0;
+              }
+            } else {
+              remoteCaveTargetsRef.current.delete(p.id);
+              existing.caveX = undefined;
+              existing.caveY = undefined;
+              existing.caveAngle = undefined;
+            }
             existing.lastSnapshotTime = now;
 
             if (p.soldiers) {
@@ -1323,6 +1496,13 @@ export default function App() {
             p.soldiers?.forEach((s) => soldierTargets.set(s.id, s));
             const shipTargets = new Map<string, RemoteEscortShipSnapshot>();
             p.ships?.forEach((sh) => shipTargets.set(sh.id, sh));
+            if (p.inCaveId && typeof p.caveX === 'number' && typeof p.caveY === 'number') {
+              remoteCaveTargetsRef.current.set(p.id, {
+                x: p.caveX,
+                y: p.caveY,
+                angle: p.caveAngle ?? 0,
+              });
+            }
             remotePlayersRef.current.set(p.id, {
               ...p,
               targetX: p.x,
@@ -1342,6 +1522,7 @@ export default function App() {
         for (const id of remotePlayersRef.current.keys()) {
           if (!seenIds.has(id)) {
             remotePlayersRef.current.delete(id);
+            remoteCaveTargetsRef.current.delete(id);
           }
         }
 
@@ -1426,6 +1607,12 @@ export default function App() {
             const rbx = Number(payload.boatX || rx);
             const rby = Number(payload.boatY || ry);
             const isSailing = Boolean(payload.isSailing);
+            const fromCave = Boolean(payload.fromCave);
+            if (fromCave || sim.activeCave) {
+              sim.activeCave = null;
+              sim.landProjectiles = [];
+              onlineCaveProjectilesRef.current = [];
+            }
             sim.playerX = rx;
             sim.playerY = ry;
             sim.boatX = rbx;
@@ -1433,9 +1620,14 @@ export default function App() {
             sim.boatVx = 0;
             sim.boatVy = 0;
             sim.isSailing = isSailing;
-            sim.playerHp = 100;
+            sim.playerHp = fromCave ? 70 : 100;
             sim.boatHp = Math.round(getMaxBoatHp(saveRef.current.upgrades.boatLevel) * 0.75);
-            addFloatingText(rx, ry - 30, 'Başlangıç Adana Çekildin!', '#FBBF24');
+            addFloatingText(
+              rx,
+              ry - 30,
+              fromCave ? 'Mağaradan Yaralı Çekildin!' : 'Başlangıç Adana Çekildin!',
+              fromCave ? '#F87171' : '#FBBF24'
+            );
           }
         } else if (evt.type === 'war:status') {
           const fromId = String(payload.fromId || '');
@@ -1537,6 +1729,71 @@ export default function App() {
         setVoicePeersCount(peers.length);
         voiceManagerRef.current?.updateKnownPeers(peers);
       },
+      onCaveSnapshot: (snap: OnlineCaveSnapshot) => {
+        const active = simRef.current.activeCave;
+        if (!active || active.cave.caveId !== snap.caveId) return;
+        const cave = active.cave;
+        const nowMs = performance.now();
+
+        const prevById = new Map(cave.enemies.map((e) => [e.id, e]));
+        const snapIds = new Set(snap.enemies.map((e: OnlineCaveEnemySnapshot) => e.id));
+        const nextEnemies = [];
+
+        for (const prevE of cave.enemies) {
+          if (!snapIds.has(prevE.id)) {
+            spawnParticles(
+              prevE.x,
+              prevE.y,
+              prevE.isBoss ? 22 : 10,
+              '#FBBF24',
+              'GOLD',
+              120,
+              3.6,
+              true
+            );
+            addFloatingText(
+              prevE.x,
+              prevE.y - 32,
+              prevE.isBoss ? `${prevE.name} Yenildi! +${prevE.goldBounty}G` : `+${prevE.goldBounty}G`,
+              prevE.isBoss ? '#C084FC' : '#FDE047'
+            );
+          }
+        }
+
+        for (const es of snap.enemies) {
+          const ex = prevById.get(es.id);
+          if (!ex) continue;
+          if (es.hp < ex.hp) {
+            const dmg = ex.hp - es.hp;
+            soundEngine.playCannonHit();
+            spawnParticles(ex.x, ex.y, 6, '#E879F9', 'SPARK', 80, 2.8, true);
+            addFloatingText(ex.x, ex.y - 20, `-${dmg}`, '#FDE047');
+          }
+          ex.x = es.x;
+          ex.y = es.y;
+          ex.angle = es.angle;
+          ex.hp = es.hp;
+          ex.maxHp = es.maxHp;
+          ex.walkPhase = es.walkPhase;
+          ex.hitFlashTime = es.hitFlash ? nowMs : -1000;
+          nextEnemies.push(ex);
+        }
+        cave.enemies = nextEnemies;
+
+        for (const ch of cave.chests) {
+          if (!ch.opened && snap.openedChestIds.includes(ch.id)) {
+            ch.opened = true;
+            soundEngine.playChestOpen();
+            spawnParticles(ch.x, ch.y, 16, '#FBBF24', 'GOLD', 120, 3.4, true);
+          }
+        }
+        if (cave.weaponAltar && snap.altarClaimed && !cave.weaponAltar.claimed) {
+          cave.weaponAltar.claimed = true;
+          soundEngine.playWeaponPickup();
+        }
+        active.bossDefeated = snap.bossDefeated;
+        onlineCaveProjectilesRef.current = snap.projectiles.map((pr) => ({ ...pr }));
+      },
     });
 
     onlineManagerRef.current = mgr;
@@ -1546,6 +1803,7 @@ export default function App() {
   const ensureVoiceManager = useCallback((): VoiceChatManager => {
     if (!voiceManagerRef.current) {
       voiceManagerRef.current = new VoiceChatManager((snap) => {
+        voiceActiveSpeakersRef.current = new Set(snap.activeSpeakerIds);
         setVoiceState(snap);
       });
     }
@@ -1583,6 +1841,7 @@ export default function App() {
   const handleLeaveToMenu = useCallback(() => {
     voiceManagerRef.current?.disable();
     voicePeersRef.current = [];
+    voiceActiveSpeakersRef.current = new Set();
     setVoicePeersCount(0);
     if (onlineActiveRef.current) {
       onlineManagerRef.current?.disconnect();
@@ -1596,7 +1855,9 @@ export default function App() {
       onlineAtWarSetRef.current.clear();
       setOnlinePing(null);
       remotePlayersRef.current.clear();
+      remoteCaveTargetsRef.current.clear();
       onlineProjectilesRef.current = [];
+      onlineCaveProjectilesRef.current = [];
       clearRenderCaches();
       worldManagerRef.current.setOnlineMode(false);
 
@@ -1947,14 +2208,15 @@ export default function App() {
       const def = WEAPONS[weaponId];
       if (!def || !def.shopCost) return;
       const cur = saveRef.current;
-      if (cur.unlockedWeapons.includes(weaponId) || cur.gold < def.shopCost) return;
-      reloadStateRef.current = null;
-      if (def.kind === 'RANGED' && def.magSize) {
-        weaponAmmoRef.current[weaponId] = def.magSize;
-      }
-      soundEngine.playWeaponPickup();
+      if (cur.unlockedWeapons.includes(weaponId) || getAvailableGold() < def.shopCost) return;
 
       if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        reloadStateRef.current = null;
+        if (def.kind === 'RANGED' && def.magSize) {
+          weaponAmmoRef.current[weaponId] = def.magSize;
+        }
+        soundEngine.playWeaponPickup();
         onlineManagerRef.current?.submitLocalCommand({
           type: 'cmd:buy_weapon',
           weaponId,
@@ -1962,6 +2224,13 @@ export default function App() {
         });
         return;
       }
+
+      reserveGoldSpend(def.shopCost);
+      reloadStateRef.current = null;
+      if (def.kind === 'RANGED' && def.magSize) {
+        weaponAmmoRef.current[weaponId] = def.magSize;
+      }
+      soundEngine.playWeaponPickup();
       commitSave((prev) => {
         if (prev.unlockedWeapons.includes(weaponId) || prev.gold < def.shopCost!) return prev;
         const nextLoadout = applyWeaponAcquire(prev, weaponId, 'EQUIP_OR_BUY', replaceSlotIndex);
@@ -1974,7 +2243,7 @@ export default function App() {
         };
       });
     },
-    [commitSave]
+    [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]
   );
 
   const handleEquipWeapon = useCallback(
@@ -2069,6 +2338,34 @@ export default function App() {
         }
       }
       caveState.playerAngle = caveAimAngle;
+
+      if (onlineActiveRef.current) {
+        if (def.kind === 'MELEE') {
+          soundEngine.playSwordSlash();
+          sim.screenShake = Math.max(sim.screenShake, 2.2);
+        } else {
+          soundEngine.playPistolShot();
+          sim.screenShake = Math.max(sim.screenShake, 1.8);
+        }
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:cave_attack',
+          caveId: cave.caveId,
+          x: caveState.playerX,
+          y: caveState.playerY,
+          angle: caveAimAngle,
+          weaponId,
+          damage: attackDamage,
+          range: def.range,
+          isRanged: def.kind === 'RANGED',
+          splashRadius: def.splashRadius,
+          projectileSpeed: def.projectileSpeed,
+          pellets: def.pellets,
+          spreadRad: def.spreadRad,
+          projColor: def.color,
+          lifesteal: def.lifesteal,
+        });
+        return;
+      }
 
       if (def.kind === 'MELEE') {
         soundEngine.playSwordSlash();
@@ -2819,6 +3116,7 @@ export default function App() {
       );
       sim.fishing.active = false;
       sim.landProjectiles = [];
+      onlineCaveProjectilesRef.current = [];
       sim.activeCave = {
         cave: interior,
         returnX: entrance.x,
@@ -2832,6 +3130,19 @@ export default function App() {
         playerAngle: 0,
         bossDefeated: interior.enemies.every((e) => !e.isBoss),
       };
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:enter_cave',
+          caveId: entrance.id,
+          islandId: island.id,
+          entranceName: entrance.name,
+          entranceX: entrance.x,
+          entranceY: entrance.y,
+          tier: entrance.tier,
+          theme: entrance.theme,
+          biome: island.biome,
+        });
+      }
       soundEngine.playCaveTransition(true);
       addFloatingText(
         interior.entryPos.x,
@@ -2848,10 +3159,18 @@ export default function App() {
       const sim = simRef.current;
       const active = sim.activeCave;
       if (!active) return;
+      const exitedCaveId = active.cave.caveId;
       sim.playerX = active.returnX;
       sim.playerY = active.returnY;
       sim.landProjectiles = [];
+      onlineCaveProjectilesRef.current = [];
       sim.activeCave = null;
+      if (onlineActiveRef.current) {
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:exit_cave',
+          caveId: exitedCaveId,
+        });
+      }
       soundEngine.playCaveTransition(false);
       if (injured) {
         sim.playerHp = 60;
@@ -2894,10 +3213,10 @@ export default function App() {
 
       if (onlineActiveRef.current) {
         onlineManagerRef.current?.submitLocalCommand({
-          type: 'cmd:claim_cave_chest',
-          chestId: chest.id,
-          goldValue: chest.goldValue,
-          isBossOrFirstInCave: isBossOrFirst,
+          type: 'cmd:cave_interact',
+          caveId: active.cave.caveId,
+          targetKind: 'CHEST',
+          targetId: chest.id,
         });
         return;
       }
@@ -2936,10 +3255,10 @@ export default function App() {
 
     if (onlineActiveRef.current) {
       onlineManagerRef.current?.submitLocalCommand({
-        type: 'cmd:claim_cave_chest',
-        chestId: altar.id,
-        goldValue: 40,
-        weaponId: altar.weaponId,
+        type: 'cmd:cave_interact',
+        caveId: active.cave.caveId,
+        targetKind: 'ALTAR',
+        targetId: altar.id,
       });
       return;
     }
@@ -3404,7 +3723,22 @@ export default function App() {
       expireAt: biteAt + 4200,
     };
     sim.waterRipples.push({ x: targetX, y: targetY, radius: 3, maxRadius: 24, alpha: 0.9 });
-  }, [addFloatingText, commitSave, spawnParticles]);
+  }, [addFloatingText, commitSave, grantNextCaptainLog, spawnParticles]);
+
+  const isNearTraderDockNow = useCallback((): boolean => {
+    const sim = simRef.current;
+    if (sim.activeCave) return false;
+    const activeCenterX = sim.isSailing ? sim.boatX : sim.playerX;
+    const activeCenterY = sim.isSailing ? sim.boatY : sim.playerY;
+    const shipSpec = getShipClass(saveRef.current.upgrades.boatLevel);
+    const visible = worldManagerRef.current.getVisibleIslands(activeCenterX, activeCenterY, 1);
+    return visible.some(
+      (isl) =>
+        isl.traderDock &&
+        dist(activeCenterX, activeCenterY, isl.traderDock.x, isl.traderDock.y) <=
+          115 + (shipSpec.hullRadius - 20)
+    );
+  }, []);
 
   const handleUseRepairKit = useCallback(() => {
     if ((saveRef.current.repairKits ?? 0) <= 0) return;
@@ -3457,12 +3791,17 @@ export default function App() {
   const handleCraftRepairKit = useCallback(() => {
     const s = saveRef.current;
     const hasRes = (s.wood ?? 0) >= 2 && (s.iron ?? 0) >= 1;
-    if (!hasRes && s.gold < 60) return;
-    soundEngine.playUpgrade();
+    if (!hasRes && getAvailableGold() < 60) return;
     if (onlineActiveRef.current) {
+      if (!canSubmitOnlinePurchase()) return;
+      soundEngine.playUpgrade();
       onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:craft_repair_kit' });
       return;
     }
+    if (!hasRes) {
+      reserveGoldSpend(60);
+    }
+    soundEngine.playUpgrade();
     commitSave((prev) => {
       if ((prev.wood ?? 0) >= 2 && (prev.iron ?? 0) >= 1) {
         return {
@@ -3481,10 +3820,10 @@ export default function App() {
       }
       return prev;
     });
-  }, [commitSave]);
+  }, [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]);
 
   const handleSellResources = useCallback(() => {
-    if (!hudState.nearDock) return;
+    if (!isNearTraderDockNow()) return;
     const w = saveRef.current.wood ?? 0;
     const ir = saveRef.current.iron ?? 0;
     const total = w * 12 + ir * 18;
@@ -3501,27 +3840,33 @@ export default function App() {
       gold: prev.gold + total,
       totalGoldEarned: prev.totalGoldEarned + total,
     }));
-  }, [commitSave, hudState.nearDock]);
+  }, [commitSave, isNearTraderDockNow]);
 
   const handleAdoptPet = useCallback(
     (petId: PetId) => {
       const def = PET_DEFS.find((p) => p.id === petId);
       if (!def) return;
       const owned = saveRef.current.ownedPets ?? [];
-      if (owned.includes(petId) || saveRef.current.gold < def.cost) return;
-      soundEngine.playUpgrade();
+      if (owned.includes(petId) || getAvailableGold() < def.cost) return;
       if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        soundEngine.playUpgrade();
         onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:adopt_pet', petId });
         return;
       }
-      commitSave((prev) => ({
-        ...prev,
-        gold: prev.gold - def.cost,
-        ownedPets: [...(prev.ownedPets ?? []), petId],
-        activePet: petId,
-      }));
+      reserveGoldSpend(def.cost);
+      soundEngine.playUpgrade();
+      commitSave((prev) => {
+        if ((prev.ownedPets ?? []).includes(petId) || prev.gold < def.cost) return prev;
+        return {
+          ...prev,
+          gold: prev.gold - def.cost,
+          ownedPets: [...(prev.ownedPets ?? []), petId],
+          activePet: petId,
+        };
+      });
     },
-    [commitSave]
+    [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]
   );
 
   const handleEquipPet = useCallback(
@@ -3542,17 +3887,29 @@ export default function App() {
       const s = saveRef.current;
       const turrets = s.fortTurretIslandIds ?? [];
       if (turrets.includes(islandId)) return;
-      if ((s.wood ?? 0) < 4 || (s.iron ?? 0) < 3 || s.gold < 120) return;
+      if ((s.wood ?? 0) < 2 || (s.iron ?? 0) < 1 || getAvailableGold() < 80) return;
+      reserveGoldSpend(80);
       soundEngine.playUpgrade();
-      commitSave((prev) => ({
-        ...prev,
-        wood: (prev.wood ?? 0) - 4,
-        iron: (prev.iron ?? 0) - 3,
-        gold: prev.gold - 120,
-        fortTurretIslandIds: [...(prev.fortTurretIslandIds ?? []), islandId],
-      }));
+      commitSave((prev) => {
+        const curTurrets = prev.fortTurretIslandIds ?? [];
+        if (
+          curTurrets.includes(islandId) ||
+          (prev.wood ?? 0) < 2 ||
+          (prev.iron ?? 0) < 1 ||
+          prev.gold < 80
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          wood: (prev.wood ?? 0) - 2,
+          iron: (prev.iron ?? 0) - 1,
+          gold: prev.gold - 80,
+          fortTurretIslandIds: [...curTurrets, islandId],
+        };
+      });
     },
-    [commitSave]
+    [commitSave, getAvailableGold, reserveGoldSpend]
   );
 
   const buildSyncedOfflineSave = useCallback((): SaveData => {
@@ -4053,8 +4410,8 @@ export default function App() {
         caveState.cameraX += (caveState.playerX - caveState.cameraX) * Math.min(1, dt * 8);
         caveState.cameraY += (caveState.playerY - caveState.cameraY) * Math.min(1, dt * 8);
 
-        if (isPlaying) {
-          // Cave Monster & Boss AI
+        if (isPlaying && !onlineActiveRef.current) {
+          // Cave Monster & Boss AI (Host-authoritative in Online Co-op)
           for (const ce of cave.enemies) {
             if (ce.hp <= 0) continue;
             const dToPlayer = dist(ce.x, ce.y, caveState.playerX, caveState.playerY);
@@ -6482,10 +6839,20 @@ export default function App() {
               addFloatingText(sim.boatX, sim.boatY - 26, `-${reducedDmg} Gövde`, '#F87171');
 
               if (sim.boatHp <= 0) {
-                const starter = worldManagerRef.current.getIslandAtSector(0, 0);
-                const coastR = starter ? getIslandRadiusAtAngle(starter, 0.12) : 290;
-                const safeX = Math.cos(0.12) * (coastR + activeShipSpec.hullRadius + 20);
-                const safeY = Math.sin(0.12) * (coastR + activeShipSpec.hullRadius + 20);
+                const ownStarterId = onlineActiveRef.current
+                  ? `starter_${identityRef.current.playerId}`
+                  : '';
+                const starter = onlineActiveRef.current
+                  ? worldManagerRef.current.getIslandById(ownStarterId) ??
+                    worldManagerRef.current.getStarterIslands()[0] ??
+                    null
+                  : worldManagerRef.current.getIslandAtSector(0, 0);
+                const dockA = starter?.traderDock?.angle ?? 0.12;
+                const coastR = starter ? getIslandRadiusAtAngle(starter, dockA) : 290;
+                const sx0 = starter?.centerX ?? 0;
+                const sy0 = starter?.centerY ?? 0;
+                const safeX = sx0 + Math.cos(dockA) * (coastR + activeShipSpec.hullRadius + 20);
+                const safeY = sy0 + Math.sin(dockA) * (coastR + activeShipSpec.hullRadius + 20);
 
                 sim.boatX = safeX;
                 sim.boatY = safeY;
@@ -7092,6 +7459,15 @@ export default function App() {
               ? lerpAngle(rp.boatAngle, rp.targetBoatAngle, interp)
               : rp.targetBoatAngle;
           }
+          const caveTarget = rp.inCaveId ? remoteCaveTargetsRef.current.get(rp.id) : undefined;
+          if (caveTarget) {
+            rp.caveX = typeof rp.caveX === 'number' ? lerp(rp.caveX, caveTarget.x, interp) : caveTarget.x;
+            rp.caveY = typeof rp.caveY === 'number' ? lerp(rp.caveY, caveTarget.y, interp) : caveTarget.y;
+            rp.caveAngle =
+              typeof rp.caveAngle === 'number'
+                ? lerpAngle(rp.caveAngle, caveTarget.angle, interp)
+                : caveTarget.angle;
+          }
 
           if (rp.soldiers && rp.soldierTargets) {
             for (let si = 0; si < rp.soldiers.length; si++) {
@@ -7142,6 +7518,9 @@ export default function App() {
             digAnimProgress: digProgress,
             attackAnimProgress: attackProgress,
             inCaveId: sim.activeCave?.cave.caveId,
+            caveX: sim.activeCave ? sim.activeCave.playerX : undefined,
+            caveY: sim.activeCave ? sim.activeCave.playerY : undefined,
+            caveAngle: sim.activeCave ? sim.activeCave.playerAngle : undefined,
             soldiers:
               sendArmy && !sim.isSailing && !sim.activeCave && sim.allySoldiers.length > 0
                 ? sim.allySoldiers.slice(0, 160).map((s) => ({
@@ -7381,6 +7760,15 @@ export default function App() {
               equippedWeapon: currentSave.equippedWeapon,
               attackAnimProgress: attackProgress,
               landProjectiles: sim.landProjectiles,
+              onlineCaveProjectiles: onlineActiveRef.current
+                ? onlineCaveProjectilesRef.current
+                : undefined,
+              remoteCavePlayers: onlineActiveRef.current
+                ? Array.from(remotePlayersRef.current.values()).filter(
+                    (rp) => rp.connected && rp.inCaveId === cave.caveId
+                  )
+                : undefined,
+              activeSpeakerIds: voiceActiveSpeakersRef.current,
               particles: sim.particles,
               floatingTexts: sim.floatingTexts,
               nearChest,
@@ -7516,6 +7904,7 @@ export default function App() {
               harvestedNodeIds: sim.harvestedNodeIds,
               interactionHint,
               mapWaypoint: currentSave.mapPin ?? null,
+              hudSafeZones: hudLayoutRef.current?.compassSafeZones,
             });
           }
           }
@@ -7615,7 +8004,7 @@ export default function App() {
         const reloadProg =
           reloadingNow && rs ? clamp((now - rs.startedAt) / Math.max(1, rs.durationMs), 0, 1) : 0;
 
-        setHudState({
+        const nextHud = {
           canBoard: !sim.activeCave && nearBoat,
           canDisembark: Boolean(nearShore),
           canDig: !sim.activeCave && !sim.isSailing && Boolean(postStandingIsl),
@@ -7630,7 +8019,7 @@ export default function App() {
           activeAmmo: eqAmmo,
           activeMaxAmmo: eqMaxAmmo,
           isReloading: reloadingNow,
-          reloadProgress: reloadProg,
+          reloadProgress: Math.round(reloadProg * 100) / 100,
           nearbyEnemyCount: sim.isSailing ? nearbySeaEnemies : nearbyLandEnemies,
           currentIslandName: sim.activeCave
             ? sim.activeCave.cave.name
@@ -7641,11 +8030,15 @@ export default function App() {
             : isEn
             ? 'Open Sea'
             : 'Açık Deniz',
-          digCooldownPct: clamp(1 - (now - sim.lastDigTime) / digCd, 0, 1),
-          cannonCooldownPct: clamp(1 - (now - sim.lastCannonTime) / cannonCd, 0, 1),
-          attackCooldownPct: clamp(1 - (now - sim.lastAttackTime) / attackCd, 0, 1),
-          radarCooldownPct: clamp(1 - (now - sim.lastRadarTime) / radarCd, 0, 1),
-          abilityCooldownPct: clamp(1 - (now - sim.lastAbilityTime) / abilityCd, 0, 1),
+          digCooldownPct: Math.round(clamp(1 - (now - sim.lastDigTime) / digCd, 0, 1) * 100) / 100,
+          cannonCooldownPct:
+            Math.round(clamp(1 - (now - sim.lastCannonTime) / cannonCd, 0, 1) * 100) / 100,
+          attackCooldownPct:
+            Math.round(clamp(1 - (now - sim.lastAttackTime) / attackCd, 0, 1) * 100) / 100,
+          radarCooldownPct:
+            Math.round(clamp(1 - (now - sim.lastRadarTime) / radarCd, 0, 1) * 100) / 100,
+          abilityCooldownPct:
+            Math.round(clamp(1 - (now - sim.lastAbilityTime) / abilityCd, 0, 1) * 100) / 100,
           cycleLabel: cLabel,
           canFish: canFishNow,
           isFishing: sim.fishing.active,
@@ -7659,7 +8052,48 @@ export default function App() {
               ? `Arena Wave ${sim.arenaChallenge.wave}/${sim.arenaChallenge.totalWaves}`
               : `Arena Dalgası ${sim.arenaChallenge.wave}/${sim.arenaChallenge.totalWaves}`
             : null,
-        });
+        };
+        const prevHud = prevHudStateRef.current;
+        const hudChanged =
+          !prevHud ||
+          nextHud.canBoard !== prevHud.canBoard ||
+          nextHud.canDisembark !== prevHud.canDisembark ||
+          nextHud.canDig !== prevHud.canDig ||
+          nextHud.nearDock !== prevHud.nearDock ||
+          nextHud.isSailing !== prevHud.isSailing ||
+          nextHud.shipClassName !== prevHud.shipClassName ||
+          nextHud.boatHp !== prevHud.boatHp ||
+          nextHud.maxBoatHp !== prevHud.maxBoatHp ||
+          nextHud.playerHp !== prevHud.playerHp ||
+          nextHud.equippedWeapon !== prevHud.equippedWeapon ||
+          nextHud.activeAmmo !== prevHud.activeAmmo ||
+          nextHud.activeMaxAmmo !== prevHud.activeMaxAmmo ||
+          nextHud.isReloading !== prevHud.isReloading ||
+          nextHud.reloadProgress !== prevHud.reloadProgress ||
+          nextHud.nearbyEnemyCount !== prevHud.nearbyEnemyCount ||
+          nextHud.currentIslandName !== prevHud.currentIslandName ||
+          nextHud.digCooldownPct !== prevHud.digCooldownPct ||
+          nextHud.cannonCooldownPct !== prevHud.cannonCooldownPct ||
+          nextHud.attackCooldownPct !== prevHud.attackCooldownPct ||
+          nextHud.radarCooldownPct !== prevHud.radarCooldownPct ||
+          nextHud.abilityCooldownPct !== prevHud.abilityCooldownPct ||
+          nextHud.cycleLabel !== prevHud.cycleLabel ||
+          nextHud.canFish !== prevHud.canFish ||
+          nextHud.isFishing !== prevHud.isFishing ||
+          nextHud.fishingBite !== prevHud.fishingBite ||
+          nextHud.repairKits !== prevHud.repairKits ||
+          nextHud.armyStance !== prevHud.armyStance ||
+          nextHud.interactLabel !== prevHud.interactLabel ||
+          nextHud.arenaWaveText !== prevHud.arenaWaveText ||
+          nextHud.zoneBanner?.label !== prevHud.zoneBanner?.label ||
+          nextHud.zoneBanner?.tone !== prevHud.zoneBanner?.tone ||
+          nextHud.weaponSlots.length !== prevHud.weaponSlots.length ||
+          nextHud.weaponSlots.some((w, idx) => w !== prevHud.weaponSlots[idx]);
+
+        if (hudChanged) {
+          prevHudStateRef.current = nextHud;
+          setHudState(nextHud);
+        }
       }
       } catch (err) {
         console.error('Frame step recovered:', err);
@@ -7686,7 +8120,7 @@ export default function App() {
 
   const handleSellItem = useCallback(
     (uid: string) => {
-      if (!hudState.nearDock) return;
+      if (!isNearTraderDockNow()) return;
       const item = saveRef.current.bag.find((b) => b.uid === uid);
       if (!item) return;
       soundEngine.playSellCoins();
@@ -7701,11 +8135,11 @@ export default function App() {
         bag: prev.bag.filter((b) => b.uid !== uid),
       }));
     },
-    [commitSave, hudState.nearDock]
+    [commitSave, isNearTraderDockNow]
   );
 
   const handleSellAll = useCallback(() => {
-    if (!hudState.nearDock || saveRef.current.bag.length === 0) return;
+    if (!isNearTraderDockNow() || saveRef.current.bag.length === 0) return;
     const total = saveRef.current.bag.reduce((sum, i) => sum + i.value, 0);
     soundEngine.playSellCoins();
     markTutorialStep('tut_shop');
@@ -7719,45 +8153,77 @@ export default function App() {
       totalGoldEarned: prev.totalGoldEarned + total,
       bag: [],
     }));
-  }, [commitSave, hudState.nearDock, markTutorialStep]);
+  }, [commitSave, isNearTraderDockNow, markTutorialStep]);
 
   const handleBuyUpgrade = useCallback(
     (key: UpgradeKey) => {
-      if (!hudState.nearDock) return;
+      if (!isNearTraderDockNow()) return;
       const def = UPGRADE_DEFS.find((d) => d.key === key);
       if (!def) return;
       const currentLvl = saveRef.current.upgrades[key] ?? 1;
       if (currentLvl >= def.maxLevel) return;
       const cost = getUpgradeCost(def, currentLvl);
-      if (saveRef.current.gold < cost) return;
+      if (getAvailableGold() < cost) return;
 
-      soundEngine.playUpgrade();
       markTutorialStep('tut_shop');
       if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        soundEngine.playUpgrade();
         onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:buy_upgrade', key });
         return;
       }
-      const nextUpgrades = {
-        ...saveRef.current.upgrades,
-        [key]: currentLvl + 1,
-      };
+      reserveGoldSpend(cost);
+      soundEngine.playUpgrade();
       if (key === 'boatLevel') {
-        simRef.current.boatHp = getMaxBoatHp(nextUpgrades.boatLevel);
+        simRef.current.boatHp = getMaxBoatHp(currentLvl + 1);
       }
 
-      commitSave((prev) => ({
-        ...prev,
-        gold: prev.gold - cost,
-        boatHp: Math.round(simRef.current.boatHp),
-        upgrades: nextUpgrades,
-      }));
+      commitSave((prev) => {
+        const prevLvl = prev.upgrades[key] ?? 1;
+        if (prevLvl >= def.maxLevel) return prev;
+        const prevCost = getUpgradeCost(def, prevLvl);
+        if (prev.gold < prevCost) return prev;
+        const nextUpgrades = {
+          ...prev.upgrades,
+          [key]: prevLvl + 1,
+        };
+        const nextBoatHp =
+          key === 'boatLevel' ? getMaxBoatHp(nextUpgrades.boatLevel) : simRef.current.boatHp;
+        if (key === 'boatLevel') {
+          simRef.current.boatHp = nextBoatHp;
+        }
+        return {
+          ...prev,
+          gold: prev.gold - prevCost,
+          boatHp: Math.round(nextBoatHp),
+          upgrades: nextUpgrades,
+        };
+      });
     },
-    [commitSave, hudState.nearDock, markTutorialStep]
+    [canSubmitOnlinePurchase, commitSave, getAvailableGold, isNearTraderDockNow, markTutorialStep, reserveGoldSpend]
   );
 
   const handleFoundKingdom = useCallback(
     (name: string, bannerColor: string) => {
-      if (saveRef.current.gold < KINGDOM_COSTS.FOUND_KINGDOM) return;
+      if (saveRef.current.kingdom.founded || getAvailableGold() < KINGDOM_COSTS.FOUND_KINGDOM) return;
+      if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        soundEngine.playConquestFanfare();
+        markTutorialStep('tut_kingdom');
+        addFloatingText(
+          simRef.current.isSailing ? simRef.current.boatX : simRef.current.playerX,
+          (simRef.current.isSailing ? simRef.current.boatY : simRef.current.playerY) - 34,
+          `${name} İlan Edildi!`,
+          '#34D399'
+        );
+        onlineManagerRef.current?.submitLocalCommand({
+          type: 'cmd:found_kingdom',
+          name,
+          bannerColor,
+        });
+        return;
+      }
+      reserveGoldSpend(KINGDOM_COSTS.FOUND_KINGDOM);
       soundEngine.playConquestFanfare();
       markTutorialStep('tut_kingdom');
       addFloatingText(
@@ -7766,39 +8232,35 @@ export default function App() {
         `${name} İlan Edildi!`,
         '#34D399'
       );
-      if (onlineActiveRef.current) {
-        onlineManagerRef.current?.submitLocalCommand({
-          type: 'cmd:found_kingdom',
-          name,
-          bannerColor,
-        });
-        return;
-      }
-      commitSave((prev) => ({
-        ...prev,
-        gold: prev.gold - KINGDOM_COSTS.FOUND_KINGDOM,
-        kingdom: {
-          ...prev.kingdom,
-          founded: true,
-          name,
-          bannerColor,
-        },
-      }));
+      commitSave((prev) => {
+        if (prev.kingdom.founded || prev.gold < KINGDOM_COSTS.FOUND_KINGDOM) return prev;
+        return {
+          ...prev,
+          gold: prev.gold - KINGDOM_COSTS.FOUND_KINGDOM,
+          kingdom: {
+            ...prev.kingdom,
+            founded: true,
+            name,
+            bannerColor,
+          },
+        };
+      });
     },
-    [addFloatingText, commitSave, markTutorialStep]
+    [addFloatingText, canSubmitOnlinePurchase, commitSave, getAvailableGold, markTutorialStep, reserveGoldSpend]
   );
 
   const handleRecruitSoldier = useCallback(
     (type: SoldierType, count = 1) => {
       const spec = SOLDIER_SPECS[type];
+      if (!spec) return;
       const k = saveRef.current.kingdom;
-      const armyLevel = Math.max(1, k.armyLevel || 1);
-      const actualCount = Math.max(1, count);
+      const actualCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
       const totalCost = spec.cost * actualCount;
-      if (!k.founded || saveRef.current.gold < totalCost) return;
+      if (!k.founded || getAvailableGold() < totalCost) return;
 
-      soundEngine.playUpgrade();
       if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        soundEngine.playUpgrade();
         onlineManagerRef.current?.submitLocalCommand({
           type: 'cmd:recruit_soldier',
           soldierType: type,
@@ -7807,17 +8269,23 @@ export default function App() {
         return;
       }
 
+      reserveGoldSpend(totalCost);
+      soundEngine.playUpgrade();
+
+      const armyLevel = Math.max(1, k.armyLevel || 1);
       const { hpMult } = getSoldierPowerMultiplier(armyLevel);
       const scaledHp = Math.round(spec.maxHp * hpMult);
       const baseX = simRef.current.isSailing ? simRef.current.boatX : simRef.current.playerX;
       const baseY = simRef.current.isSailing ? simRef.current.boatY : simRef.current.playerY;
 
       const addedRoster: { id: string; type: SoldierType; hp: number; maxHp: number }[] = [];
+      const addedSimSoldiers: AllySoldier[] = [];
+      const stamp = Date.now();
       for (let i = 0; i < actualCount; i++) {
-        const id = `sol_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+        const id = `sol_${stamp}_${i}_${Math.random().toString(36).slice(2, 6)}`;
         const angle = Math.random() * Math.PI * 2;
         const radius = 24 + Math.random() * 28;
-        simRef.current.allySoldiers.push({
+        addedSimSoldiers.push({
           id,
           type,
           hp: scaledHp,
@@ -7833,30 +8301,50 @@ export default function App() {
         addedRoster.push({ id, type, hp: scaledHp, maxHp: scaledHp });
       }
 
-      commitSave((prev) => ({
-        ...prev,
-        gold: prev.gold - totalCost,
-        kingdom: {
-          ...prev.kingdom,
-          soldiers: [...prev.kingdom.soldiers, ...addedRoster],
-        },
-      }));
+      commitSave((prev) => {
+        if (!prev.kingdom.founded || prev.gold < totalCost) return prev;
+        const prevArmyLevel = Math.max(1, prev.kingdom.armyLevel || 1);
+        const { hpMult: prevHpMult } = getSoldierPowerMultiplier(prevArmyLevel);
+        const prevScaledHp = Math.round(spec.maxHp * prevHpMult);
+        const finalRoster =
+          prevScaledHp === scaledHp
+            ? addedRoster
+            : addedRoster.map((s) => ({ ...s, hp: prevScaledHp, maxHp: prevScaledHp }));
+        return {
+          ...prev,
+          gold: prev.gold - totalCost,
+          kingdom: {
+            ...prev.kingdom,
+            soldiers: [...prev.kingdom.soldiers, ...finalRoster],
+          },
+        };
+      });
+
+      const idSet = new Set(simRef.current.allySoldiers.map((s) => s.id));
+      for (const sol of addedSimSoldiers) {
+        if (!idSet.has(sol.id)) {
+          simRef.current.allySoldiers.push(sol);
+        }
+      }
     },
-    [commitSave]
+    [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]
   );
 
   const handleUpgradeArmy = useCallback(() => {
     const k = saveRef.current.kingdom;
     const curLevel = Math.max(1, k.armyLevel || 1);
     const cost = getArmyUpgradeCost(curLevel);
-    if (!k.founded || curLevel >= MAX_ARMY_LEVEL || saveRef.current.gold < cost) return;
+    if (!k.founded || curLevel >= MAX_ARMY_LEVEL || getAvailableGold() < cost) return;
 
-    soundEngine.playUpgrade();
     if (onlineActiveRef.current) {
+      if (!canSubmitOnlinePurchase()) return;
+      soundEngine.playUpgrade();
       onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:upgrade_army' });
       return;
     }
 
+    reserveGoldSpend(cost);
+    soundEngine.playUpgrade();
     const nextLevel = curLevel + 1;
     const { hpMult } = getSoldierPowerMultiplier(nextLevel);
 
@@ -7868,31 +8356,46 @@ export default function App() {
       sol.hp = Math.min(newMax, Math.max(1, Math.round(newMax * ratio)));
     }
 
-    commitSave((prev) => ({
-      ...prev,
-      gold: prev.gold - cost,
-      kingdom: {
-        ...prev.kingdom,
-        armyLevel: nextLevel,
-        soldiers: simRef.current.allySoldiers.map((sol) => ({
-          id: sol.id,
-          type: sol.type,
-          hp: Math.max(1, Math.round(sol.hp)),
-          maxHp: sol.maxHp,
-        })),
-      },
-    }));
-  }, [commitSave]);
+    commitSave((prev) => {
+      const prevLevel = Math.max(1, prev.kingdom.armyLevel || 1);
+      const prevCost = getArmyUpgradeCost(prevLevel);
+      if (!prev.kingdom.founded || prevLevel >= MAX_ARMY_LEVEL || prev.gold < prevCost) {
+        return prev;
+      }
+      const targetLevel = prevLevel + 1;
+      const { hpMult: targetHpMult } = getSoldierPowerMultiplier(targetLevel);
+      return {
+        ...prev,
+        gold: prev.gold - prevCost,
+        kingdom: {
+          ...prev.kingdom,
+          armyLevel: targetLevel,
+          soldiers: prev.kingdom.soldiers.map((sol) => {
+            const baseSpec = SOLDIER_SPECS[sol.type] ?? SOLDIER_SPECS.SWORDSMAN;
+            const newMax = Math.round(baseSpec.maxHp * targetHpMult);
+            const ratio = sol.maxHp > 0 ? sol.hp / sol.maxHp : 1;
+            return {
+              id: sol.id,
+              type: sol.type,
+              hp: Math.min(newMax, Math.max(1, Math.round(newMax * ratio))),
+              maxHp: newMax,
+            };
+          }),
+        },
+      };
+    });
+  }, [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]);
 
   const handleRecruitShip = useCallback(
     (count = 1) => {
       const k = saveRef.current.kingdom;
-      const actualCount = Math.max(1, count);
+      const actualCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
       const totalCost = KINGDOM_COSTS.ESCORT_SHIP * actualCount;
-      if (!k.founded || saveRef.current.gold < totalCost) return;
+      if (!k.founded || getAvailableGold() < totalCost) return;
 
-      soundEngine.playUpgrade();
       if (onlineActiveRef.current) {
+        if (!canSubmitOnlinePurchase()) return;
+        soundEngine.playUpgrade();
         onlineManagerRef.current?.submitLocalCommand({
           type: 'cmd:recruit_ship',
           count: actualCount,
@@ -7900,6 +8403,8 @@ export default function App() {
         return;
       }
 
+      reserveGoldSpend(totalCost);
+      soundEngine.playUpgrade();
       for (let i = 0; i < actualCount; i++) {
         const slot = simRef.current.allyShips.length;
         const formA = simRef.current.boatAngle + (slot % 2 === 0 ? 2.1 : -2.1) + i * 0.25;
@@ -7921,37 +8426,58 @@ export default function App() {
         });
       }
 
-      commitSave((prev) => ({
-        ...prev,
-        gold: prev.gold - totalCost,
-        kingdom: {
-          ...prev.kingdom,
-          escortShipCount: prev.kingdom.escortShipCount + actualCount,
-        },
-      }));
+      commitSave((prev) => {
+        if (!prev.kingdom.founded || prev.gold < totalCost) return prev;
+        return {
+          ...prev,
+          gold: prev.gold - totalCost,
+          kingdom: {
+            ...prev.kingdom,
+            escortShipCount: prev.kingdom.escortShipCount + actualCount,
+          },
+        };
+      });
     },
-    [commitSave]
+    [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]
   );
 
   const handleHealArmy = useCallback(() => {
-    if (saveRef.current.gold < KINGDOM_COSTS.HEAL_ARMY) return;
-    soundEngine.playSellCoins();
+    const k = saveRef.current.kingdom;
+    const hasInjured =
+      k.soldiers.some((s) => s.hp < s.maxHp) ||
+      simRef.current.allySoldiers.some((s) => s.hp < s.maxHp);
+    if (!k.founded || !hasInjured || getAvailableGold() < KINGDOM_COSTS.HEAL_ARMY) return;
+
     if (onlineActiveRef.current) {
+      if (!canSubmitOnlinePurchase()) return;
+      soundEngine.playSellCoins();
       onlineManagerRef.current?.submitLocalCommand({ type: 'cmd:heal_army' });
       return;
     }
+
+    reserveGoldSpend(KINGDOM_COSTS.HEAL_ARMY);
+    soundEngine.playSellCoins();
     for (const sol of simRef.current.allySoldiers) {
       sol.hp = sol.maxHp;
     }
-    commitSave((prev) => ({
-      ...prev,
-      gold: prev.gold - KINGDOM_COSTS.HEAL_ARMY,
-      kingdom: {
-        ...prev.kingdom,
-        soldiers: prev.kingdom.soldiers.map((s) => ({ ...s, hp: s.maxHp })),
-      },
-    }));
-  }, [commitSave]);
+    commitSave((prev) => {
+      if (
+        !prev.kingdom.founded ||
+        prev.gold < KINGDOM_COSTS.HEAL_ARMY ||
+        !prev.kingdom.soldiers.some((s) => s.hp < s.maxHp)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        gold: prev.gold - KINGDOM_COSTS.HEAL_ARMY,
+        kingdom: {
+          ...prev.kingdom,
+          soldiers: prev.kingdom.soldiers.map((s) => ({ ...s, hp: s.maxHp })),
+        },
+      };
+    });
+  }, [canSubmitOnlinePurchase, commitSave, getAvailableGold, reserveGoldSpend]);
 
   const handleDeclareWar = useCallback(
     (factionId: EnemyFactionId) => {
@@ -8311,6 +8837,7 @@ export default function App() {
       bagCount: save.bag.length,
       nearDock: hudState.nearDock,
       hasWeaponPanel: hudState.weaponSlots.length > 0 && !isEditingLayout,
+      hasMultipleWeapons: hudState.weaponSlots.length > 1,
       onlineActive,
       voiceEnabled: voiceState.enabled,
       chatOpen,
@@ -8349,6 +8876,10 @@ export default function App() {
       }),
     [hudLayoutBaseInput, activeTouchLayout]
   );
+
+  useEffect(() => {
+    hudLayoutRef.current = hudLayout;
+  }, [hudLayout]);
 
   const openLayoutEditor = useCallback(() => {
     setDraftTouchLayout(settings.touchLayout ? { ...settings.touchLayout } : {});
