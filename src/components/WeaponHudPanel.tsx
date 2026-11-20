@@ -322,12 +322,12 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
         role="region"
         aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
         style={wrapperStyle}
-        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl backdrop-blur-md border shadow-xl transition-colors duration-100 ${
+        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_14px_34px_rgba(2,10,18,0.56)] transition-colors duration-100 ${
           isEmpty
-            ? 'bg-gradient-to-l from-[#2A0E14]/92 via-[#181018]/88 to-[#0B1C26]/82 border-red-400/70'
+            ? 'bg-gradient-to-l from-[#240B11]/94 via-[#140F17]/90 to-[#081A24]/88 border-red-400/65'
             : isReloading
-            ? 'bg-gradient-to-l from-[#1C1A0B]/92 via-[#102430]/88 to-[#0B1C26]/82 border-amber-400/60'
-            : 'bg-gradient-to-l from-[#071822]/92 via-[#0C2533]/86 to-[#0F2C3B]/78 border-white/14'
+            ? 'bg-gradient-to-l from-[#1C180A]/94 via-[#0D212D]/90 to-[#081A24]/88 border-amber-400/55'
+            : 'bg-gradient-to-l from-[#071822]/94 via-[#09202D]/88 to-[#0B2635]/82 border-white/14'
         } ${editFrameClass}`}
       >
         <div className="rounded-xl overflow-hidden">
@@ -367,7 +367,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
               {isRanged && needsReload && (
                 <RotateCw
                   className={`w-3.5 h-3.5 shrink-0 ${
-                    isEmpty ? 'text-red-400 animate-pulse' : 'text-amber-300/90'
+                    isEmpty ? 'text-red-400' : 'text-amber-300/90'
                   }`}
                 />
               )}
@@ -506,12 +506,12 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
       role="region"
       aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
       style={wrapperStyle}
-      className={`relative pointer-events-auto touch-none select-none rounded-xl backdrop-blur-md border shadow-2xl transition-colors ${
+      className={`relative pointer-events-auto touch-none select-none rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_16px_38px_rgba(2,10,18,0.6)] transition-colors ${
         isEmpty
-          ? 'bg-gradient-to-l from-[#240C12]/94 via-[#14141D]/90 to-[#0B1F2B]/78 border-red-400/65'
+          ? 'bg-gradient-to-l from-[#240B11]/94 via-[#140F17]/90 to-[#081A24]/86 border-red-400/65'
           : isReloading
-          ? 'bg-gradient-to-l from-[#1C1A0B]/94 via-[#0F2430]/90 to-[#0B1F2B]/78 border-amber-400/55'
-          : 'bg-gradient-to-l from-[#071822]/94 via-[#0B2432]/88 to-[#0D2B3B]/74 border-white/14'
+          ? 'bg-gradient-to-l from-[#1C180A]/94 via-[#0D212D]/90 to-[#081A24]/86 border-amber-400/55'
+          : 'bg-gradient-to-l from-[#071822]/94 via-[#09202D]/88 to-[#0B2635]/80 border-white/14'
       } ${editFrameClass}`}
     >
       <div className="rounded-xl overflow-hidden">

@@ -109,13 +109,13 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-6 overscroll-none"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label="Devlet ve Ordu Yönetimi"
     >
-      <div className="w-full max-w-5xl max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+      <div className="w-full max-w-5xl max-h-[94dvh] sm:max-h-[90dvh] bg-[#0A1F2B]/96 backdrop-blur-xl border-t sm:border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-t-3xl sm:rounded-2xl shadow-[0_24px_64px_rgba(2,10,18,0.78)] flex flex-col overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 border-b border-white/10 bg-[#081A24]/95 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Crown
               className="w-5 h-5 shrink-0"
@@ -134,7 +134,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label="Devlet Panelini Kapat"
-              className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -142,7 +142,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
         </div>
 
         {!kingdom.founded ? (
-          <div className="flex-1 overflow-y-auto p-5 sm:p-7 flex flex-col justify-center items-center">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-7 pb-[max(1.25rem,env(safe-area-inset-bottom))] flex flex-col justify-center items-center">
             <div className="w-full max-w-lg rounded-2xl bg-slate-950/35 border border-white/10 p-6 flex flex-col gap-5">
               {incomingWarNames.length > 0 && (
                 <div className="px-3.5 py-2.5 rounded-xl bg-red-950/70 border border-red-400/45 text-xs text-red-100 flex items-center gap-2">
@@ -175,7 +175,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                   value={draftName}
                   onChange={(e) => setDraftName(e.target.value)}
                   placeholder="Örn. Turkuaz Cumhuriyeti"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/15 text-sm text-slate-50 focus:outline-none focus:border-amber-400"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/15 text-[16px] sm:text-sm text-slate-50 focus:outline-none focus:border-amber-400"
                 />
               </div>
 
@@ -189,7 +189,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                         key={opt.id}
                         type="button"
                         onClick={() => setDraftColor(opt.color)}
-                        className={`px-3 py-2 rounded-xl border text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+                        className={`min-h-[42px] px-3 py-2 rounded-xl border text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
                           active
                             ? 'bg-white/15 border-white/50 text-slate-50'
                             : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/10'
@@ -216,7 +216,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                 type="button"
                 disabled={gold < KINGDOM_COSTS.FOUND_KINGDOM || !draftName.trim()}
                 onClick={() => onFoundKingdom(draftName.trim(), draftColor)}
-                className={`w-full py-3 px-4 rounded-xl font-display text-sm font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
+                className={`w-full min-h-[46px] py-3 px-4 rounded-xl font-display text-sm font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
                   gold >= KINGDOM_COSTS.FOUND_KINGDOM && draftName.trim()
                     ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                     : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -228,7 +228,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 flex flex-col gap-4 sm:gap-5">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] flex flex-col gap-4 sm:gap-5">
             {/* Summary Strip */}
             <div className="px-4 py-3 rounded-xl bg-slate-950/35 border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -268,7 +268,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                       type="button"
                       disabled={!hasInjuredSoldiers || gold < KINGDOM_COSTS.HEAL_ARMY}
                       onClick={() => runGuardedPurchase(onHealArmy)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                      className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                         hasInjuredSoldiers && gold >= KINGDOM_COSTS.HEAL_ARMY
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
                           : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -286,7 +286,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                     <span className="text-xs font-semibold text-slate-200">
                       {isEn ? 'Army Stance [V]' : 'Ordu Düzeni [V]'}
                     </span>
-                    <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-900/70 border border-white/10">
+                    <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900/70 border border-white/10">
                       {(
                         [
                           { id: 'CHARGE', label: isEn ? 'Charge' : 'Saldır' },
@@ -298,7 +298,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                           key={opt.id}
                           type="button"
                           onClick={() => onSetArmyStance(opt.id)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          className={`min-h-[34px] px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                             armyStance === opt.id
                               ? 'bg-amber-500 text-slate-950'
                               : 'text-slate-300 hover:text-white'
@@ -331,7 +331,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                     type="button"
                     disabled={armyLevel >= MAX_ARMY_LEVEL || gold < armyUpgradeCost}
                     onClick={() => runGuardedPurchase(onUpgradeArmy)}
-                    className={`px-3.5 py-2 rounded-lg text-xs font-bold font-mono-num shrink-0 transition-colors whitespace-nowrap ${
+                    className={`min-h-[40px] w-full sm:w-auto px-3.5 py-2 rounded-xl text-xs font-bold font-mono-num shrink-0 transition-colors whitespace-nowrap ${
                       armyLevel < MAX_ARMY_LEVEL && gold >= armyUpgradeCost
                         ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
                         : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -376,7 +376,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                 disabled={!canBuy}
                                 onClick={() => runGuardedPurchase(() => onRecruitSoldier(type, qty))}
                                 title={`${qty} ${spec.name} al (${cost} Altın)`}
-                                className={`px-2.5 py-2 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
+                                className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
                                   canBuy
                                     ? qty === 1
                                       ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
@@ -416,7 +416,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                             type="button"
                             disabled={!canBuy}
                             onClick={() => runGuardedPurchase(() => onRecruitShip(qty))}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
+                            className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
                               canBuy
                                 ? qty === 1
                                   ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
@@ -594,7 +594,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                               type="button"
                               disabled={atWar}
                               onClick={() => onDeclareWar(faction.id)}
-                              className={`px-3.5 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors whitespace-nowrap ${
+                              className={`min-h-[40px] w-full sm:w-auto px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-colors whitespace-nowrap ${
                                 atWar
                                   ? 'bg-red-500/20 text-red-300 border border-red-400/35 cursor-default'
                                   : 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer'
@@ -629,7 +629,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                             return (
                               <div
                                 key={isl.id}
-                                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-900/60 border border-white/10 text-xs"
+                                className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-slate-900/60 border border-white/10 text-xs"
                               >
                                 <span className="text-slate-200 truncate">{isl.name}</span>
                                 {built ? (
@@ -641,7 +641,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                     type="button"
                                     disabled={!canBuild}
                                     onClick={() => onBuildFortTurret(isl.id)}
-                                    className={`px-2.5 py-1 rounded text-[11px] font-bold shrink-0 whitespace-nowrap ${
+                                    className={`min-h-[36px] px-3 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap ${
                                       canBuild
                                         ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 cursor-pointer'
                                         : 'bg-white/10 text-slate-400 cursor-not-allowed'

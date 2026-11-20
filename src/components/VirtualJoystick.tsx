@@ -235,18 +235,23 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         }}
         className={`${
           !isEditingLayout && mode === 'DYNAMIC' && dynamicOrigin ? 'absolute' : 'relative'
-        } rounded-full border transition-opacity duration-150 flex items-center justify-center ${
+        } rounded-full border backdrop-blur-md ring-1 ring-inset ring-white/[0.06] transition-colors duration-150 flex items-center justify-center ${
           isActive
-            ? 'bg-slate-900/55 border-amber-300/60 shadow-lg'
-            : 'bg-slate-900/40 border-white/25'
+            ? 'bg-[#081A24]/78 border-amber-300/70 shadow-[0_0_26px_rgba(251,191,36,0.22)]'
+            : 'bg-[#081A24]/56 border-white/20 shadow-[0_10px_28px_rgba(2,10,18,0.45)]'
         }`}
       >
-        {/* Crosshair guides */}
+        {/* Crosshair guides & cardinal ticks */}
         <div
           className={`absolute ${
             compact ? 'inset-2.5' : 'inset-2.5 sm:inset-3'
           } rounded-full border border-white/10 pointer-events-none`}
         />
+        <span className="pointer-events-none absolute top-1.5 left-1/2 -translate-x-1/2 w-[1.5px] h-1.5 rounded-full bg-white/30" />
+        <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 w-[1.5px] h-1.5 rounded-full bg-white/30" />
+        <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 h-[1.5px] w-1.5 rounded-full bg-white/30" />
+        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-[1.5px] w-1.5 rounded-full bg-white/30" />
+
         {/* Inner thumb knob */}
         <div
           style={{
@@ -254,10 +259,10 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
             height: `${knobSize}px`,
             transform: `translate(${knobOffset.x}px, ${knobOffset.y}px)`,
           }}
-          className={`rounded-full border shadow-md transition-colors duration-100 pointer-events-none flex items-center justify-center ${
+          className={`rounded-full border ring-1 ring-inset ring-white/35 shadow-[0_6px_16px_rgba(2,10,18,0.55)] transition-colors duration-100 pointer-events-none flex items-center justify-center ${
             isActive
-              ? 'bg-amber-400 border-amber-200'
-              : 'bg-slate-100/85 border-white'
+              ? 'bg-gradient-to-b from-amber-300 to-amber-500 border-amber-100'
+              : 'bg-gradient-to-b from-slate-50 to-slate-200/90 border-white/80'
           }`}
         >
           {isEditingLayout && <Move className="w-4 h-4 text-slate-800" />}

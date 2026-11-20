@@ -9093,7 +9093,7 @@ export default function App() {
           {activeWorldEvent && !onlineActive && hudLayout.showTopCenterEvent && (
             <div
               style={{ maxWidth: `${hudLayout.topCenterEventMaxWidth}px` }}
-              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F2936]/90 border border-amber-400/45 text-xs text-amber-200 shadow-lg"
+              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#081A24]/90 backdrop-blur-xl border border-amber-400/40 ring-1 ring-inset ring-white/[0.05] text-xs text-amber-200 shadow-[0_12px_30px_rgba(2,10,18,0.55)]"
             >
               {activeWorldEvent.type === 'STORM' ? (
                 <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -9143,7 +9143,7 @@ export default function App() {
               maxWidth: `${hudLayout.topLeftPlacement.maxWidth}px`,
               maxHeight: `${hudLayout.topLeftPlacement.maxHeight}px`,
             }}
-            className={`pointer-events-auto absolute overflow-y-auto flex flex-col items-start min-w-0 ${
+            className={`pointer-events-auto absolute overflow-y-auto no-scrollbar flex flex-col items-start min-w-0 ${
               isCompactTouch ? 'gap-1' : 'gap-2'
             } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
           >
@@ -9151,7 +9151,7 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#0F2936]/90 border border-sky-400/35 font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-md shrink-0`}
+                } rounded-lg bg-[#081A24]/90 backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.04] font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] shrink-0`}
               >
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
@@ -9171,21 +9171,25 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-1 gap-1.5' : 'px-3 py-2 gap-2.5'
-                } rounded-xl bg-[#0F2936]/90 border border-white/15 flex items-center shadow-md max-w-full shrink-0`}
+                } rounded-xl bg-[#081A24]/90 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.04] flex items-center shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full shrink-0`}
               >
                 <Heart
                   className={`${
                     isCompactTouch ? 'w-3.5 h-3.5' : 'w-4 h-4'
-                  } text-red-400 shrink-0`}
+                  } ${hpPct > 35 ? 'text-rose-400' : 'text-red-500'} shrink-0`}
                 />
                 <div
                   className={`${
                     isCompactTouch ? 'w-14' : 'w-28'
-                  } h-2 rounded-full bg-slate-900 overflow-hidden shrink-0`}
+                  } h-2 rounded-full bg-slate-950/80 border border-white/10 overflow-hidden shrink-0`}
                 >
                   <div
                     className={`h-full transition-all duration-150 ${
-                      hpPct > 45 ? 'bg-emerald-400' : 'bg-red-500'
+                      hpPct > 55
+                        ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                        : hpPct > 28
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-400'
+                        : 'bg-gradient-to-r from-red-600 to-rose-400'
                     }`}
                     style={{ width: `${hpPct}%` }}
                   />
@@ -9209,7 +9213,7 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#0F2936]/85 border border-white/15 font-medium text-slate-100 truncate max-w-full shadow-md shrink-0`}
+                } rounded-lg bg-[#081A24]/88 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.04] font-medium text-slate-100 truncate max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] shrink-0`}
               >
                 {hudState.currentIslandName}
               </div>
@@ -9219,12 +9223,12 @@ export default function App() {
               <div
                 className={`${
                   isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg border font-semibold flex items-center gap-1.5 max-w-full shadow-md whitespace-nowrap shrink-0 ${
+                } rounded-lg backdrop-blur-xl border ring-1 ring-inset ring-white/[0.04] font-semibold flex items-center gap-1.5 max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] whitespace-nowrap shrink-0 ${
                   hudState.zoneBanner.tone === 'CITY'
-                    ? 'bg-sky-950/85 border-sky-400/45 text-sky-200'
+                    ? 'bg-sky-950/90 border-sky-400/45 text-sky-200'
                     : hudState.zoneBanner.tone === 'ARENA'
-                    ? 'bg-orange-950/85 border-orange-400/45 text-orange-200'
-                    : 'bg-purple-950/85 border-purple-400/45 text-purple-200'
+                    ? 'bg-orange-950/90 border-orange-400/45 text-orange-200'
+                    : 'bg-purple-950/90 border-purple-400/45 text-purple-200'
                 }`}
               >
                 {hudState.zoneBanner.tone === 'CITY' ? (
@@ -9252,7 +9256,7 @@ export default function App() {
                   <div
                     className={`${
                       isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                    } rounded-lg bg-orange-950/90 border border-amber-400/60 text-amber-200 font-bold flex items-center gap-1 shadow-md whitespace-nowrap`}
+                    } rounded-lg bg-orange-950/90 backdrop-blur-xl border border-amber-400/55 text-amber-200 font-bold flex items-center gap-1 shadow-[0_8px_22px_rgba(2,10,18,0.45)] whitespace-nowrap`}
                   >
                     <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span>{hudState.arenaWaveText}</span>
@@ -9263,7 +9267,7 @@ export default function App() {
                   <div
                     className={`${
                       isCompactTouch ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-3 py-1.5 text-xs gap-1.5'
-                    } rounded-xl bg-red-950/85 border border-red-400/45 text-red-200 font-semibold flex items-center shadow-md max-w-full`}
+                    } rounded-xl bg-red-950/88 backdrop-blur-xl border border-red-400/45 text-red-200 font-semibold flex items-center shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full`}
                   >
                     <ShieldAlert
                       className={`${
@@ -9284,7 +9288,7 @@ export default function App() {
                   <div
                     className={`${
                       isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                    } rounded-lg bg-[#0F2936]/90 border border-amber-400/40 text-amber-200 font-semibold flex items-center gap-1 shadow-md max-w-full`}
+                    } rounded-lg bg-[#081A24]/90 backdrop-blur-xl border border-amber-400/40 text-amber-200 font-semibold flex items-center gap-1 shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full`}
                   >
                     {activeWorldEvent.type === 'STORM' ? (
                       <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -9303,7 +9307,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setActiveModal('SHOP')}
-                  className="flex px-3.5 py-2 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-amber-400/50 text-amber-300 text-xs font-semibold items-center gap-2 shadow-lg transition-transform duration-100 active:scale-95 cursor-pointer shrink-0"
+                  className="flex px-3.5 py-2 rounded-xl bg-[#081A24]/92 hover:bg-[#112F40] backdrop-blur-xl border border-amber-400/50 ring-1 ring-inset ring-white/[0.05] text-amber-300 text-xs font-semibold items-center gap-2 shadow-[0_12px_28px_rgba(2,10,18,0.5)] transition-transform duration-100 active:scale-95 cursor-pointer shrink-0"
                 >
                   <Store className="w-4 h-4" />
                   <span>
@@ -9412,7 +9416,7 @@ export default function App() {
                 }`}
               >
                 {showPortraitHintBanner && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-[11px] text-slate-100 flex items-center gap-2 shadow-xl">
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-[11px] text-slate-100 flex items-center gap-2 shadow-[0_14px_34px_rgba(2,10,18,0.6)]">
                     <RotateCw className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span className="truncate">
                       {settings.language === 'en'
@@ -9430,7 +9434,7 @@ export default function App() {
                 )}
 
                 {nextTutorialStep && !isEditingLayout && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2 shadow-xl">
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-xs text-slate-100 flex items-center gap-2 shadow-[0_14px_34px_rgba(2,10,18,0.6)]">
                     <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
                     <div className="min-w-0">
                       <span className="font-bold text-amber-200 mr-1.5">
@@ -9476,7 +9480,7 @@ export default function App() {
                     )}
 
                     {voiceState.error && (
-                      <div className="px-2.5 py-1 rounded-lg bg-red-950/90 border border-red-400/50 text-red-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
+                      <div className="px-2.5 py-1 rounded-lg bg-red-950/90 backdrop-blur-md border border-red-400/50 text-red-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
                         <span className="truncate">{voiceState.error}</span>
                         <button
                           type="button"
@@ -9489,7 +9493,7 @@ export default function App() {
                     )}
 
                     <div
-                      className={`flex flex-wrap items-center gap-1 max-w-full ${
+                      className={`flex flex-wrap items-center gap-1.5 max-w-full ${
                         hudLayout.bottomStackPlacement.align === 'center'
                           ? 'justify-center'
                           : 'justify-start'
@@ -9498,10 +9502,10 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setChatOpen((prev) => !prev)}
-                        className={`px-2.5 py-1 text-[11px] rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                        className={`min-h-[34px] px-3 py-1 text-[11px] rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95 ${
                           chatOpen
                             ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
-                            : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-sky-400/40 text-sky-200'
+                            : 'bg-[#081A24]/90 hover:bg-[#112F40] border-sky-400/40 text-sky-200'
                         }`}
                       >
                         <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
@@ -9517,10 +9521,10 @@ export default function App() {
                         type="button"
                         onClick={() => void handleToggleVoiceJoin()}
                         disabled={voiceState.connecting}
-                        className={`px-2.5 py-1 text-[11px] rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                        className={`min-h-[34px] px-3 py-1 text-[11px] rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95 ${
                           voiceState.enabled
                             ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
-                            : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-white/15 text-slate-200'
+                            : 'bg-[#081A24]/90 hover:bg-[#112F40] border-white/14 text-slate-200'
                         }`}
                       >
                         {voiceState.enabled ? (
@@ -9542,8 +9546,8 @@ export default function App() {
                             : 'Sesli Sohbet'}
                         </span>
                         {voiceState.enabled && (
-                          <span className="px-1.5 rounded-full bg-emerald-500/25 text-[10px] font-mono-num text-emerald-100">
-                            {voiceState.connectedVoicePeerCount}
+                          <span className="font-mono-num text-[10px] font-bold text-emerald-200">
+                            · {voiceState.connectedVoicePeerCount}
                             {voicePeersCount > 1 ? `/${Math.max(1, voicePeersCount - 1)}` : ''}
                           </span>
                         )}
@@ -9563,10 +9567,10 @@ export default function App() {
                                 ? 'Mute Mic'
                                 : 'Mikrofonu Kapat'
                             }
-                            className={`p-1.5 rounded-xl border shadow-lg cursor-pointer flex items-center gap-1 ${
+                            className={`min-h-[34px] min-w-[34px] p-1.5 rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer flex items-center justify-center gap-1 transition-all active:scale-95 ${
                               voiceState.muted
                                 ? 'bg-red-950/90 border-red-400/50 text-red-200'
-                                : 'bg-[#0F2936]/90 border-emerald-400/40 text-emerald-200'
+                                : 'bg-[#081A24]/90 border-emerald-400/40 text-emerald-200'
                             }`}
                           >
                             {voiceState.muted ? (
@@ -9579,7 +9583,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleToggleVoiceMode}
-                            className="px-2 py-1 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/35 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
+                            className="min-h-[34px] px-2.5 py-1 rounded-xl bg-[#081A24]/90 hover:bg-[#112F40] backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.05] text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95"
                           >
                             <Radio className="w-3 h-3 text-sky-300" />
                             <span>
@@ -9609,7 +9613,7 @@ export default function App() {
                 left: `${hudLayout.desktopTutorialPlacement.left}px`,
                 maxWidth: `${hudLayout.desktopTutorialPlacement.maxWidth}px`,
               }}
-              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#0F2936]/95 border border-amber-400/40 text-xs text-slate-100 flex items-center gap-2.5 shadow-xl"
+              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-xs text-slate-100 flex items-center gap-2.5 shadow-[0_14px_34px_rgba(2,10,18,0.6)]"
             >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
@@ -9703,10 +9707,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className={`px-3 py-1.5 text-xs rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap transition-colors ${
                     chatOpen
                       ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
-                      : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-sky-400/40 text-sky-200'
+                      : 'bg-[#081A24]/90 hover:bg-[#112F40] border-sky-400/40 text-sky-200'
                   }`}
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
@@ -9727,10 +9731,10 @@ export default function App() {
                   type="button"
                   onClick={() => void handleToggleVoiceJoin()}
                   disabled={voiceState.connecting}
-                  className={`px-3 py-1.5 text-xs rounded-xl border font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap transition-colors ${
                     voiceState.enabled
                       ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
-                      : 'bg-[#0F2936]/90 hover:bg-[#173D4F] border-white/15 text-slate-200'
+                      : 'bg-[#081A24]/90 hover:bg-[#112F40] border-white/14 text-slate-200'
                   }`}
                 >
                   {voiceState.enabled ? (
@@ -9752,8 +9756,8 @@ export default function App() {
                       : 'Sesli Sohbet'}
                   </span>
                   {voiceState.enabled && (
-                    <span className="px-1.5 rounded-full bg-emerald-500/25 text-[10px] font-mono-num text-emerald-100">
-                      {voiceState.connectedVoicePeerCount}
+                    <span className="font-mono-num text-[10px] font-bold text-emerald-200">
+                      · {voiceState.connectedVoicePeerCount}
                       {voicePeersCount > 1 ? `/${Math.max(1, voicePeersCount - 1)}` : ''}
                     </span>
                   )}
@@ -9773,10 +9777,10 @@ export default function App() {
                           ? 'Mute Mic'
                           : 'Mikrofonu Kapat'
                       }
-                      className={`p-1.5 rounded-xl border shadow-lg cursor-pointer flex items-center gap-1 ${
+                      className={`p-1.5 rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer flex items-center gap-1 ${
                         voiceState.muted
                           ? 'bg-red-950/90 border-red-400/50 text-red-200'
-                          : 'bg-[#0F2936]/90 border-emerald-400/40 text-emerald-200'
+                          : 'bg-[#081A24]/90 border-emerald-400/40 text-emerald-200'
                       }`}
                     >
                       {voiceState.muted ? (
@@ -9794,7 +9798,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleToggleVoiceMode}
-                      className="px-2.5 py-1.5 rounded-xl bg-[#0F2936]/90 hover:bg-[#173D4F] border border-sky-400/35 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
+                      className="px-2.5 py-1.5 rounded-xl bg-[#081A24]/90 hover:bg-[#112F40] backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.05] text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap"
                       title={
                         settings.language === 'en'
                           ? 'Switch Proximity vs Room-Wide Voice'
@@ -9814,7 +9818,7 @@ export default function App() {
                     </button>
 
                     {voiceState.activeSpeakerIds.length > 0 && (
-                      <span className="px-2 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/45 text-[10px] font-semibold text-emerald-200 flex items-center gap-1 whitespace-nowrap">
+                      <span className="px-2.5 py-1 rounded-xl bg-emerald-950/85 border border-emerald-400/40 text-[10px] font-semibold text-emerald-200 flex items-center gap-1.5 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         {settings.language === 'en' ? 'Speaking' : 'Konuşuyor'}
                       </span>
@@ -9927,7 +9931,7 @@ export default function App() {
                   left: `${hudLayout.editorToolbarPlacement.left}px`,
                   width: `${hudLayout.editorToolbarPlacement.width}px`,
                 }}
-                className="pointer-events-auto fixed z-40 rounded-2xl bg-[#0F2936]/95 border border-amber-400/50 shadow-2xl backdrop-blur-md px-3 py-2.5 flex flex-col gap-2"
+                className="pointer-events-auto fixed z-40 rounded-2xl bg-[#081A24]/95 border border-amber-400/45 ring-1 ring-inset ring-white/[0.06] shadow-[0_24px_60px_rgba(2,10,18,0.78)] backdrop-blur-xl px-3.5 py-3 flex flex-col gap-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -9988,7 +9992,7 @@ export default function App() {
                   </div>
 
                   {selectedTouchButton && (
-                    <div className="flex items-center gap-1 shrink-0 bg-slate-900/70 border border-white/10 rounded-lg px-1.5 py-1">
+                    <div className="flex items-center gap-1 shrink-0 bg-slate-950/65 border border-white/10 rounded-xl px-1.5 py-1">
                       <button
                         type="button"
                         aria-label="Küçült"
@@ -10003,11 +10007,11 @@ export default function App() {
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
                           updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
-                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-slate-100 flex items-center justify-center cursor-pointer"
                       >
-                        <Minus className="w-3 h-3" />
+                        <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="font-mono-num text-[11px] font-bold text-slate-200 w-9 text-center">
+                      <span className="font-mono-num text-[11px] font-bold text-slate-200 w-10 text-center">
                         %{Math.round((draftTouchLayout[selectedTouchButton]?.scale ?? 1) * 100)}
                       </span>
                       <button
@@ -10025,9 +10029,9 @@ export default function App() {
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
                           updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
-                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-slate-100 flex items-center justify-center cursor-pointer"
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
@@ -10039,9 +10043,9 @@ export default function App() {
                             return next;
                           });
                         }}
-                        className="w-6 h-6 rounded bg-white/10 hover:bg-white/20 text-sky-300 flex items-center justify-center cursor-pointer ml-0.5"
+                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-sky-300 flex items-center justify-center cursor-pointer ml-0.5"
                       >
-                        <RotateCcw className="w-3 h-3" />
+                        <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
@@ -10052,7 +10056,7 @@ export default function App() {
                   const curOpacity = draftTouchLayout[selectedTouchButton]?.opacity ?? 1;
                   const opacityPct = Math.round(curOpacity * 100);
                   return (
-                    <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                    <div className="flex items-center gap-2 pt-1.5 border-t border-white/10">
                       <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap shrink-0">
                         {settings.language === 'en' ? 'Opacity' : 'Opaklık'}
                       </span>
@@ -10097,7 +10101,7 @@ export default function App() {
                             ? 'Apply this opacity to all controls'
                             : 'Bu opaklığı tüm kontrollere uygula'
                         }
-                        className="px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[10px] font-semibold text-slate-200 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="min-h-[30px] px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         {settings.language === 'en' ? 'All' : 'Tümüne'}
                       </button>
@@ -10105,12 +10109,12 @@ export default function App() {
                   );
                 })()}
 
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/10">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setDraftTouchLayout({})}
-                      className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      className="min-h-[34px] px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>{settings.language === 'en' ? 'Reset All' : 'Varsayılan'}</span>
@@ -10118,7 +10122,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setSelectedTouchButton('minimap')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                      className={`min-h-[34px] px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
                         selectedTouchButton === 'minimap'
                           ? 'bg-sky-500/25 border-sky-400 text-sky-200'
                           : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
@@ -10129,7 +10133,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setSelectedTouchButton('weaponPanel')}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                      className={`min-h-[34px] px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
                         selectedTouchButton === 'weaponPanel'
                           ? 'bg-amber-500/25 border-amber-400 text-amber-200'
                           : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
@@ -10143,7 +10147,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveModal('NONE')}
-                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold cursor-pointer"
+                      className="min-h-[36px] px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold cursor-pointer"
                     >
                       {settings.language === 'en' ? 'Cancel' : 'İptal'}
                     </button>
@@ -10163,7 +10167,7 @@ export default function App() {
                         }));
                         setActiveModal('NONE');
                       }}
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 shadow cursor-pointer"
+                      className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 shadow cursor-pointer"
                     >
                       <Check className="w-3.5 h-3.5" />
                       <span>{settings.language === 'en' ? 'Save' : 'Kaydet'}</span>

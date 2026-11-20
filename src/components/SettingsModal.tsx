@@ -312,14 +312,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-5"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] sm:p-5 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Game Settings' : 'Oyun Ayarları'}
     >
-      <div className="w-full max-w-3xl max-h-[92dvh] bg-[#0B2330] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-3xl max-h-[94dvh] sm:max-h-[92dvh] bg-[#0A1F2B]/96 backdrop-blur-xl border-t sm:border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-t-3xl sm:rounded-2xl shadow-[0_24px_64px_rgba(2,10,18,0.78)] flex flex-col overflow-hidden">
         {/* Top Modal Header */}
-        <div className="px-4 sm:px-5 py-3 border-b border-white/10 flex items-center justify-between gap-3 shrink-0 bg-[#081A24]">
+        <div className="px-4 sm:px-5 py-3 border-b border-white/10 flex items-center justify-between gap-3 shrink-0 bg-[#081A24]/95">
           <div className="flex items-center gap-2.5 min-w-0">
             <Settings className="w-5 h-5 text-amber-300 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
@@ -337,7 +337,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={isEn ? 'Close Settings' : 'Ayarları Kapat'}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
+              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
             >
               <X className="w-5 h-5" />
             </button>
@@ -349,7 +349,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Category Navigation */}
           <nav
             aria-label={isEn ? 'Settings categories' : 'Ayar kategorileri'}
-            className={`shrink-0 bg-[#081C27] border-b sm:border-b-0 sm:border-r border-white/10 p-2 sm:p-3 sm:w-48 grid ${
+            className={`shrink-0 bg-[#06141D]/90 border-b sm:border-b-0 sm:border-r border-white/10 p-2 sm:p-3 sm:w-48 grid ${
               tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3'
             } sm:flex sm:flex-col gap-1.5`}
           >
@@ -364,9 +364,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     setListeningKey(null);
                   }}
                   aria-current={active ? 'page' : undefined}
-                  className={`min-h-[40px] sm:min-h-[44px] px-2 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400 ${
+                  className={`min-h-[42px] sm:min-h-[44px] px-2 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400 ${
                     active
-                      ? 'bg-amber-500 text-slate-950 shadow'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
                       : 'text-slate-300 hover:bg-white/10 hover:text-white'
                   }`}
                 >
@@ -381,7 +381,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </nav>
 
           {/* Active Tab Content */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3.5">
+          <div
+            className={`flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3.5 ${
+              onLeaveToMenu ? '' : 'pb-[max(1.25rem,env(safe-area-inset-bottom))]'
+            }`}
+          >
             {/* TAB 1: GENERAL & DISPLAY */}
             {activeTab === 'GENERAL' && (
               <>
@@ -1220,7 +1224,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 onClick={() => setListeningKey(active ? null : item.key)}
                                 className={`px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer ${
                                   active
-                                    ? 'bg-amber-500 text-slate-950 animate-pulse'
+                                    ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-300/75 shadow-sm'
                                     : 'bg-white/10 hover:bg-white/20 text-amber-200'
                                 }`}
                               >
@@ -1307,7 +1311,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type="number"
                         value={seedInput}
                         onChange={(e) => setSeedInput(e.target.value)}
-                        className="w-24 px-2 py-1.5 rounded-md bg-slate-900 border border-white/15 text-slate-100 font-mono-num text-xs"
+                        className="w-28 min-h-[38px] sm:min-h-[32px] px-2.5 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-slate-100 font-mono-num text-[16px] sm:text-xs"
                         placeholder="123456"
                       />
                       <button
@@ -1321,7 +1325,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             );
                           }
                         }}
-                        className="px-2.5 py-1.5 rounded-md bg-sky-500/25 hover:bg-sky-500/35 border border-sky-400/40 text-sky-200 text-xs font-semibold cursor-pointer"
+                        className="min-h-[38px] sm:min-h-[32px] px-3 py-1.5 rounded-lg bg-sky-500/25 hover:bg-sky-500/35 border border-sky-400/40 text-sky-200 text-xs font-semibold cursor-pointer"
                       >
                         {isEn ? 'Launch Seed' : 'Tohumla Başla'}
                       </button>
@@ -1453,11 +1457,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Footer Action Bar when in-game */}
         {onLeaveToMenu && (
-          <div className="px-4 sm:px-5 py-2.5 border-t border-white/10 bg-[#081A24] flex items-center justify-between gap-3 shrink-0">
+          <div className="px-4 sm:px-5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:py-3 border-t border-white/10 bg-[#081A24]/95 flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
               onClick={onLeaveToMenu}
-              className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
+              className="min-h-[42px] sm:min-h-[38px] px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>
@@ -1474,7 +1478,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer whitespace-nowrap"
+              className="min-h-[42px] sm:min-h-[38px] px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer whitespace-nowrap"
             >
               {isEn ? 'Done' : 'Tamam'}
             </button>

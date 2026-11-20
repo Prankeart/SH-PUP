@@ -124,13 +124,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:p-6 overscroll-none"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Harbor Merchant & Upgrades' : 'Liman Tüccarı ve Geliştirmeler'}
     >
-      <div className="w-full max-w-4xl max-h-[92dvh] sm:max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-3.5 sm:px-5 py-3 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+      <div className="w-full max-w-4xl max-h-[94dvh] sm:max-h-[90dvh] bg-[#0A1F2B]/96 backdrop-blur-xl border-t sm:border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-t-3xl sm:rounded-2xl shadow-[0_24px_64px_rgba(2,10,18,0.78)] flex flex-col overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 border-b border-white/10 bg-[#081A24]/95 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <Store className="w-5 h-5 text-amber-400 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
@@ -146,7 +146,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={isEn ? 'Close Shop' : 'Dükkanı Kapat'}
-              className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -154,13 +154,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
         </div>
 
         {/* Single-row horizontal tab navigation on mobile */}
-        <div className="px-3 sm:px-5 py-2 border-b border-white/10 flex flex-nowrap items-center gap-1.5 overflow-x-auto bg-slate-950/25 shrink-0">
+        <div className="px-3.5 sm:px-5 py-2 border-b border-white/10 flex flex-nowrap items-center gap-1.5 overflow-x-auto no-scrollbar bg-[#06141D]/90 shrink-0">
           <button
             type="button"
             onClick={() => setTab('TRADE')}
-            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'TRADE'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
@@ -171,9 +171,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('ARSENAL')}
-            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'ARSENAL'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
@@ -184,9 +184,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('WORKSHOP')}
-            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'WORKSHOP'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
@@ -197,9 +197,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('PETS')}
-            className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'PETS'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
@@ -210,7 +210,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
         </div>
 
         {!nearDock && tab === 'TRADE' && (
-          <div className="px-5 py-2.5 bg-amber-500/15 border-b border-amber-400/25 text-xs text-amber-200 flex items-center justify-between gap-2">
+          <div className="px-4 sm:px-5 py-2.5 bg-amber-500/12 border-b border-amber-400/20 text-xs text-amber-200 flex items-center justify-between gap-2 shrink-0">
             <span>
               {isEn
                 ? 'Approach a gold Trader Dock on the map to sell treasures or purchase upgrades.'
@@ -219,7 +219,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {tab === 'TRADE' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
               <div className="flex flex-col gap-3">
@@ -235,7 +235,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       onClick={onSellAll}
                       disabled={!nearDock}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                      className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
                         nearDock
                           ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                           : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -273,7 +273,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                           type="button"
                           onClick={() => onSellItem(item.uid)}
                           disabled={!nearDock}
-                          className={`px-3 py-1.5 rounded-lg font-mono-num text-xs font-bold shrink-0 transition-colors ${
+                          className={`min-h-[38px] px-3 py-1.5 rounded-xl font-mono-num text-xs font-bold shrink-0 transition-colors ${
                             nearDock
                               ? 'bg-emerald-500/90 hover:bg-emerald-400 text-slate-950 cursor-pointer'
                               : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -325,7 +325,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                           type="button"
                           disabled={isMax || !canAfford || !nearDock}
                           onClick={() => onBuyUpgrade(def.key)}
-                          className={`px-3.5 py-2 rounded-lg text-xs font-bold font-mono-num shrink-0 transition-colors whitespace-nowrap ${
+                          className={`min-h-[40px] w-full sm:w-auto px-3.5 py-2 rounded-xl text-xs font-bold font-mono-num shrink-0 transition-colors whitespace-nowrap ${
                             isMax
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 cursor-default'
                               : nearDock && canAfford
@@ -665,7 +665,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                     type="button"
                     disabled={!nearDock || resourceSellValue <= 0}
                     onClick={onSellResources}
-                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
+                    className={`w-full min-h-[42px] py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
                       nearDock && resourceSellValue > 0
                         ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                         : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -706,7 +706,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       disabled={!canCraftWithRes && !canCraftWithGold}
                       onClick={onCraftRepairKit}
-                      className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
+                      className={`w-full min-h-[42px] py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
                         canCraftWithRes || canCraftWithGold
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
                           : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -727,7 +727,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       disabled={repairKits <= 0}
                       onClick={onUseRepairKit}
-                      className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
+                      className={`w-full min-h-[42px] py-2.5 px-4 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
                         repairKits > 0
                           ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 cursor-pointer'
                           : 'bg-white/10 text-slate-400 cursor-not-allowed'
@@ -800,7 +800,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                         <button
                           type="button"
                           onClick={() => onEquipPet?.(active ? null : pet.id)}
-                          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                          className={`w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
                             active
                               ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
                               : 'bg-white/10 text-slate-100 hover:bg-white/20'
@@ -819,7 +819,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                           type="button"
                           disabled={!canAfford}
                           onClick={() => onAdoptPet?.(pet.id)}
-                          className={`w-full py-2 px-3 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
+                          className={`w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
                             canAfford
                               ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
                               : 'bg-white/10 text-slate-400 cursor-not-allowed'

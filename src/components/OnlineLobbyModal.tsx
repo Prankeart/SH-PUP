@@ -203,12 +203,12 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
       {/* Full-Viewport Container (scrolls on portrait & short landscape phones, single-screen cockpit when >=600x520) */}
       <div className="relative z-10 h-full w-full max-w-6xl mx-auto pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:pl-[max(1.25rem,env(safe-area-inset-left))] sm:pr-[max(1.25rem,env(safe-area-inset-right))] lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-y-auto [@media(min-width:600px)_and_(min-height:520px)]:overflow-hidden">
         {/* Compact Top Navigation Header */}
-        <header className="h-11 sm:h-12 shrink-0 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+        <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={handleExitLobby}
-              className="h-9 px-2.5 sm:px-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-slate-100 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-amber-400"
+              className="h-10 px-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/12 text-slate-100 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-amber-400"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">{isEn ? 'Main Menu' : 'Ana Menü'}</span>
@@ -230,7 +230,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
               type="button"
               onClick={handleExitLobby}
               aria-label={isEn ? 'Close Lobby' : 'Lobiyi Kapat'}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
+              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
             >
               <X className="w-4 h-4" />
             </button>
@@ -257,7 +257,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         {isInLobbyOrConnecting && roomInfo ? (
           <div className="flex-1 min-h-0 grid grid-cols-1 [@media(min-width:600px)]:grid-cols-12 gap-2.5 sm:gap-4">
             {/* Left Zone: Room Spotlight, Rules & Start Action */}
-            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#09202E]/90 border border-white/15 rounded-2xl p-3 sm:p-4 shadow-2xl min-h-0">
+            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)] min-h-0">
               <div className="flex flex-col gap-2.5 sm:gap-3">
                 {/* Room Code Card */}
                 <div className="p-3 rounded-xl bg-slate-950/50 border border-amber-400/25 flex flex-col gap-2">
@@ -400,7 +400,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             </section>
 
             {/* Right Zone: Squad Roster */}
-            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 bg-[#09202E]/90 border border-white/15 rounded-2xl p-3 sm:p-4 shadow-2xl">
+            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)]">
               <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/10 shrink-0">
                 <span className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
                   <Users className="w-4 h-4 text-emerald-300" />
@@ -465,7 +465,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         ) : status === 'CONNECTING' ? (
           /* STATE 2: Connecting Screen */
           <div className="flex-1 min-h-0 flex items-center justify-center">
-            <div className="w-full max-w-md p-6 rounded-2xl bg-[#09202E]/90 border border-white/15 shadow-2xl flex flex-col items-center text-center gap-3">
+            <div className="w-full max-w-md p-6 rounded-2xl bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-[0_20px_50px_rgba(2,10,18,0.65)] flex flex-col items-center text-center gap-3">
               <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-400/35 flex items-center justify-center">
                 <RefreshCw className="w-7 h-7 animate-spin text-amber-300" />
               </div>
@@ -490,7 +490,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           /* STATE 3: Single-Screen Setup Cockpit (No Outer Scroll!) */
           <div className="flex-1 min-h-0 grid grid-cols-1 [@media(min-width:600px)]:grid-cols-12 gap-2.5 sm:gap-4">
             {/* Left Column: Captain Identity Card */}
-            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#09202E]/90 border border-white/15 rounded-2xl p-3 sm:p-4 shadow-2xl shrink-0 [@media(min-width:600px)]:shrink">
+            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)] shrink-0 [@media(min-width:600px)]:shrink">
               <div className="flex flex-col gap-2 sm:gap-3.5">
                 {/* Captain Profile Header Preview (shown on landscape/tablet/desktop) */}
                 <div className="hidden [@media(min-width:600px)]:flex items-center gap-3">
@@ -539,7 +539,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       value={identity.name}
                       onChange={(e) => onUpdateIdentity({ ...identity, name: e.target.value })}
                       placeholder={isEn ? 'e.g. Captain Jack' : 'Örn. Kaptan Ege'}
-                      className="h-9 sm:h-10 px-3 rounded-xl bg-slate-950/75 border border-white/15 text-sm text-slate-50 focus:outline-none focus:border-amber-400"
+                      className="h-10 px-3 rounded-xl bg-slate-950/75 border border-white/15 text-[16px] sm:text-sm text-slate-50 focus:outline-none focus:border-amber-400"
                     />
                   </div>
 
@@ -547,7 +547,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                     <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
                       {isEn ? 'Banner' : 'Sancak Rengi'}
                     </span>
-                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2 h-9 sm:h-10">
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2 h-10">
                       {PLAYER_BANNER_OPTIONS.map((opt) => {
                         const active = identity.bannerColor === opt.color;
                         return (
@@ -558,14 +558,14 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                             title={opt.name}
                             aria-label={opt.name}
                             aria-pressed={active}
-                            className={`rounded-xl border flex items-center justify-center cursor-pointer transition-all ${
+                            className={`rounded-xl border flex items-center justify-center cursor-pointer transition-all active:scale-95 ${
                               active
                                 ? 'bg-white/20 border-white shadow'
                                 : 'bg-slate-950/60 border-white/10 hover:bg-white/10'
                             }`}
                           >
                             <span
-                              className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-white/30"
+                              className="w-4 h-4 rounded-full border border-white/30"
                               style={{ backgroundColor: opt.color }}
                             />
                           </button>
@@ -594,7 +594,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             </section>
 
             {/* Right Column: Host / Join Mode Cockpit */}
-            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 gap-2 sm:gap-3 bg-[#09202E]/90 border border-white/15 rounded-2xl p-3 sm:p-4 shadow-2xl">
+            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 gap-2 sm:gap-3 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)]">
               {/* Segmented Host / Join Switcher */}
               <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/10 shrink-0">
                 <button
@@ -706,9 +706,9 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="h-7 sm:h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                          className="min-h-[36px] sm:h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                         >
-                          <Upload className="w-3 h-3" />
+                          <Upload className="w-3.5 h-3.5" />
                           <span>{isEn ? 'Import' : 'Kayıt Yükle'}</span>
                         </button>
                       </div>
@@ -730,7 +730,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                           {savedRooms.map((rm) => (
                             <div
                               key={rm.roomInfo.roomId}
-                              className="p-2 sm:p-2.5 rounded-xl bg-slate-950/45 border border-white/10 flex items-center justify-between gap-2"
+                              className="p-2.5 rounded-xl bg-slate-950/45 border border-white/10 flex items-center justify-between gap-2"
                             >
                               <div className="min-w-0">
                                 <div className="text-xs font-bold text-slate-100 font-mono-num truncate">
@@ -747,7 +747,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => onCreateRoom(selectedRule, rm.roomInfo.roomId)}
-                                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] sm:text-xs font-bold whitespace-nowrap cursor-pointer"
+                                  className="min-h-[38px] sm:h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold whitespace-nowrap cursor-pointer active:scale-95 transition-all"
                                 >
                                   {isEn ? 'Resume' : 'Devam Et'}
                                 </button>
@@ -755,7 +755,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                                   type="button"
                                   onClick={() => handleExportRoom(rm)}
                                   title={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
-                                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer"
+                                  aria-label={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
+                                  className="min-w-[38px] min-h-[38px] sm:w-8 sm:h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                 </button>
@@ -766,7 +767,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                                     await refreshSavedRooms();
                                   }}
                                   title={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
-                                  className="w-8 h-8 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-200 flex items-center justify-center cursor-pointer"
+                                  aria-label={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
+                                  className="min-w-[38px] min-h-[38px] sm:w-8 sm:h-8 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>

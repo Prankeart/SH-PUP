@@ -89,14 +89,14 @@ export const JournalModal: React.FC<JournalModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(0.625rem,env(safe-area-inset-left))] pr-[max(0.625rem,env(safe-area-inset-right))] sm:p-6 overscroll-none"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] sm:p-6 overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? "Captain's Journal" : 'Kaptanın Seyir Defteri'}
     >
-      <div className="w-full max-w-4xl max-h-[90dvh] bg-[#0F2936] border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-4xl max-h-[94dvh] sm:max-h-[90dvh] bg-[#0A1F2B]/96 backdrop-blur-xl border-t sm:border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-t-3xl sm:rounded-2xl shadow-[0_24px_64px_rgba(2,10,18,0.78)] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-5 py-3 border-b border-white/10 bg-[#081A24]/95 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <BookOpen className="w-5 h-5 text-amber-300 shrink-0" />
             <h2 className="font-display text-base sm:text-lg font-bold text-slate-50 truncate">
@@ -107,24 +107,24 @@ export const JournalModal: React.FC<JournalModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={isEn ? 'Close' : 'Kapat'}
-            className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="px-3.5 sm:px-5 py-2.5 border-b border-white/10 flex flex-wrap gap-1.5 bg-slate-950/25 shrink-0">
+        {/* Single-row horizontally scrollable tabs on mobile */}
+        <div className="px-3.5 sm:px-5 py-2 border-b border-white/10 flex flex-nowrap items-center gap-1.5 overflow-x-auto no-scrollbar bg-[#06141D]/90 shrink-0">
           <button
             type="button"
             onClick={() => setTab('CAMPAIGN')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'CAMPAIGN'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <ScrollText className="w-3.5 h-3.5" />
+            <ScrollText className="w-3.5 h-3.5 shrink-0" />
             <span>{isEn ? 'Campaign' : 'Hikaye'}</span>
             {claimableCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-bold font-mono-num">
@@ -136,14 +136,17 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('LOGS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'LOGS'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">
+              {isEn ? 'Logs' : 'Günlük'} ({discoveredLogIds.length}/{CAPTAIN_LOGS.length})
+            </span>
+            <span className="hidden sm:inline">
               {isEn ? "Karloff's Book" : 'Karloff Kitabı'} ({discoveredLogIds.length}/{CAPTAIN_LOGS.length})
             </span>
           </button>
@@ -151,14 +154,17 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('RELICS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'RELICS'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Gem className="w-3.5 h-3.5" />
-            <span>
+            <Gem className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">
+              {isEn ? 'Relics' : 'Kalıntı'} ({collectedRelicIds.length}/{RELIC_DEFS.length})
+            </span>
+            <span className="hidden sm:inline">
               {isEn ? 'Relic Sets' : 'Kalıntılar'} ({collectedRelicIds.length}/{RELIC_DEFS.length})
             </span>
           </button>
@@ -166,14 +172,17 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('ACHIEVEMENTS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'ACHIEVEMENTS'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <Award className="w-3.5 h-3.5" />
-            <span>
+            <Award className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">
+              {isEn ? 'Awards' : 'Başarım'} ({unlockedAchievementIds.length}/{ACHIEVEMENTS.length})
+            </span>
+            <span className="hidden sm:inline">
               {isEn ? 'Achievements' : 'Başarımlar'} ({unlockedAchievementIds.length}/
               {ACHIEVEMENTS.length})
             </span>
@@ -182,19 +191,20 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('STATS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               tab === 'STATS'
-                ? 'bg-amber-500 text-slate-950'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
                 : 'bg-white/5 text-slate-300 hover:bg-white/10'
             }`}
           >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Statistics' : 'İstatistikler'}</span>
+            <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+            <span className="sm:hidden">{isEn ? 'Stats' : 'İstatistik'}</span>
+            <span className="hidden sm:inline">{isEn ? 'Statistics' : 'İstatistikler'}</span>
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {tab === 'CAMPAIGN' && (
             <div className="flex flex-col gap-3">
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-400/25 text-xs text-amber-100">
@@ -243,7 +253,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                         <button
                           type="button"
                           onClick={() => onClaimMilestone(ms.id)}
-                          className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                          className="min-h-[40px] w-full sm:w-auto px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <Coins className="w-3.5 h-3.5" />
                           <span>

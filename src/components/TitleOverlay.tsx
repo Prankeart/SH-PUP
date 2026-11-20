@@ -127,7 +127,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                 type="button"
                 onClick={onToggleLanguage}
                 aria-label={isEn ? 'Switch language' : 'Dili değiştir'}
-                className="min-h-[40px] sm:min-h-[44px] px-3 rounded-xl bg-[#0B2535]/85 hover:bg-[#13384E] border border-white/15 text-slate-100 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-amber-400"
+                className="min-h-[40px] sm:min-h-[44px] px-3 rounded-xl bg-[#081A24]/88 backdrop-blur-md hover:bg-[#0F2F42] border border-white/12 ring-1 ring-inset ring-white/[0.05] text-slate-100 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shadow-md focus-visible:outline-2 focus-visible:outline-amber-400"
               >
                 <Languages className="w-4 h-4 text-amber-300 shrink-0" />
                 <span>{isEn ? 'EN' : 'TR'}</span>
@@ -147,7 +147,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                     ? 'Enable sound'
                     : 'Sesi aç'
                 }
-                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] rounded-xl bg-[#0B2535]/85 hover:bg-[#13384E] border border-white/15 text-slate-100 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
+                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] rounded-xl bg-[#081A24]/88 backdrop-blur-md hover:bg-[#0F2F42] border border-white/12 ring-1 ring-inset ring-white/[0.05] text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-md focus-visible:outline-2 focus-visible:outline-amber-400"
               >
                 {soundEnabled ? (
                   <Volume2 className="w-4 h-4 text-emerald-300" />
@@ -162,7 +162,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                 type="button"
                 onClick={onOpenSettings}
                 aria-label={isEn ? 'Open Settings' : 'Ayarları Aç'}
-                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:px-3.5 rounded-xl bg-[#0B2535]/85 hover:bg-[#13384E] border border-white/15 text-slate-100 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-amber-400"
+                className="min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:px-3.5 rounded-xl bg-[#081A24]/88 backdrop-blur-md hover:bg-[#0F2F42] border border-white/12 ring-1 ring-inset ring-white/[0.05] text-slate-100 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shadow-md focus-visible:outline-2 focus-visible:outline-amber-400"
               >
                 <Settings className="w-4 h-4 text-slate-200 shrink-0" />
                 <span className="hidden md:inline">{isEn ? 'Settings' : 'Ayarlar'}</span>
@@ -205,7 +205,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
 
             {/* Framed Key Art Showcase (Visible on tall viewports: Portrait Tablet & Desktop, hidden on short phone landscape so buttons never clip) */}
             <div className="hidden [@media(min-height:580px)]:block">
-              <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-[#081F2D]/90 shadow-2xl">
+              <div className="relative rounded-2xl overflow-hidden border border-white/12 ring-1 ring-inset ring-white/[0.05] bg-[#081A24]/90 shadow-[0_20px_50px_rgba(2,10,18,0.65)]">
                 {!keyartError ? (
                   <img
                     src={KEYART_IMAGE_SRC}
@@ -281,7 +281,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
           </section>
 
           {/* Right / Bottom Thumb-Zone Command Panel: Mode Selector + Primary Launch CTA */}
-          <section className="sm:col-span-6 lg:col-span-5 w-full flex flex-col gap-2.5 sm:gap-3 bg-[#09202E]/88 backdrop-blur-md border border-white/15 rounded-2xl p-3 sm:p-5 shadow-2xl">
+          <section className="sm:col-span-6 lg:col-span-5 w-full flex flex-col gap-2.5 sm:gap-3 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.06] rounded-2xl p-3.5 sm:p-5 shadow-[0_24px_60px_rgba(2,10,18,0.7)]">
             <div className="flex items-center justify-between gap-2">
               <h2 className="font-display text-sm sm:text-base font-bold text-slate-100">
                 {isEn ? 'Select Mode' : 'Oyun Modunu Seç'}
@@ -303,9 +303,9 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                 type="button"
                 onClick={() => setSelectedMode('OFFLINE')}
                 aria-pressed={selectedMode === 'OFFLINE'}
-                className={`group text-left p-2.5 sm:p-3.5 rounded-xl border transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400 ${
+                className={`group text-left min-h-[56px] p-2.5 sm:p-3.5 rounded-xl border transition-all duration-150 active:scale-[0.985] cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400 ${
                   selectedMode === 'OFFLINE'
-                    ? 'bg-amber-500/15 border-amber-400 shadow-lg'
+                    ? 'bg-amber-500/15 border-amber-400/80 ring-1 ring-inset ring-amber-300/20 shadow-lg'
                     : 'bg-slate-950/40 border-white/10 hover:bg-slate-900/65 hover:border-white/25'
                 }`}
               >
@@ -345,9 +345,9 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                 type="button"
                 onClick={() => setSelectedMode('ONLINE')}
                 aria-pressed={selectedMode === 'ONLINE'}
-                className={`group text-left p-2.5 sm:p-3.5 rounded-xl border transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-sky-400 ${
+                className={`group text-left min-h-[56px] p-2.5 sm:p-3.5 rounded-xl border transition-all duration-150 active:scale-[0.985] cursor-pointer focus-visible:outline-2 focus-visible:outline-sky-400 ${
                   selectedMode === 'ONLINE'
-                    ? 'bg-sky-500/15 border-sky-400 shadow-lg'
+                    ? 'bg-sky-500/15 border-sky-400/80 ring-1 ring-inset ring-sky-300/20 shadow-lg'
                     : 'bg-slate-950/40 border-white/10 hover:bg-slate-900/65 hover:border-white/25'
                 }`}
               >
@@ -388,10 +388,10 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
             <button
               type="button"
               onClick={handlePrimaryLaunch}
-              className={`w-full min-h-[48px] sm:min-h-[54px] px-5 py-3 rounded-xl font-display font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl transition-transform duration-150 active:scale-[0.98] cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
+              className={`w-full min-h-[50px] sm:min-h-[54px] px-5 py-3 rounded-xl font-display font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all duration-150 active:scale-[0.98] cursor-pointer whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
                 selectedMode === 'ONLINE'
-                  ? 'bg-sky-400 hover:bg-sky-300 text-slate-950'
-                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                  ? 'bg-gradient-to-b from-sky-300 to-sky-400 hover:from-sky-200 hover:to-sky-300 text-slate-950 shadow-[0_12px_28px_rgba(56,189,248,0.28)]'
+                  : 'bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-[0_12px_28px_rgba(245,158,11,0.28)]'
               }`}
             >
               {selectedMode === 'ONLINE' ? (

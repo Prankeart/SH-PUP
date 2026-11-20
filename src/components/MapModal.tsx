@@ -678,11 +678,11 @@ export const MapModal: React.FC<MapModalProps> = ({
       aria-modal="true"
       aria-label={isEn ? 'Open World Map' : 'Açık Dünya Haritası'}
     >
-      <div className="w-full h-full bg-[#0F2936] flex flex-col overflow-hidden">
+      <div className="w-full h-full bg-[#081A24] flex flex-col overflow-hidden">
         {/* Header - strictly single row without horizontal or vertical scroll */}
         <div
-          className={`relative z-30 border-b border-white/10 flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#0F2936] ${
-            isMobileView ? 'px-3 h-12' : 'px-5 h-14'
+          className={`relative z-30 border-b border-white/10 flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#081A24]/96 backdrop-blur-md ${
+            isMobileView ? 'px-3 h-13' : 'px-5 h-14'
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -746,10 +746,10 @@ export const MapModal: React.FC<MapModalProps> = ({
                   }}
                   aria-expanded={filterMenuOpen}
                   aria-haspopup="menu"
-                  className={`h-9 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                  className={`min-h-[40px] px-3 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     filter !== 'ALL' || filterMenuOpen
                       ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                      : 'bg-slate-950/60 border-white/15 text-slate-100 hover:bg-slate-900'
+                      : 'bg-slate-950/60 border-white/12 text-slate-100 hover:bg-slate-900'
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
@@ -765,7 +765,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                   <div
                     role="menu"
                     onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3 z-50"
+                    className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#081A24]/95 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.06] shadow-[0_18px_48px_rgba(2,10,18,0.72)] p-3 z-50"
                   >
                     <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-[11px] text-slate-300 font-mono-num">
                       <span>
@@ -833,7 +833,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={isEn ? 'Close Map' : 'Haritayı Kapat'}
-              className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1034,8 +1034,8 @@ export const MapModal: React.FC<MapModalProps> = ({
 
           {/* Active Waypoint Quick Bar / Placement Hint */}
           {mapPin ? (
-            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/95 border border-rose-400/50 shadow-lg text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 animate-pulse" />
+            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-2 rounded-xl bg-[#081A24]/92 backdrop-blur-md border border-rose-400/50 ring-1 ring-inset ring-white/[0.06] shadow-lg text-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-400/35 shrink-0" />
               <button
                 type="button"
                 onClick={() => applyOffset({ x: mapPin.x, y: mapPin.y })}
@@ -1053,7 +1053,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onSetMapPin(null)}
-                  className="ml-1 p-1 rounded-md bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 cursor-pointer"
+                  className="ml-1 p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 cursor-pointer"
                   title={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
                   aria-label={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
                 >
@@ -1062,7 +1062,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               )}
             </div>
           ) : (
-            <div className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0F2936]/80 border border-white/15 shadow-md text-[11px] text-slate-200">
+            <div className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-2 rounded-xl bg-[#081A24]/88 backdrop-blur-md border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-md text-[11px] text-slate-200">
               <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
               <span className="truncate">
                 {isEn
@@ -1084,10 +1084,10 @@ export const MapModal: React.FC<MapModalProps> = ({
                 }}
                 aria-expanded={legendMenuOpen}
                 aria-haspopup="dialog"
-                className={`min-h-[40px] px-3 py-2 rounded-xl border shadow-lg flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap backdrop-blur-md ${
+                className={`min-h-[44px] px-3.5 py-2 rounded-xl border ring-1 ring-inset ring-white/[0.06] shadow-[0_10px_28px_rgba(2,10,18,0.55)] flex items-center gap-2 text-xs font-semibold transition-all active:scale-95 cursor-pointer whitespace-nowrap backdrop-blur-md ${
                   legendMenuOpen
                     ? 'bg-sky-500/25 border-sky-300/60 text-sky-100'
-                    : 'bg-[#0F2936]/92 border-white/20 text-slate-100 hover:bg-[#173D4F]'
+                    : 'bg-[#081A24]/90 border-white/15 text-slate-100 hover:bg-[#0F2F42]'
                 }`}
               >
                 <Layers className="w-4 h-4 text-sky-300 shrink-0" />
@@ -1107,7 +1107,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               {legendMenuOpen && (
                 <div
                   onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl bg-[#0B222E]/96 backdrop-blur-md border border-white/15 shadow-2xl p-3.5 text-xs text-slate-200 z-50"
+                  className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl bg-[#081A24]/95 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.06] shadow-[0_20px_50px_rgba(2,10,18,0.75)] p-3.5 text-xs text-slate-200 z-50"
                 >
                   <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
                     <span className="font-display font-bold text-slate-50">
@@ -1233,7 +1233,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => applyZoom(zoomRef.current * 1.25)}
               aria-label={isEn ? 'Zoom In' : 'Yakınlaştır'}
-              className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
+              className="w-11 h-11 rounded-xl bg-[#081A24]/90 backdrop-blur-md border border-white/15 ring-1 ring-inset ring-white/[0.06] text-slate-100 hover:bg-[#0F2F42] active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(2,10,18,0.55)] cursor-pointer"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -1242,7 +1242,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => applyZoom(zoomRef.current * 0.8)}
               aria-label={isEn ? 'Zoom Out' : 'Uzaklaştır'}
-              className="w-10 h-10 rounded-xl bg-[#0F2936]/90 border border-white/20 text-slate-100 hover:bg-[#173D4F] flex items-center justify-center shadow-lg cursor-pointer"
+              className="w-11 h-11 rounded-xl bg-[#081A24]/90 backdrop-blur-md border border-white/15 ring-1 ring-inset ring-white/[0.06] text-slate-100 hover:bg-[#0F2F42] active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(2,10,18,0.55)] cursor-pointer"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
@@ -1252,7 +1252,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onClick={() => applyOffset({ x: playerPos.x, y: playerPos.y })}
               aria-label={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
               title={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
-              className="w-10 h-10 rounded-xl bg-amber-500 border border-amber-200 text-slate-950 hover:bg-amber-400 flex items-center justify-center shadow-lg cursor-pointer"
+              className="w-11 h-11 rounded-xl bg-amber-500 border border-amber-200/80 text-slate-950 hover:bg-amber-400 active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(245,158,11,0.35)] cursor-pointer"
             >
               <MapPin className="w-4 h-4" />
             </button>

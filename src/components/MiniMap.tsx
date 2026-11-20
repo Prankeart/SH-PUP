@@ -600,33 +600,33 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         }}
         aria-label={isEn ? 'Open Fullscreen Map (M)' : 'Tam Ekran Haritayı Aç (M)'}
         title={isEn ? 'Open Fullscreen Map (M)' : 'Tam Ekran Haritayı Aç (M)'}
-        className={`group relative w-full h-full rounded-2xl overflow-hidden bg-[#062B3D]/95 shadow-xl transition-transform duration-100 touch-none focus-visible:outline-2 focus-visible:outline-amber-400 ${
+        className={`group relative w-full h-full rounded-2xl overflow-hidden bg-[#062231]/95 ring-1 ring-inset ring-white/10 shadow-[0_14px_34px_rgba(2,10,18,0.58)] transition-transform duration-100 touch-none focus-visible:outline-2 focus-visible:outline-amber-400 ${
           isEditingLayout
             ? `cursor-move border-2 border-dashed ${
                 isSelected
                   ? 'border-amber-300 ring-2 ring-amber-400/75'
                   : 'border-sky-300/75 hover:border-amber-300/80'
               }`
-            : 'border-2 border-sky-300/35 hover:border-amber-300/75 active:scale-95 cursor-pointer'
+            : 'border-[1.5px] border-sky-300/35 hover:border-amber-300/75 active:scale-95 cursor-pointer'
         }`}
       >
         <canvas ref={canvasRef} className="block w-full h-full pointer-events-none" />
 
         {/* North compass tick */}
-        <span className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 px-1 rounded bg-slate-950/75 text-[9px] font-bold text-sky-200/90 leading-tight">
+        <span className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-md bg-[#081A24]/80 border border-white/10 text-[9px] font-bold text-sky-200/95 leading-tight">
           {isEn ? 'N' : 'K'}
         </span>
 
         {/* Active waypoint distance badge */}
         {pinDistM !== null && (
-          <span className="pointer-events-none absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-rose-950/90 border border-rose-400/50 text-[9px] font-bold font-mono-num text-rose-100 leading-none flex items-center gap-1">
+          <span className="pointer-events-none absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-[#081A24]/90 border border-rose-400/50 text-[9px] font-bold font-mono-num text-rose-100 leading-none flex items-center gap-1 shadow">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
             {pinDistM >= 1000 ? `${(pinDistM / 1000).toFixed(1)}km` : `${pinDistM}m`}
           </span>
         )}
 
         {/* Expand or Move icon hint */}
-        <span className="pointer-events-none absolute bottom-1 right-1 w-5 h-5 rounded-md bg-slate-950/75 border border-white/15 text-slate-200 group-hover:text-amber-300 flex items-center justify-center transition-colors">
+        <span className="pointer-events-none absolute bottom-1 right-1 w-5 h-5 rounded-md bg-[#081A24]/80 border border-white/12 text-slate-200 group-hover:text-amber-300 flex items-center justify-center transition-colors">
           {isEditingLayout ? (
             <Move className="w-2.5 h-2.5 text-amber-300" />
           ) : (
@@ -636,7 +636,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       </button>
 
       {isEditingLayout && (
-        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap">
+        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-md bg-[#081A24]/95 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap shadow">
           {isEn ? 'Mini Map' : 'Mini Harita'} · %{Math.round(scale * 100)}
         </span>
       )}
