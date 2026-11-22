@@ -38,8 +38,8 @@ import {
   saveRoomLedger,
 } from '../engine/onlineStorage';
 import { usePlatformProfile } from '../utils/platform';
-import crestImg from '../assets/images/pirate_compass_crest_1795020662166.jpg';
-import keyartImg from '../assets/images/tropical_cove_keyart_1795020662703.jpg';
+import crestImg from '../assets/images/pirate_compass_crest.webp';
+import keyartImg from '../assets/images/tropical_cove_keyart.webp';
 
 const CREST_IMAGE_SRC = crestImg;
 const KEYART_IMAGE_SRC = keyartImg;

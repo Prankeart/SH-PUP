@@ -322,7 +322,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
         role="region"
         aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
         style={wrapperStyle}
-        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl backdrop-blur-md border transition-colors duration-100 shadow-[0_10px_28px_rgba(0,0,0,0.45)] ${
+        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl border transition-colors duration-100 shadow-[0_10px_28px_rgba(0,0,0,0.45)] ${
           isEmpty
             ? 'bg-[#1D0B10]/90 border-red-400/55'
             : isReloading
@@ -475,7 +475,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
       role="region"
       aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
       style={wrapperStyle}
-      className={`relative pointer-events-auto touch-none select-none rounded-xl backdrop-blur-md border transition-colors shadow-[0_12px_30px_rgba(0,0,0,0.48)] ${
+      className={`relative pointer-events-auto touch-none select-none rounded-xl border transition-colors shadow-[0_12px_30px_rgba(0,0,0,0.48)] ${
         isEmpty
           ? 'bg-[#1D0B10]/90 border-red-400/55'
           : isReloading

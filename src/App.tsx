@@ -157,13 +157,8 @@ import { VirtualJoystick } from './components/VirtualJoystick';
 import { ActionControls, ActionControlsDisplayMode } from './components/ActionControls';
 import { TopRightHud } from './components/TopRightHud';
 import { MiniMap, MiniMapLiveSnapshot } from './components/MiniMap';
-import { MapModal } from './components/MapModal';
-import { ShopModal } from './components/ShopModal';
-import { KingdomModal } from './components/KingdomModal';
 import { formatKeyCode, SettingsModal } from './components/SettingsModal';
-import { JournalModal } from './components/JournalModal';
 import { TitleOverlay } from './components/TitleOverlay';
-import { OnlineLobbyModal } from './components/OnlineLobbyModal';
 import { WeaponHudPanel } from './components/WeaponHudPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { LandscapeGateOverlay } from './components/LandscapeGateOverlay';
@@ -174,6 +169,21 @@ import {
   resolveDraggedTouchTransform,
   UnifiedHudLayout,
 } from './utils/hudLayout';
+
+import { LazyModalBoundary, retryableLazy } from './components/LazyModalBoundary';
+
+const loadMapModal = () => import('./components/MapModal');
+const loadShopModal = () => import('./components/ShopModal');
+const loadKingdomModal = () => import('./components/KingdomModal');
+const loadJournalModal = () => import('./components/JournalModal');
+const loadOnlineLobbyModal = () => import('./components/OnlineLobbyModal');
+const MapModal = retryableLazy(() => loadMapModal().then((m) => ({ default: m.MapModal })));
+const ShopModal = retryableLazy(() => loadShopModal().then((m) => ({ default: m.ShopModal })));
+const KingdomModal = retryableLazy(() => loadKingdomModal().then((m) => ({ default: m.KingdomModal })));
+const JournalModal = retryableLazy(() => loadJournalModal().then((m) => ({ default: m.JournalModal })));
+const OnlineLobbyModal = retryableLazy(() =>
+  loadOnlineLobbyModal().then((m) => ({ default: m.OnlineLobbyModal }))
+);
 
 const PLAYER_SPEED = 175;
 const MAX_PLAYER_HP = 100;
@@ -355,6 +365,7 @@ export default function App() {
   const activeWorldEventRef = useRef<ActiveWorldEvent | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasCssSizeRef = useRef<{ width: number; height: number } | null>(null);
   const hudLayoutRef = useRef<UnifiedHudLayout | null>(null);
   const prevHudStateRef = useRef<typeof hudState | null>(null);
   const voiceActiveSpeakersRef = useRef<Set<string>>(new Set());
@@ -4262,6 +4273,32 @@ export default function App() {
 
   // Main 60fps Loop
   useEffect(() => {
+    const prefetch = () => {
+      loadMapModal().catch(() => {});
+      loadShopModal().catch(() => {});
+      loadKingdomModal().catch(() => {});
+      loadJournalModal().catch(() => {});
+      loadOnlineLobbyModal().catch(() => {});
+    };
+    const timer = window.setTimeout(prefetch, 2500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[entries.length - 1]?.contentRect;
+      if (box) canvasCssSizeRef.current = { width: box.width, height: box.height };
+    });
+    observer.observe(canvas);
+    return () => {
+      observer.disconnect();
+      canvasCssSizeRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     let rafId = 0;
     let lastFrameTime = performance.now();
     let lastHudSync = 0;
@@ -7837,13 +7874,26 @@ export default function App() {
       if (canvas) {
         const ctx = canvas.getContext('2d', { alpha: false });
         if (ctx) {
-          const rect = canvas.getBoundingClientRect();
-          if (rect.width >= 4 && rect.height >= 4) {
-            const stableDprCap = isCoarseDeviceRef.current ? 1.5 : 2;
-            const dpr = Math.min(window.devicePixelRatio || 1, stableDprCap);
-            const targetW = Math.max(1, Math.floor(rect.width * dpr));
-            const targetH = Math.max(1, Math.floor(rect.height * dpr));
-            if (Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2) {
+          if (!canvasCssSizeRef.current) {
+            const r = canvas.getBoundingClientRect();
+            canvasCssSizeRef.current = { width: r.width, height: r.height };
+          }
+          const rect = canvasCssSizeRef.current;
+          const stableDprCap = isCoarseDeviceRef.current ? 1.5 : 2;
+          const dpr = Math.min(
+            window.devicePixelRatio || 1,
+            stableDprCap,
+            perfGovRef.current.getRenderScaleCap()
+          );
+          const targetW = Math.max(1, Math.floor(rect.width * dpr));
+          const targetH = Math.max(1, Math.floor(rect.height * dpr));
+          const needsResize =
+            Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2;
+          // World is paused and mostly covered while a modal is open: redraw at ~10fps.
+          const throttleBehindModal =
+            modalRef.current !== 'NONE' && !needsResize && frameCounter % 6 !== 0;
+          if (rect.width >= 4 && rect.height >= 4 && !throttleBehindModal) {
+            if (needsResize) {
               canvas.width = targetW;
               canvas.height = targetH;
             }
@@ -9091,6 +9141,7 @@ export default function App() {
       )}
 
       {showOnlineLobby && (
+        <LazyModalBoundary onError={() => setShowOnlineLobby(false)}>
         <OnlineLobbyModal
           identity={identity}
           onUpdateIdentity={setIdentity}
@@ -9135,6 +9186,7 @@ export default function App() {
           }}
           onClose={() => setShowOnlineLobby(false)}
         />
+        </LazyModalBoundary>
       )}
 
       {phase === 'PLAYING' && (
@@ -9146,7 +9198,7 @@ export default function App() {
                 left: `${hudLayout.topCenterEventLeft}px`,
                 maxWidth: `${hudLayout.topCenterEventMaxWidth}px`,
               }}
-              className="pointer-events-none fixed top-3 -translate-x-1/2 z-10 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 shadow-[0_12px_30px_rgba(2,8,14,0.55)]"
+              className="pointer-events-none fixed top-3 -translate-x-1/2 z-10 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#061017]/88 border border-amber-400/35 text-xs text-slate-100 shadow-[0_12px_30px_rgba(2,8,14,0.55)]"
             >
               {activeWorldEvent.type === 'STORM' ? (
                 <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -9214,7 +9266,7 @@ export default function App() {
                 } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
               >
                 {hasPrimaryTelemetry && (
-                  <div className="rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 shadow-[0_10px_28px_rgba(2,8,14,0.5)] divide-y divide-white/[0.06] max-w-full overflow-hidden shrink-0">
+                  <div className="rounded-xl bg-[#061017]/84 border border-white/10 shadow-[0_10px_28px_rgba(2,8,14,0.5)] divide-y divide-white/[0.06] max-w-full overflow-hidden shrink-0">
                     {showRoomRow && onlineRoomInfo && (
                       <div
                         className={`${
@@ -9326,7 +9378,7 @@ export default function App() {
                       <div
                         className={`${
                           compactStack ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
-                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/45 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md whitespace-nowrap`}
+                        } rounded-lg bg-[#061017]/88 border border-amber-400/45 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md whitespace-nowrap`}
                       >
                         <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                         <span>{hudState.arenaWaveText}</span>
@@ -9337,7 +9389,7 @@ export default function App() {
                       <div
                         className={`${
                           compactStack ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-2.5 py-1 text-xs gap-1.5'
-                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-rose-400/40 text-rose-200 font-semibold flex items-center shadow-md max-w-full`}
+                        } rounded-lg bg-[#061017]/88 border border-rose-400/40 text-rose-200 font-semibold flex items-center shadow-md max-w-full`}
                       >
                         <ShieldAlert
                           className={`${
@@ -9358,7 +9410,7 @@ export default function App() {
                       <div
                         className={`${
                           compactStack ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
-                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md max-w-full`}
+                        } rounded-lg bg-[#061017]/88 border border-amber-400/35 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md max-w-full`}
                       >
                         {activeWorldEvent.type === 'STORM' ? (
                           <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -9479,7 +9531,7 @@ export default function App() {
                 }`}
               >
                 {nextTutorialStep && !isEditingLayout && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2 shadow-lg">
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2 shadow-lg">
                     <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
                     <div className="min-w-0">
                       <span className="font-semibold text-amber-200 mr-1.5">
@@ -9525,7 +9577,7 @@ export default function App() {
                     )}
 
                     {voiceState.error && (
-                      <div className="px-2.5 py-1 rounded-lg bg-[#061017]/92 backdrop-blur-md border border-rose-400/45 text-rose-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
+                      <div className="px-2.5 py-1 rounded-lg bg-[#061017]/92 border border-rose-400/45 text-rose-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
                         <span className="truncate">{voiceState.error}</span>
                         <button
                           type="button"
@@ -9547,7 +9599,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setChatOpen((prev) => !prev)}
-                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
+                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
                           chatOpen
                             ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
                             : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
@@ -9566,7 +9618,7 @@ export default function App() {
                         type="button"
                         onClick={() => void handleToggleVoiceJoin()}
                         disabled={voiceState.connecting}
-                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
+                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
                           voiceState.enabled
                             ? 'bg-emerald-500/18 border-emerald-400/45 text-emerald-200'
                             : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
@@ -9612,7 +9664,7 @@ export default function App() {
                                 ? 'Mute Mic'
                                 : 'Mikrofonu Kapat'
                             }
-                            className={`min-h-[36px] min-w-[36px] p-1.5 rounded-lg backdrop-blur-md border shadow-md cursor-pointer flex items-center justify-center gap-1 transition-colors active:scale-95 ${
+                            className={`min-h-[36px] min-w-[36px] p-1.5 rounded-lg border shadow-md cursor-pointer flex items-center justify-center gap-1 transition-colors active:scale-95 ${
                               voiceState.muted
                                 ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
                                 : 'bg-[#061017]/88 border-emerald-400/40 text-emerald-200'
@@ -9628,7 +9680,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleToggleVoiceMode}
-                            className="min-h-[36px] px-2.5 py-1 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] backdrop-blur-md border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95"
+                            className="min-h-[36px] px-2.5 py-1 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95"
                           >
                             <Radio className="w-3 h-3 text-sky-300" />
                             <span>
@@ -9658,7 +9710,7 @@ export default function App() {
                 left: `${hudLayout.desktopTutorialPlacement.left}px`,
                 maxWidth: `${hudLayout.desktopTutorialPlacement.maxWidth}px`,
               }}
-              className="pointer-events-auto absolute -translate-x-1/2 z-20 px-3.5 py-2 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2.5 shadow-lg"
+              className="pointer-events-auto absolute -translate-x-1/2 z-20 px-3.5 py-2 rounded-lg bg-[#061017]/90 border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2.5 shadow-lg"
             >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
@@ -9752,7 +9804,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className={`px-3 py-1.5 text-xs rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-lg border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
                     chatOpen
                       ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
                       : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
@@ -9774,7 +9826,7 @@ export default function App() {
                   type="button"
                   onClick={() => void handleToggleVoiceJoin()}
                   disabled={voiceState.connecting}
-                  className={`px-3 py-1.5 text-xs rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-lg border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
                     voiceState.enabled
                       ? 'bg-emerald-500/18 border-emerald-400/45 text-emerald-200'
                       : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
@@ -9820,7 +9872,7 @@ export default function App() {
                           ? 'Mute Mic'
                           : 'Mikrofonu Kapat'
                       }
-                      className={`px-2 py-1.5 rounded-lg backdrop-blur-md border shadow-md cursor-pointer flex items-center gap-1.5 transition-colors ${
+                      className={`px-2 py-1.5 rounded-lg border shadow-md cursor-pointer flex items-center gap-1.5 transition-colors ${
                         voiceState.muted
                           ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
                           : 'bg-[#061017]/88 border-emerald-400/40 text-emerald-200'
@@ -9841,7 +9893,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleToggleVoiceMode}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] backdrop-blur-md border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap"
                       title={
                         settings.language === 'en'
                           ? 'Switch Proximity vs Room-Wide Voice'
@@ -9974,7 +10026,7 @@ export default function App() {
                   left: `${hudLayout.editorToolbarPlacement.left}px`,
                   width: `${hudLayout.editorToolbarPlacement.width}px`,
                 }}
-                className="pointer-events-auto fixed z-40 rounded-xl bg-[#0A1720]/96 border border-white/12 shadow-[0_24px_60px_rgba(0,0,0,0.75)] backdrop-blur-xl divide-y divide-white/[0.07]"
+                className="pointer-events-auto fixed z-40 rounded-xl bg-[#0A1720]/96 border border-white/12 shadow-[0_24px_60px_rgba(0,0,0,0.75)] divide-y divide-white/[0.07]"
               >
                 <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -10224,6 +10276,7 @@ export default function App() {
       )}
 
       {activeModal === 'MAP' && (
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <MapModal
           worldManager={worldManagerRef.current}
           discoveredIslandIds={save.discoveredIslandIds}
@@ -10243,9 +10296,11 @@ export default function App() {
           onSetMapPin={(pin) => commitSave((prev) => ({ ...prev, mapPin: pin }), false)}
           onClose={() => setActiveModal('NONE')}
         />
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'SHOP' && (
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <ShopModal
           gold={save.gold}
           bag={save.bag}
@@ -10280,9 +10335,11 @@ export default function App() {
           onEquipPet={handleEquipPet}
           onClose={() => setActiveModal('NONE')}
         />
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'KINGDOM' && (
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <KingdomModal
           gold={save.gold}
           kingdom={save.kingdom}
@@ -10309,15 +10366,18 @@ export default function App() {
           onBuildFortTurret={handleBuildFortTurret}
           onClose={() => setActiveModal('NONE')}
         />
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'JOURNAL' && (
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <JournalModal
           save={save}
           language={settings.language}
           onClaimMilestone={handleClaimMilestone}
           onClose={() => setActiveModal('NONE')}
         />
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'SETTINGS' && (
