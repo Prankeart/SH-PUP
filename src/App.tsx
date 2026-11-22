@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   CloudLightning,
+  Compass,
+  Flame,
   Heart,
   HelpCircle,
   MessageCircle,
@@ -15,7 +17,6 @@ import {
   RotateCw,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
   Store,
   Swords,
   Volume2,
@@ -306,14 +307,6 @@ export default function App() {
       height: Math.round(window.visualViewport?.height ?? window.innerHeight),
       keyboardOpen: false,
     };
-  });
-  const [isNarrowViewport, setIsNarrowViewport] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerWidth < 640 || window.innerHeight < 500;
-  });
-  const [isShortViewport, setIsShortViewport] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerHeight < 540;
   });
   const [draftTouchLayout, setDraftTouchLayout] = useState<TouchLayoutConfig>({});
   const [selectedTouchButton, setSelectedTouchButton] = useState<TouchButtonId | null>(null);
@@ -757,8 +750,6 @@ export default function App() {
       const portrait = vw < 860 && vh > vw;
       setViewport((prev) => (prev.vw === vw && prev.vh === vh ? prev : { vw, vh }));
       setIsPortrait(portrait);
-      setIsNarrowViewport(vw < 640 || vh < 500);
-      setIsShortViewport(vh < 540);
     };
     const handleFocusIn = () => {
       if (focusInTimer !== null) window.clearTimeout(focusInTimer);
@@ -8842,8 +8833,6 @@ export default function App() {
   const activeMaxHp = hudState.isSailing ? hudState.maxBoatHp : effectiveMaxPlayerHpUi;
   const hpPct = clamp((activeHp / Math.max(1, activeMaxHp)) * 100, 0, 100);
   const weaponDef = hudState.equippedWeapon ? WEAPONS[hudState.equippedWeapon] : null;
-  const isCompactHud = isCoarseDevice || isNarrowViewport;
-  const isCompactTouch = isCompactHud || isShortViewport;
   const isEditingLayout = activeModal === 'LAYOUT_EDIT';
   const controlsDisplayMode: ActionControlsDisplayMode = isEditingLayout
     ? 'TOUCH'
@@ -9003,7 +8992,7 @@ export default function App() {
   }, [controlsDisplayMode]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#07364B] touch-none select-none">
+    <div className="relative w-full h-full overflow-hidden bg-[#061017] touch-none select-none">
       <canvas ref={canvasRef} className="block w-full h-full touch-none select-none" />
 
       {phase === 'TITLE_MENU' && !showOnlineLobby && (
@@ -9093,15 +9082,15 @@ export default function App() {
           {activeWorldEvent && !onlineActive && hudLayout.showTopCenterEvent && (
             <div
               style={{ maxWidth: `${hudLayout.topCenterEventMaxWidth}px` }}
-              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#081A24]/90 backdrop-blur-xl border border-amber-400/40 ring-1 ring-inset ring-white/[0.05] text-xs text-amber-200 shadow-[0_12px_30px_rgba(2,10,18,0.55)]"
+              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 shadow-[0_12px_30px_rgba(2,8,14,0.55)]"
             >
               {activeWorldEvent.type === 'STORM' ? (
                 <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
               )}
-              <span className="font-semibold truncate">{activeWorldEvent.title}</span>
-              <span className="text-[11px] text-slate-300 truncate">
+              <span className="font-semibold text-amber-200 truncate">{activeWorldEvent.title}</span>
+              <span className="text-[11px] text-slate-400 truncate">
                 {activeWorldEvent.description}
               </span>
             </div>
@@ -9135,189 +9124,207 @@ export default function App() {
             />
           </div>
 
-          {/* Top-Left Status Stack (Always avoids MiniMap, TopRightHud, and Bottom Controls) */}
-          <div
-            style={{
-              top: `${hudLayout.topLeftPlacement.top}px`,
-              left: `${hudLayout.topLeftPlacement.left}px`,
-              maxWidth: `${hudLayout.topLeftPlacement.maxWidth}px`,
-              maxHeight: `${hudLayout.topLeftPlacement.maxHeight}px`,
-            }}
-            className={`pointer-events-auto absolute overflow-y-auto no-scrollbar flex flex-col items-start min-w-0 ${
-              isCompactTouch ? 'gap-1' : 'gap-2'
-            } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
-          >
-            {onlineActive && onlineRoomInfo && (
+          {/* Top-Left Status Stack (Unified Obsidian Telemetry + Contextual Alerts) */}
+          {(() => {
+            const compactStack = hudLayout.isCompactTouch;
+            const showRoomRow = Boolean(onlineActive && onlineRoomInfo);
+            const showHpRow =
+              hudState.isSailing || activeHp < activeMaxHp || hudState.nearbyEnemyCount > 0;
+            const showIslandRow = Boolean(
+              hudState.currentIslandName && hudState.zoneBanner?.tone !== 'CAVE'
+            );
+            const showZoneRow = Boolean(hudState.zoneBanner);
+            const hasPrimaryTelemetry =
+              showRoomRow || showHpRow || showIslandRow || showZoneRow;
+
+            return (
               <div
-                className={`${
-                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#081A24]/90 backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.04] font-medium text-sky-200 flex items-center gap-1.5 max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] shrink-0`}
+                style={{
+                  top: `${hudLayout.topLeftPlacement.top}px`,
+                  left: `${hudLayout.topLeftPlacement.left}px`,
+                  maxWidth: `${hudLayout.topLeftPlacement.maxWidth}px`,
+                  maxHeight: `${hudLayout.topLeftPlacement.maxHeight}px`,
+                }}
+                className={`pointer-events-auto absolute overflow-y-auto no-scrollbar flex flex-col items-start min-w-0 ${
+                  compactStack ? 'gap-1.5' : 'gap-2'
+                } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
               >
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${
-                    onlineStatus === 'RECONNECTING' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
-                  }`}
-                />
-                <span className="truncate font-mono-num">
-                  Oda {onlineRoomInfo.roomId} ·{' '}
-                  {onlineLobbyPlayers.filter((p) => p.connected).length} Kaptan ·{' '}
-                  {onlineRoomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
-                  {!isCompactHud && onlinePing !== null ? ` · ${onlinePing}ms` : ''}
-                </span>
-              </div>
-            )}
-
-            {(hudState.isSailing || activeHp < activeMaxHp || hudState.nearbyEnemyCount > 0) && (
-              <div
-                className={`${
-                  isCompactTouch ? 'px-2 py-1 gap-1.5' : 'px-3 py-2 gap-2.5'
-                } rounded-xl bg-[#081A24]/90 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.04] flex items-center shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full shrink-0`}
-              >
-                <Heart
-                  className={`${
-                    isCompactTouch ? 'w-3.5 h-3.5' : 'w-4 h-4'
-                  } ${hpPct > 35 ? 'text-rose-400' : 'text-red-500'} shrink-0`}
-                />
-                <div
-                  className={`${
-                    isCompactTouch ? 'w-14' : 'w-28'
-                  } h-2 rounded-full bg-slate-950/80 border border-white/10 overflow-hidden shrink-0`}
-                >
-                  <div
-                    className={`h-full transition-all duration-150 ${
-                      hpPct > 55
-                        ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
-                        : hpPct > 28
-                        ? 'bg-gradient-to-r from-amber-500 to-amber-400'
-                        : 'bg-gradient-to-r from-red-600 to-rose-400'
-                    }`}
-                    style={{ width: `${hpPct}%` }}
-                  />
-                </div>
-                <span
-                  className={`font-mono-num ${
-                    isCompactTouch ? 'text-[11px]' : 'text-xs'
-                  } font-semibold text-slate-100 whitespace-nowrap`}
-                >
-                  {activeHp}/{activeMaxHp}
-                </span>
-                {hudState.isSailing && !isCompactHud && (
-                  <span className="text-[11px] font-semibold text-amber-200/90 border-l border-white/15 pl-2 whitespace-nowrap">
-                    {hudState.shipClassName}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {hudState.currentIslandName && hudState.zoneBanner?.tone !== 'CAVE' && (
-              <div
-                className={`${
-                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg bg-[#081A24]/88 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.04] font-medium text-slate-100 truncate max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] shrink-0`}
-              >
-                {hudState.currentIslandName}
-              </div>
-            )}
-
-            {hudState.zoneBanner && (
-              <div
-                className={`${
-                  isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                } rounded-lg backdrop-blur-xl border ring-1 ring-inset ring-white/[0.04] font-semibold flex items-center gap-1.5 max-w-full shadow-[0_8px_22px_rgba(2,10,18,0.45)] whitespace-nowrap shrink-0 ${
-                  hudState.zoneBanner.tone === 'CITY'
-                    ? 'bg-sky-950/90 border-sky-400/45 text-sky-200'
-                    : hudState.zoneBanner.tone === 'ARENA'
-                    ? 'bg-orange-950/90 border-orange-400/45 text-orange-200'
-                    : 'bg-purple-950/90 border-purple-400/45 text-purple-200'
-                }`}
-              >
-                {hudState.zoneBanner.tone === 'CITY' ? (
-                  <ShieldCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                ) : hudState.zoneBanner.tone === 'ARENA' ? (
-                  <Swords className="w-3.5 h-3.5 text-orange-300 shrink-0" />
-                ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-                )}
-                <span className="truncate">{hudState.zoneBanner.label}</span>
-              </div>
-            )}
-
-            {(hudState.arenaWaveText ||
-              hudState.nearbyEnemyCount > 0 ||
-              (activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent)) && (
-              <div
-                className={`${
-                  isCompactTouch || hudLayout.topLeftPlacement.maxHeight < 180
-                    ? 'flex flex-wrap items-center gap-1'
-                    : 'flex flex-col items-start gap-2'
-                } max-w-full shrink-0`}
-              >
-                {hudState.arenaWaveText && (
-                  <div
-                    className={`${
-                      isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                    } rounded-lg bg-orange-950/90 backdrop-blur-xl border border-amber-400/55 text-amber-200 font-bold flex items-center gap-1 shadow-[0_8px_22px_rgba(2,10,18,0.45)] whitespace-nowrap`}
-                  >
-                    <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span>{hudState.arenaWaveText}</span>
-                  </div>
-                )}
-
-                {hudState.nearbyEnemyCount > 0 && (
-                  <div
-                    className={`${
-                      isCompactTouch ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-3 py-1.5 text-xs gap-1.5'
-                    } rounded-xl bg-red-950/88 backdrop-blur-xl border border-red-400/45 text-red-200 font-semibold flex items-center shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full`}
-                  >
-                    <ShieldAlert
-                      className={`${
-                        isCompactTouch ? 'w-3.5 h-3.5' : 'w-4 h-4'
-                      } text-red-400 shrink-0`}
-                    />
-                    <span className="whitespace-nowrap">
-                      {isCompactHud
-                        ? `Düşman (${hudState.nearbyEnemyCount})`
-                        : hudState.isSailing
-                        ? `Yakında Düşman Gemisi (${hudState.nearbyEnemyCount})`
-                        : `Adada Düşman Takımı (${hudState.nearbyEnemyCount})`}
-                    </span>
-                  </div>
-                )}
-
-                {activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent && (
-                  <div
-                    className={`${
-                      isCompactTouch ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1.5 text-xs'
-                    } rounded-lg bg-[#081A24]/90 backdrop-blur-xl border border-amber-400/40 text-amber-200 font-semibold flex items-center gap-1 shadow-[0_8px_22px_rgba(2,10,18,0.45)] max-w-full`}
-                  >
-                    {activeWorldEvent.type === 'STORM' ? (
-                      <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                {hasPrimaryTelemetry && (
+                  <div className="rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 shadow-[0_10px_28px_rgba(2,8,14,0.5)] divide-y divide-white/[0.06] max-w-full overflow-hidden shrink-0">
+                    {showRoomRow && onlineRoomInfo && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+                        } font-medium text-sky-200 flex items-center gap-2 max-w-full`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            onlineStatus === 'RECONNECTING' ? 'bg-amber-400' : 'bg-emerald-400'
+                          }`}
+                        />
+                        <span className="truncate font-mono-num">
+                          {settings.language === 'en' ? 'Room' : 'Oda'} {onlineRoomInfo.roomId} ·{' '}
+                          {onlineLobbyPlayers.filter((p) => p.connected).length} ·{' '}
+                          {onlineRoomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
+                          {!compactStack && onlinePing !== null ? ` · ${onlinePing}ms` : ''}
+                        </span>
+                      </div>
                     )}
-                    <span className="truncate">{activeWorldEvent.title}</span>
+
+                    {showHpRow && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2.5 py-1.5 gap-2' : 'px-3 py-2 gap-2.5'
+                        } flex items-center max-w-full`}
+                      >
+                        <Heart
+                          className={`${
+                            compactStack ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                          } ${hpPct > 35 ? 'text-rose-400' : 'text-red-500'} shrink-0`}
+                        />
+                        <div
+                          className={`${
+                            compactStack ? 'w-16' : 'w-28'
+                          } h-1.5 rounded-full bg-white/10 overflow-hidden shrink-0`}
+                        >
+                          <div
+                            className={`h-full transition-all duration-150 ${
+                              hpPct > 55
+                                ? 'bg-emerald-400'
+                                : hpPct > 28
+                                ? 'bg-amber-400'
+                                : 'bg-rose-500'
+                            }`}
+                            style={{ width: `${hpPct}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`font-mono-num ${
+                            compactStack ? 'text-[11px]' : 'text-xs'
+                          } font-semibold text-slate-100 whitespace-nowrap`}
+                        >
+                          {activeHp}/{activeMaxHp}
+                        </span>
+                        {hudState.isSailing && !compactStack && (
+                          <span className="text-[11px] font-medium text-amber-200/90 border-l border-white/10 pl-2 whitespace-nowrap">
+                            {hudState.shipClassName}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {showIslandRow && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+                        } font-semibold text-slate-100 truncate max-w-full`}
+                      >
+                        {hudState.currentIslandName}
+                      </div>
+                    )}
+
+                    {showZoneRow && hudState.zoneBanner && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+                        } font-semibold flex items-center gap-1.5 max-w-full whitespace-nowrap ${
+                          hudState.zoneBanner.tone === 'CITY'
+                            ? 'text-sky-300 bg-sky-500/[0.06]'
+                            : hudState.zoneBanner.tone === 'ARENA'
+                            ? 'text-orange-300 bg-orange-500/[0.06]'
+                            : 'text-purple-300 bg-purple-500/[0.06]'
+                        }`}
+                      >
+                        {hudState.zoneBanner.tone === 'CITY' ? (
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        ) : hudState.zoneBanner.tone === 'ARENA' ? (
+                          <Swords className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <Compass className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="truncate">{hudState.zoneBanner.label}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {hudState.nearDock &&
-              !hudLayout.isTopRightCompact &&
-              (isCoarseDevice || settings.desktopShowHudButtons) && (
-                <button
-                  type="button"
-                  onClick={() => setActiveModal('SHOP')}
-                  className="flex px-3.5 py-2 rounded-xl bg-[#081A24]/92 hover:bg-[#112F40] backdrop-blur-xl border border-amber-400/50 ring-1 ring-inset ring-white/[0.05] text-amber-300 text-xs font-semibold items-center gap-2 shadow-[0_12px_28px_rgba(2,10,18,0.5)] transition-transform duration-100 active:scale-95 cursor-pointer shrink-0"
-                >
-                  <Store className="w-4 h-4" />
-                  <span>
-                    {settings.language === 'en'
-                      ? 'Merchant Dock Open (T)'
-                      : 'Tüccar İskelesi Açık (T)'}
-                  </span>
-                </button>
-              )}
-          </div>
+                {(hudState.arenaWaveText ||
+                  hudState.nearbyEnemyCount > 0 ||
+                  (activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent)) && (
+                  <div
+                    className={`${
+                      compactStack || hudLayout.topLeftPlacement.maxHeight < 180
+                        ? 'flex flex-wrap items-center gap-1.5'
+                        : 'flex flex-col items-start gap-1.5'
+                    } max-w-full shrink-0`}
+                  >
+                    {hudState.arenaWaveText && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
+                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/45 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md whitespace-nowrap`}
+                      >
+                        <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span>{hudState.arenaWaveText}</span>
+                      </div>
+                    )}
+
+                    {hudState.nearbyEnemyCount > 0 && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2 py-0.5 text-[11px] gap-1' : 'px-2.5 py-1 text-xs gap-1.5'
+                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-rose-400/40 text-rose-200 font-semibold flex items-center shadow-md max-w-full`}
+                      >
+                        <ShieldAlert
+                          className={`${
+                            compactStack ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                          } text-rose-400 shrink-0`}
+                        />
+                        <span className="whitespace-nowrap font-mono-num">
+                          {compactStack
+                            ? `${settings.language === 'en' ? 'Hostiles' : 'Düşman'} (${hudState.nearbyEnemyCount})`
+                            : hudState.isSailing
+                            ? `${settings.language === 'en' ? 'Enemy Ships' : 'Yakın Düşman Gemisi'} (${hudState.nearbyEnemyCount})`
+                            : `${settings.language === 'en' ? 'Island Garrison' : 'Adada Düşman'} (${hudState.nearbyEnemyCount})`}
+                        </span>
+                      </div>
+                    )}
+
+                    {activeWorldEvent && !onlineActive && !hudLayout.showTopCenterEvent && (
+                      <div
+                        className={`${
+                          compactStack ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
+                        } rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-amber-200 font-semibold flex items-center gap-1.5 shadow-md max-w-full`}
+                      >
+                        {activeWorldEvent.type === 'STORM' ? (
+                          <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                        ) : (
+                          <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        )}
+                        <span className="truncate">{activeWorldEvent.title}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {hudState.nearDock &&
+                  !hudLayout.isTopRightCompact &&
+                  (isCoarseDevice || settings.desktopShowHudButtons) && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveModal('SHOP')}
+                      className="flex px-3 py-1.5 rounded-lg bg-[#061017]/90 hover:bg-[#0F212C] backdrop-blur-md border border-amber-400/45 text-amber-300 text-xs font-semibold items-center gap-2 shadow-md transition-colors active:scale-95 cursor-pointer shrink-0"
+                    >
+                      <Store className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {settings.language === 'en' ? 'Merchant Dock' : 'Tüccar İskelesi'}
+                      </span>
+                      <span className="ui-keycap">{formatKeyCode(settings.keybindings.shop)}</span>
+                    </button>
+                  )}
+              </div>
+            );
+          })()}
 
           {/* Top-Right HUD (independently anchored) */}
           <div
@@ -9416,7 +9423,7 @@ export default function App() {
                 }`}
               >
                 {showPortraitHintBanner && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-[11px] text-slate-100 flex items-center gap-2 shadow-[0_14px_34px_rgba(2,10,18,0.6)]">
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-white/12 text-[11px] text-slate-200 flex items-center gap-2 shadow-lg">
                     <RotateCw className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span className="truncate">
                       {settings.language === 'en'
@@ -9426,7 +9433,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setDismissPortraitHint(true)}
-                      className="text-slate-300 hover:text-white font-semibold ml-1 shrink-0 cursor-pointer"
+                      className="text-amber-300 hover:text-amber-200 font-semibold ml-1 shrink-0 cursor-pointer"
                     >
                       {settings.language === 'en' ? 'Close' : 'Kapat'}
                     </button>
@@ -9434,13 +9441,13 @@ export default function App() {
                 )}
 
                 {nextTutorialStep && !isEditingLayout && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-xs text-slate-100 flex items-center gap-2 shadow-[0_14px_34px_rgba(2,10,18,0.6)]">
+                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2 shadow-lg">
                     <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
                     <div className="min-w-0">
-                      <span className="font-bold text-amber-200 mr-1.5">
+                      <span className="font-semibold text-amber-200 mr-1.5">
                         {settings.language === 'en' ? nextTutorialStep.titleEn : nextTutorialStep.title}:
                       </span>
-                      <span className="text-slate-200">
+                      <span className="text-slate-300">
                         {settings.language === 'en' ? nextTutorialStep.textEn : nextTutorialStep.text}
                       </span>
                     </div>
@@ -9480,12 +9487,12 @@ export default function App() {
                     )}
 
                     {voiceState.error && (
-                      <div className="px-2.5 py-1 rounded-lg bg-red-950/90 backdrop-blur-md border border-red-400/50 text-red-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
+                      <div className="px-2.5 py-1 rounded-lg bg-[#061017]/92 backdrop-blur-md border border-rose-400/45 text-rose-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-full">
                         <span className="truncate">{voiceState.error}</span>
                         <button
                           type="button"
                           onClick={() => voiceManagerRef.current?.clearError()}
-                          className="p-0.5 rounded hover:bg-white/10 text-red-300 shrink-0 cursor-pointer"
+                          className="p-0.5 rounded hover:bg-white/10 text-rose-300 shrink-0 cursor-pointer"
                         >
                           <XIcon className="w-3 h-3" />
                         </button>
@@ -9502,16 +9509,16 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setChatOpen((prev) => !prev)}
-                        className={`min-h-[34px] px-3 py-1 text-[11px] rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95 ${
+                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
                           chatOpen
-                            ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
-                            : 'bg-[#081A24]/90 hover:bg-[#112F40] border-sky-400/40 text-sky-200'
+                            ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
+                            : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
                         }`}
                       >
                         <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
                         <span>{settings.language === 'en' ? 'Chat' : 'Sohbet'}</span>
                         {unreadChatCount > 0 && !chatOpen && (
-                          <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-sky-400 text-[10px] font-bold font-mono-num text-slate-950">
+                          <span className="font-mono-num text-[11px] font-bold text-sky-300">
                             {unreadChatCount}
                           </span>
                         )}
@@ -9521,10 +9528,10 @@ export default function App() {
                         type="button"
                         onClick={() => void handleToggleVoiceJoin()}
                         disabled={voiceState.connecting}
-                        className={`min-h-[34px] px-3 py-1 text-[11px] rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95 ${
+                        className={`min-h-[36px] px-3 py-1 text-[11px] rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95 ${
                           voiceState.enabled
-                            ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
-                            : 'bg-[#081A24]/90 hover:bg-[#112F40] border-white/14 text-slate-200'
+                            ? 'bg-emerald-500/18 border-emerald-400/45 text-emerald-200'
+                            : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
                         }`}
                       >
                         {voiceState.enabled ? (
@@ -9546,7 +9553,7 @@ export default function App() {
                             : 'Sesli Sohbet'}
                         </span>
                         {voiceState.enabled && (
-                          <span className="font-mono-num text-[10px] font-bold text-emerald-200">
+                          <span className="font-mono-num text-[10px] font-bold text-emerald-300">
                             · {voiceState.connectedVoicePeerCount}
                             {voicePeersCount > 1 ? `/${Math.max(1, voicePeersCount - 1)}` : ''}
                           </span>
@@ -9567,10 +9574,10 @@ export default function App() {
                                 ? 'Mute Mic'
                                 : 'Mikrofonu Kapat'
                             }
-                            className={`min-h-[34px] min-w-[34px] p-1.5 rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer flex items-center justify-center gap-1 transition-all active:scale-95 ${
+                            className={`min-h-[36px] min-w-[36px] p-1.5 rounded-lg backdrop-blur-md border shadow-md cursor-pointer flex items-center justify-center gap-1 transition-colors active:scale-95 ${
                               voiceState.muted
-                                ? 'bg-red-950/90 border-red-400/50 text-red-200'
-                                : 'bg-[#081A24]/90 border-emerald-400/40 text-emerald-200'
+                                ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
+                                : 'bg-[#061017]/88 border-emerald-400/40 text-emerald-200'
                             }`}
                           >
                             {voiceState.muted ? (
@@ -9583,7 +9590,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleToggleVoiceMode}
-                            className="min-h-[34px] px-2.5 py-1 rounded-xl bg-[#081A24]/90 hover:bg-[#112F40] backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.05] text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-[0_10px_24px_rgba(2,10,18,0.5)] cursor-pointer whitespace-nowrap transition-all active:scale-95"
+                            className="min-h-[36px] px-2.5 py-1 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] backdrop-blur-md border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap transition-colors active:scale-95"
                           >
                             <Radio className="w-3 h-3 text-sky-300" />
                             <span>
@@ -9613,14 +9620,14 @@ export default function App() {
                 left: `${hudLayout.desktopTutorialPlacement.left}px`,
                 maxWidth: `${hudLayout.desktopTutorialPlacement.maxWidth}px`,
               }}
-              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border border-amber-400/35 ring-1 ring-inset ring-white/[0.05] text-xs text-slate-100 flex items-center gap-2.5 shadow-[0_14px_34px_rgba(2,10,18,0.6)]"
+              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2.5 shadow-lg"
             >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
-                <span className="font-bold text-amber-200 mr-1.5">
+                <span className="font-semibold text-amber-200 mr-1.5">
                   {settings.language === 'en' ? nextTutorialStep.titleEn : nextTutorialStep.title}:
                 </span>
-                <span className="text-slate-200">
+                <span className="text-slate-300">
                   {settings.language === 'en' ? nextTutorialStep.textEn : nextTutorialStep.text}
                 </span>
               </div>
@@ -9691,12 +9698,12 @@ export default function App() {
               )}
 
               {voiceState.error && (
-                <div className="px-2.5 py-1 rounded-lg bg-red-950/90 border border-red-400/50 text-red-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-xs">
+                <div className="px-2.5 py-1 rounded-lg bg-[#061017]/92 border border-rose-400/45 text-rose-200 text-[11px] flex items-center gap-1.5 shadow-lg max-w-xs">
                   <span className="truncate">{voiceState.error}</span>
                   <button
                     type="button"
                     onClick={() => voiceManagerRef.current?.clearError()}
-                    className="p-0.5 rounded hover:bg-white/10 text-red-300 shrink-0 cursor-pointer"
+                    className="p-0.5 rounded hover:bg-white/10 text-rose-300 shrink-0 cursor-pointer"
                   >
                     <XIcon className="w-3 h-3" />
                   </button>
@@ -9707,21 +9714,19 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setChatOpen((prev) => !prev)}
-                  className={`px-3 py-1.5 text-xs rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
                     chatOpen
-                      ? 'bg-sky-900/95 hover:bg-sky-800 border-sky-300/65 text-sky-100'
-                      : 'bg-[#081A24]/90 hover:bg-[#112F40] border-sky-400/40 text-sky-200'
+                      ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
+                      : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
                   }`}
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-sky-300" />
                   <span>{settings.language === 'en' ? 'Chat' : 'Sohbet'}</span>
                   {controlsDisplayMode === 'DESKTOP' && (
-                    <span className="text-[10px] font-mono-num text-sky-300/80">
-                      [{formatKeyCode(settings.keybindings.chat)}]
-                    </span>
+                    <span className="ui-keycap">{formatKeyCode(settings.keybindings.chat)}</span>
                   )}
                   {unreadChatCount > 0 && !chatOpen && (
-                    <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-sky-400 text-[10px] font-bold font-mono-num text-slate-950">
+                    <span className="font-mono-num text-[11px] font-bold text-sky-300">
                       {unreadChatCount}
                     </span>
                   )}
@@ -9731,10 +9736,10 @@ export default function App() {
                   type="button"
                   onClick={() => void handleToggleVoiceJoin()}
                   disabled={voiceState.connecting}
-                  className={`px-3 py-1.5 text-xs rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] font-semibold flex items-center gap-1.5 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-lg backdrop-blur-md border font-semibold flex items-center gap-1.5 shadow-md cursor-pointer whitespace-nowrap transition-colors ${
                     voiceState.enabled
-                      ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/55 text-emerald-200'
-                      : 'bg-[#081A24]/90 hover:bg-[#112F40] border-white/14 text-slate-200'
+                      ? 'bg-emerald-500/18 border-emerald-400/45 text-emerald-200'
+                      : 'bg-[#061017]/88 hover:bg-[#0F212C] border-white/12 text-slate-200'
                   }`}
                 >
                   {voiceState.enabled ? (
@@ -9756,7 +9761,7 @@ export default function App() {
                       : 'Sesli Sohbet'}
                   </span>
                   {voiceState.enabled && (
-                    <span className="font-mono-num text-[10px] font-bold text-emerald-200">
+                    <span className="font-mono-num text-[10px] font-bold text-emerald-300">
                       · {voiceState.connectedVoicePeerCount}
                       {voicePeersCount > 1 ? `/${Math.max(1, voicePeersCount - 1)}` : ''}
                     </span>
@@ -9777,10 +9782,10 @@ export default function App() {
                           ? 'Mute Mic'
                           : 'Mikrofonu Kapat'
                       }
-                      className={`p-1.5 rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer flex items-center gap-1 ${
+                      className={`px-2 py-1.5 rounded-lg backdrop-blur-md border shadow-md cursor-pointer flex items-center gap-1.5 transition-colors ${
                         voiceState.muted
-                          ? 'bg-red-950/90 border-red-400/50 text-red-200'
-                          : 'bg-[#081A24]/90 border-emerald-400/40 text-emerald-200'
+                          ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
+                          : 'bg-[#061017]/88 border-emerald-400/40 text-emerald-200'
                       }`}
                     >
                       {voiceState.muted ? (
@@ -9789,8 +9794,8 @@ export default function App() {
                         <Mic className="w-3.5 h-3.5" />
                       )}
                       {controlsDisplayMode === 'DESKTOP' && (
-                        <span className="text-[10px] font-mono-num opacity-85">
-                          [{formatKeyCode(settings.keybindings.voiceMute)}]
+                        <span className="ui-keycap">
+                          {formatKeyCode(settings.keybindings.voiceMute)}
                         </span>
                       )}
                     </button>
@@ -9798,7 +9803,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleToggleVoiceMode}
-                      className="px-2.5 py-1.5 rounded-xl bg-[#081A24]/90 hover:bg-[#112F40] backdrop-blur-xl border border-sky-400/35 ring-1 ring-inset ring-white/[0.05] text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-[0_10px_24px_rgba(2,10,18,0.48)] cursor-pointer whitespace-nowrap"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#061017]/88 hover:bg-[#0F212C] backdrop-blur-md border border-white/12 text-sky-200 text-[11px] font-semibold flex items-center gap-1 shadow-md cursor-pointer whitespace-nowrap"
                       title={
                         settings.language === 'en'
                           ? 'Switch Proximity vs Room-Wide Voice'
@@ -9818,8 +9823,8 @@ export default function App() {
                     </button>
 
                     {voiceState.activeSpeakerIds.length > 0 && (
-                      <span className="px-2.5 py-1 rounded-xl bg-emerald-950/85 border border-emerald-400/40 text-[10px] font-semibold text-emerald-200 flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="px-2.5 py-1 rounded-lg bg-[#061017]/90 border border-emerald-400/40 text-[11px] font-semibold text-emerald-300 flex items-center gap-1.5 whitespace-nowrap">
+                        <Volume2 className="w-3 h-3 shrink-0" />
                         {settings.language === 'en' ? 'Speaking' : 'Konuşuyor'}
                       </span>
                     )}
@@ -9924,18 +9929,18 @@ export default function App() {
           {/* Interactive Touch Button Layout Editor Toolbar (Positioned in open clear space) */}
           {isEditingLayout && (
             <>
-              <div className="pointer-events-none fixed inset-0 bg-slate-950/35 z-20" />
+              <div className="pointer-events-none fixed inset-0 bg-[#040B11]/45 z-20" />
               <div
                 style={{
                   top: `${hudLayout.editorToolbarPlacement.top}px`,
                   left: `${hudLayout.editorToolbarPlacement.left}px`,
                   width: `${hudLayout.editorToolbarPlacement.width}px`,
                 }}
-                className="pointer-events-auto fixed z-40 rounded-2xl bg-[#081A24]/95 border border-amber-400/45 ring-1 ring-inset ring-white/[0.06] shadow-[0_24px_60px_rgba(2,10,18,0.78)] backdrop-blur-xl px-3.5 py-3 flex flex-col gap-2.5"
+                className="pointer-events-auto fixed z-40 rounded-xl bg-[#0A1720]/96 border border-white/12 shadow-[0_24px_60px_rgba(0,0,0,0.75)] backdrop-blur-xl divide-y divide-white/[0.07]"
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Move className="w-4 h-4 text-amber-300 shrink-0" />
+                    <Move className="w-4 h-4 text-amber-400 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-50 truncate">
                         {settings.language === 'en'
@@ -9992,7 +9997,7 @@ export default function App() {
                   </div>
 
                   {selectedTouchButton && (
-                    <div className="flex items-center gap-1 shrink-0 bg-slate-950/65 border border-white/10 rounded-xl px-1.5 py-1">
+                    <div className="flex items-center gap-1 shrink-0 bg-[#061017] border border-white/10 rounded-lg px-1 py-1">
                       <button
                         type="button"
                         aria-label="Küçült"
@@ -10007,11 +10012,11 @@ export default function App() {
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
                           updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
-                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-slate-100 flex items-center justify-center cursor-pointer"
+                        className="w-7 h-7 rounded-md hover:bg-white/10 active:scale-95 text-slate-200 flex items-center justify-center cursor-pointer"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="font-mono-num text-[11px] font-bold text-slate-200 w-10 text-center">
+                      <span className="font-mono-num text-[11px] font-bold text-slate-100 w-10 text-center">
                         %{Math.round((draftTouchLayout[selectedTouchButton]?.scale ?? 1) * 100)}
                       </span>
                       <button
@@ -10029,7 +10034,7 @@ export default function App() {
                           const resolved = handleDragResolve(selectedTouchButton, { ...cur, scale: nextScale });
                           updateDraftButtonTransform(selectedTouchButton, resolved);
                         }}
-                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-slate-100 flex items-center justify-center cursor-pointer"
+                        className="w-7 h-7 rounded-md hover:bg-white/10 active:scale-95 text-slate-200 flex items-center justify-center cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -10043,7 +10048,7 @@ export default function App() {
                             return next;
                           });
                         }}
-                        className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-sky-300 flex items-center justify-center cursor-pointer ml-0.5"
+                        className="w-7 h-7 rounded-md hover:bg-white/10 active:scale-95 text-sky-300 flex items-center justify-center cursor-pointer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -10056,8 +10061,8 @@ export default function App() {
                   const curOpacity = draftTouchLayout[selectedTouchButton]?.opacity ?? 1;
                   const opacityPct = Math.round(curOpacity * 100);
                   return (
-                    <div className="flex items-center gap-2 pt-1.5 border-t border-white/10">
-                      <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap shrink-0">
+                    <div className="flex items-center gap-2.5 px-3.5 py-2">
+                      <span className="text-[11px] font-semibold text-slate-400 whitespace-nowrap shrink-0">
                         {settings.language === 'en' ? 'Opacity' : 'Opaklık'}
                       </span>
                       <input
@@ -10101,7 +10106,7 @@ export default function App() {
                             ? 'Apply this opacity to all controls'
                             : 'Bu opaklığı tüm kontrollere uygula'
                         }
-                        className="min-h-[30px] px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="min-h-[30px] px-2.5 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[11px] font-semibold text-slate-200 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         {settings.language === 'en' ? 'All' : 'Tümüne'}
                       </button>
@@ -10109,23 +10114,23 @@ export default function App() {
                   );
                 })()}
 
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-[#08131B] rounded-b-xl">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setDraftTouchLayout({})}
-                      className="min-h-[34px] px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      className="min-h-[34px] px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
-                      <span>{settings.language === 'en' ? 'Reset All' : 'Varsayılan'}</span>
+                      <span>{settings.language === 'en' ? 'Reset' : 'Varsayılan'}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedTouchButton('minimap')}
-                      className={`min-h-[34px] px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                      className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                         selectedTouchButton === 'minimap'
-                          ? 'bg-sky-500/25 border-sky-400 text-sky-200'
-                          : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
+                          ? 'bg-sky-500/18 border-sky-400/50 text-sky-200'
+                          : 'bg-white/[0.05] hover:bg-white/10 border-white/10 text-slate-300'
                       }`}
                     >
                       {settings.language === 'en' ? 'Mini Map' : 'Mini Harita'}
@@ -10133,10 +10138,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setSelectedTouchButton('weaponPanel')}
-                      className={`min-h-[34px] px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                      className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                         selectedTouchButton === 'weaponPanel'
-                          ? 'bg-amber-500/25 border-amber-400 text-amber-200'
-                          : 'bg-white/10 hover:bg-white/15 border-transparent text-slate-200'
+                          ? 'bg-amber-400/18 border-amber-400/50 text-amber-200'
+                          : 'bg-white/[0.05] hover:bg-white/10 border-white/10 text-slate-300'
                       }`}
                     >
                       {settings.language === 'en' ? 'Weapon Panel' : 'Silah Paneli'}
@@ -10147,7 +10152,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveModal('NONE')}
-                      className="min-h-[36px] px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold cursor-pointer"
+                      className="min-h-[36px] px-3 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 text-xs font-semibold cursor-pointer whitespace-nowrap"
                     >
                       {settings.language === 'en' ? 'Cancel' : 'İptal'}
                     </button>
@@ -10167,7 +10172,7 @@ export default function App() {
                         }));
                         setActiveModal('NONE');
                       }}
-                      className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 shadow cursor-pointer"
+                      className="min-h-[36px] px-3.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
                     >
                       <Check className="w-3.5 h-3.5" />
                       <span>{settings.language === 'en' ? 'Save' : 'Kaydet'}</span>
@@ -10196,7 +10201,7 @@ export default function App() {
           onlineIslandOwners={onlineIslandOwnersForDisplay}
           colorblindMode={settings.colorblindMode}
           language={settings.language}
-          useMobileLayout={controlsDisplayMode === 'TOUCH' || isCompactTouch}
+          useMobileLayout={controlsDisplayMode === 'TOUCH' || hudLayout.isCompactTouch}
           onSetMapPin={(pin) => commitSave((prev) => ({ ...prev, mapPin: pin }), false)}
           onClose={() => setActiveModal('NONE')}
         />

@@ -221,8 +221,8 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         isEditingLayout
           ? `cursor-move rounded-full border-2 border-dashed ${
               isSelected
-                ? 'border-amber-300 bg-amber-400/15 ring-2 ring-amber-400/70'
-                : 'border-sky-300/60 bg-slate-900/35'
+                ? 'border-amber-400 bg-amber-400/12'
+                : 'border-sky-300/60 bg-slate-900/30'
             }`
           : 'cursor-grab active:cursor-grabbing'
       }`}
@@ -235,42 +235,40 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         }}
         className={`${
           !isEditingLayout && mode === 'DYNAMIC' && dynamicOrigin ? 'absolute' : 'relative'
-        } rounded-full border backdrop-blur-md ring-1 ring-inset ring-white/[0.06] transition-colors duration-150 flex items-center justify-center ${
+        } rounded-full border backdrop-blur-md transition-colors duration-150 flex items-center justify-center ${
           isActive
-            ? 'bg-[#081A24]/78 border-amber-300/70 shadow-[0_0_26px_rgba(251,191,36,0.22)]'
-            : 'bg-[#081A24]/56 border-white/20 shadow-[0_10px_28px_rgba(2,10,18,0.45)]'
+            ? 'bg-[#061017]/75 border-amber-400/75 shadow-[0_8px_24px_rgba(0,0,0,0.45)]'
+            : 'bg-[#061017]/52 border-white/16 shadow-[0_8px_24px_rgba(0,0,0,0.38)]'
         }`}
       >
-        {/* Crosshair guides & cardinal ticks */}
         <div
           className={`absolute ${
-            compact ? 'inset-2.5' : 'inset-2.5 sm:inset-3'
-          } rounded-full border border-white/10 pointer-events-none`}
+            compact ? 'inset-2.5' : 'inset-3'
+          } rounded-full border border-white/[0.08] pointer-events-none`}
         />
         <span className="pointer-events-none absolute top-1.5 left-1/2 -translate-x-1/2 w-[1.5px] h-1.5 rounded-full bg-white/30" />
         <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 w-[1.5px] h-1.5 rounded-full bg-white/30" />
         <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 h-[1.5px] w-1.5 rounded-full bg-white/30" />
         <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-[1.5px] w-1.5 rounded-full bg-white/30" />
 
-        {/* Inner thumb knob */}
         <div
           style={{
             width: `${knobSize}px`,
             height: `${knobSize}px`,
             transform: `translate(${knobOffset.x}px, ${knobOffset.y}px)`,
           }}
-          className={`rounded-full border ring-1 ring-inset ring-white/35 shadow-[0_6px_16px_rgba(2,10,18,0.55)] transition-colors duration-100 pointer-events-none flex items-center justify-center ${
+          className={`rounded-full border shadow-[0_4px_12px_rgba(0,0,0,0.5)] transition-colors duration-100 pointer-events-none flex items-center justify-center ${
             isActive
-              ? 'bg-gradient-to-b from-amber-300 to-amber-500 border-amber-100'
-              : 'bg-gradient-to-b from-slate-50 to-slate-200/90 border-white/80'
+              ? 'bg-amber-400 border-amber-200'
+              : 'bg-slate-200/90 border-white/70'
           }`}
         >
-          {isEditingLayout && <Move className="w-4 h-4 text-slate-800" />}
+          {isEditingLayout && <Move className="w-4 h-4 text-slate-900" />}
         </div>
       </div>
 
       {isEditingLayout && (
-        <span className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap">
+        <span className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#061017]/95 border border-white/15 text-[9px] font-bold text-amber-300 whitespace-nowrap">
           {language === 'en' ? 'Move Stick' : 'Hareket'}
         </span>
       )}

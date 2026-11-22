@@ -37,6 +37,7 @@ import {
   parseImportedRoomLedger,
   saveRoomLedger,
 } from '../engine/onlineStorage';
+import { usePlatformProfile } from '../utils/platform';
 
 const CREST_IMAGE_SRC = '/src/assets/images/pirate_compass_crest_1795020662166.jpg';
 const KEYART_IMAGE_SRC = '/src/assets/images/tropical_cove_keyart_1795020662703.jpg';
@@ -79,6 +80,10 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   onClose,
 }) => {
   const isEn = language === 'en';
+  const { profile } = usePlatformProfile();
+  const isMobilePortrait = profile === 'mobile-portrait';
+  const isMobileLandscape = profile === 'mobile-landscape';
+
   const [tab, setTab] = useState<'HOST' | 'JOIN'>(initialRoomCode ? 'JOIN' : 'HOST');
   const [selectedRule, setSelectedRule] = useState<OnlineModeRule>('PVP');
   const [joinCode, setJoinCode] = useState(initialRoomCode);
@@ -119,7 +124,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         copyTimerRef.current = null;
       }, 1800);
     } catch {
-      // Clipboard blocked in some contexts; ignore cleanly
+      // Clipboard blocked in some contexts
     }
   };
 
@@ -179,12 +184,11 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#041824]/92 backdrop-blur-md overflow-hidden select-none"
+      className="fixed inset-0 z-50 bg-[#061017]/94 backdrop-blur-md overflow-hidden select-none"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Online P2P Lobby' : 'Online P2P Oda Lobisi'}
     >
-      {/* Atmospheric Backdrop Keyart */}
       {!keyartError && (
         <img
           src={KEYART_IMAGE_SRC}
@@ -192,60 +196,66 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           aria-hidden="true"
           referrerPolicy="no-referrer"
           onError={() => setKeyartError(true)}
-          className="pointer-events-none fixed inset-0 w-full h-full object-cover opacity-20"
+          className="pointer-events-none fixed inset-0 w-full h-full object-cover opacity-15"
         />
       )}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#041824]/90 via-[#062233]/75 to-[#03121b]/95"
+        className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#061017]/90 via-[#061017]/75 to-[#040B11]/98"
       />
 
-      {/* Full-Viewport Container (scrolls on portrait & short landscape phones, single-screen cockpit when >=600x520) */}
-      <div className="relative z-10 h-full w-full max-w-6xl mx-auto pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:pl-[max(1.25rem,env(safe-area-inset-left))] sm:pr-[max(1.25rem,env(safe-area-inset-right))] lg:px-8 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3 overflow-y-auto [@media(min-width:600px)_and_(min-height:520px)]:overflow-hidden">
-        {/* Compact Top Navigation Header */}
-        <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div
+        className={`relative z-10 h-full w-full max-w-6xl mx-auto flex flex-col ${
+          isMobileLandscape
+            ? 'px-4 py-2 gap-2'
+            : isMobilePortrait
+            ? 'px-3.5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] gap-3 overflow-y-auto'
+            : 'px-6 lg:px-8 py-5 gap-4 overflow-hidden'
+        }`}
+      >
+        {/* Top Bar */}
+        <header className="h-11 shrink-0 flex items-center justify-between gap-3 border-b border-white/[0.08] pb-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={handleExitLobby}
-              className="h-10 px-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/12 text-slate-100 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-amber-400"
+              className="h-9 px-3 rounded-lg hover:bg-white/[0.07] border border-white/[0.08] text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">{isEn ? 'Main Menu' : 'Ana Menü'}</span>
             </button>
 
             <div className="flex items-center gap-2 min-w-0">
-              <Globe className="w-4 h-4 sm:w-5 sm:h-5 text-sky-300 shrink-0" />
-              <h2 className="font-display text-sm sm:text-lg font-bold text-slate-50 truncate">
+              <Globe className="w-4 h-4 text-sky-400 shrink-0" />
+              <h2 className="font-display text-sm sm:text-base font-bold text-slate-50 truncate">
                 {isEn ? 'Online P2P Lobby' : 'Online P2P Oda Lobisi'}
               </h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="hidden md:inline text-xs text-slate-400 font-medium">
-              {isEn ? 'Serverless WebRTC P2P' : 'Sunucusuz WebRTC P2P'}
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="hidden md:inline text-[11px] text-slate-400">
+              {isEn ? 'Direct WebRTC Peer Connection' : 'Doğrudan WebRTC P2P'}
             </span>
             <button
               type="button"
               onClick={handleExitLobby}
               aria-label={isEn ? 'Close Lobby' : 'Lobiyi Kapat'}
-              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-400"
+              className="w-9 h-9 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </header>
 
-        {/* Compact Error Bar (when present) */}
         {errorMsg && (
-          <div className="shrink-0 px-3 py-2 rounded-xl bg-red-950/75 border border-red-400/45 text-xs text-red-100 flex items-center justify-between gap-2">
+          <div className="shrink-0 px-3.5 py-2.5 rounded-xl bg-red-950/60 border border-red-400/35 text-xs text-red-100 flex items-center justify-between gap-3">
             <span className="truncate">{errorMsg}</span>
             {status === 'ERROR' && (
               <button
                 type="button"
                 onClick={onDisconnect}
-                className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-slate-50 font-semibold whitespace-nowrap cursor-pointer shrink-0"
+                className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-50 font-semibold whitespace-nowrap cursor-pointer shrink-0"
               >
                 {isEn ? 'Reset' : 'Sıfırla'}
               </button>
@@ -253,15 +263,24 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           </div>
         )}
 
-        {/* STATE 1: Active Waiting Room Lobby */}
+        {/* STATE 1: Active Waiting Room */}
         {isInLobbyOrConnecting && roomInfo ? (
-          <div className="flex-1 min-h-0 grid grid-cols-1 [@media(min-width:600px)]:grid-cols-12 gap-2.5 sm:gap-4">
-            {/* Left Zone: Room Spotlight, Rules & Start Action */}
-            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)] min-h-0">
-              <div className="flex flex-col gap-2.5 sm:gap-3">
-                {/* Room Code Card */}
-                <div className="p-3 rounded-xl bg-slate-950/50 border border-amber-400/25 flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+          <div
+            className={`flex-1 min-h-0 ${
+              isMobilePortrait
+                ? 'flex flex-col gap-3'
+                : 'grid grid-cols-12 gap-4'
+            }`}
+          >
+            {/* Left Zone: Room Code, Mode & Start */}
+            <section
+              className={`${
+                isMobilePortrait ? '' : 'col-span-5'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between overflow-hidden`}
+            >
+              <div className="divide-y divide-white/[0.08]">
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>
                       {role === 'HOST'
                         ? isEn
@@ -271,7 +290,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         ? `Host: ${roomInfo.hostName}`
                         : `Kurucu: ${roomInfo.hostName}`}
                     </span>
-                    <span className="text-emerald-300 font-semibold">
+                    <span className="text-emerald-400 font-semibold">
                       {isEn ? 'Room Ready' : 'Oda Hazır'}
                     </span>
                   </div>
@@ -284,7 +303,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       <button
                         type="button"
                         onClick={() => void copyText(roomInfo.roomId, 'CODE')}
-                        className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-slate-100 flex items-center gap-1.5 cursor-pointer"
+                        className="h-9 px-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-semibold text-slate-100 flex items-center gap-1.5 cursor-pointer"
                       >
                         {copiedKind === 'CODE' ? (
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -298,7 +317,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         <button
                           type="button"
                           onClick={() => void copyText(inviteUrl, 'LINK')}
-                          className="h-9 px-2.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/35 text-xs font-semibold text-sky-200 flex items-center gap-1.5 cursor-pointer"
+                          className="h-9 px-2.5 rounded-lg bg-sky-400/15 hover:bg-sky-400/25 border border-sky-400/30 text-xs font-semibold text-sky-200 flex items-center gap-1.5 cursor-pointer"
                         >
                           {copiedKind === 'LINK' ? (
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -312,23 +331,24 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                   </div>
                 </div>
 
-                {/* Rule Switcher */}
-                <div className="p-3 rounded-xl bg-slate-950/35 border border-white/10 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs text-slate-300">
-                    <span className="font-semibold">{isEn ? 'Match Mode' : 'Oyun Kuralı'}</span>
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-200">
+                      {isEn ? 'Match Mode' : 'Oyun Kuralı'}
+                    </span>
                     <span className="text-[11px] text-slate-400">
                       {isEn ? 'Equal Starter Islands' : 'Eşit Başlangıç Adaları'}
                     </span>
                   </div>
 
                   {role === 'HOST' ? (
-                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/10">
+                    <div className="grid grid-cols-2 rounded-xl bg-[#061017] border border-white/[0.08] p-1 gap-1">
                       <button
                         type="button"
                         onClick={() => onHostChangeRule('COOP')}
                         className={`h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
                           roomInfo.rule === 'COOP'
-                            ? 'bg-emerald-500 text-slate-950'
+                            ? 'bg-emerald-400 text-slate-950'
                             : 'text-slate-300 hover:text-white'
                         }`}
                       >
@@ -340,7 +360,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         onClick={() => onHostChangeRule('PVP')}
                         className={`h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
                           roomInfo.rule === 'PVP'
-                            ? 'bg-red-500 text-slate-950'
+                            ? 'bg-red-500 text-white'
                             : 'text-slate-300 hover:text-white'
                         }`}
                       >
@@ -349,7 +369,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <div className="h-9 px-3 rounded-lg bg-slate-900/70 border border-white/10 flex items-center gap-2 text-xs font-semibold text-amber-300">
+                    <div className="py-2 flex items-center gap-2 text-xs font-semibold text-amber-300">
                       {roomInfo.rule === 'COOP' ? (
                         <Shield className="w-4 h-4 text-emerald-400" />
                       ) : (
@@ -369,12 +389,11 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Footer */}
-              <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+              <div className="p-4 border-t border-white/[0.08] bg-[#08131B] flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onDisconnect}
-                  className="h-11 px-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-200 whitespace-nowrap cursor-pointer"
+                  className="h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-semibold text-slate-200 whitespace-nowrap cursor-pointer"
                 >
                   {isEn ? 'Leave' : 'Ayrıl'}
                 </button>
@@ -383,16 +402,16 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                   <button
                     type="button"
                     onClick={onHostStartGame}
-                    className="flex-1 h-11 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-display text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg whitespace-nowrap cursor-pointer transition-transform active:scale-[0.98]"
+                    className="flex-1 h-11 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-display text-sm font-bold flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer transition-transform active:scale-[0.985]"
                   >
                     <Play className="w-4 h-4 fill-current" />
-                    <span>{isEn ? 'Set Sail (Start)' : 'Denize Açıl (Başlat)'}</span>
+                    <span>{isEn ? 'Set Sail' : 'Denize Açıl'}</span>
                   </button>
                 ) : (
-                  <div className="flex-1 h-11 px-3 rounded-xl bg-sky-950/50 border border-sky-400/25 text-xs text-sky-200 flex items-center justify-center gap-2">
+                  <div className="flex-1 h-11 px-3 rounded-xl bg-sky-400/10 border border-sky-400/25 text-xs text-sky-200 flex items-center justify-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-300 shrink-0" />
                     <span className="truncate">
-                      {isEn ? 'Waiting for host to launch...' : 'Kurucunun başlatması bekleniyor...'}
+                      {isEn ? 'Waiting for host...' : 'Kurucu bekleniyor...'}
                     </span>
                   </div>
                 )}
@@ -400,26 +419,33 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             </section>
 
             {/* Right Zone: Squad Roster */}
-            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)]">
-              <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/10 shrink-0">
+            <section
+              className={`${
+                isMobilePortrait ? '' : 'col-span-7'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col min-h-0 overflow-hidden`}
+            >
+              <div className="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between gap-2 shrink-0">
                 <span className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-emerald-300" />
-                  {isEn ? 'Connected Captains' : 'Bağlı Kaptanlar'} ({players.filter((p) => p.connected).length})
+                  <Users className="w-4 h-4 text-emerald-400" />
+                  {isEn ? 'Connected Captains' : 'Bağlı Kaptanlar'}
+                  <span className="font-mono-num text-slate-400">
+                    ({players.filter((p) => p.connected).length})
+                  </span>
                 </span>
-                <span className="font-mono-num text-[11px] sm:text-xs text-slate-400">
-                  {starterSlots.length} {isEn ? 'Islands Ready' : 'Ada Hazır'}
+                <span className="font-mono-num text-xs text-slate-400">
+                  {starterSlots.length} {isEn ? 'Islands' : 'Ada'}
                 </span>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto pt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 content-start">
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/[0.06]">
                 {players.map((p) => (
                   <div
                     key={p.id}
-                    className="p-3 rounded-xl bg-slate-950/45 border border-white/12 flex items-center justify-between gap-2.5"
+                    className="px-4 py-3 flex items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-9 h-9 rounded-xl border-2 flex items-center justify-center shrink-0 bg-slate-900"
+                        className="w-9 h-9 rounded-lg border-2 flex items-center justify-center shrink-0 bg-[#061017]"
                         style={{ borderColor: p.bannerColor }}
                       >
                         {p.isHost ? (
@@ -429,16 +455,16 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-slate-100 truncate">{p.name}</div>
-                        <div className="text-[11px] text-slate-400">
+                        <div className="text-sm font-semibold text-slate-100 truncate">{p.name}</div>
+                        <div className="text-[11px] text-slate-400 font-mono-num">
                           {p.isHost ? (isEn ? 'Host' : 'Kurucu') : isEn ? 'Captain' : 'Kaptan'} ·{' '}
                           {isEn ? `Island #${p.starterSlotIndex + 1}` : `Ada #${p.starterSlotIndex + 1}`}
                         </div>
                       </div>
                     </div>
                     <span
-                      className={`text-[11px] font-semibold whitespace-nowrap ${
-                        p.connected ? 'text-emerald-300' : 'text-slate-500'
+                      className={`text-xs font-semibold whitespace-nowrap ${
+                        p.connected ? 'text-emerald-400' : 'text-slate-500'
                       }`}
                     >
                       {p.connected ? (isEn ? 'Ready' : 'Hazır') : isEn ? 'Offline' : 'Çevrimdışı'}
@@ -449,14 +475,14 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 {Array.from({ length: emptySquadSlots }).map((_, idx) => (
                   <div
                     key={`empty-slot-${idx}`}
-                    className="p-3 rounded-xl border border-dashed border-white/10 bg-slate-950/20 flex items-center gap-2.5 text-slate-500"
+                    className="px-4 py-3 flex items-center gap-3 text-slate-500"
                   >
-                    <div className="w-9 h-9 rounded-xl border border-dashed border-white/10 flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-lg border border-dashed border-white/10 flex items-center justify-center shrink-0">
                       <UserPlus className="w-4 h-4 text-slate-600" />
                     </div>
-                    <div className="text-xs">
+                    <span className="text-xs">
                       {isEn ? 'Open Captain Slot' : 'Boş Kaptan Slotu'}
-                    </div>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -465,70 +491,78 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         ) : status === 'CONNECTING' ? (
           /* STATE 2: Connecting Screen */
           <div className="flex-1 min-h-0 flex items-center justify-center">
-            <div className="w-full max-w-md p-6 rounded-2xl bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-[0_20px_50px_rgba(2,10,18,0.65)] flex flex-col items-center text-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-400/35 flex items-center justify-center">
-                <RefreshCw className="w-7 h-7 animate-spin text-amber-300" />
+            <div className="w-full max-w-md p-6 rounded-2xl bg-[#0A1720]/96 border border-white/10 flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-400/12 border border-amber-400/30 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 animate-spin text-amber-400" />
               </div>
               <div className="font-display text-base font-bold text-slate-100">
                 {isEn ? 'Establishing P2P Connection...' : 'P2P Bağlantısı Kuruluyor...'}
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
                 {isEn
-                  ? 'Opening direct WebRTC channel between browsers. Initial handshake may take a few seconds.'
-                  : 'Tarayıcılar arası doğrudan WebRTC kanalı açılıyor. İlk bağlantı birkaç saniye sürebilir.'}
+                  ? 'Opening direct WebRTC channel between browsers.'
+                  : 'Tarayıcılar arası doğrudan WebRTC kanalı açılıyor.'}
               </p>
               <button
                 type="button"
                 onClick={onDisconnect}
-                className="mt-1 h-10 px-5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-100 cursor-pointer"
+                className="mt-1 h-10 px-5 rounded-xl bg-white/[0.07] hover:bg-white/[0.14] text-xs font-semibold text-slate-100 cursor-pointer"
               >
                 {isEn ? 'Cancel' : 'İptal Et'}
               </button>
             </div>
           </div>
         ) : (
-          /* STATE 3: Single-Screen Setup Cockpit (No Outer Scroll!) */
-          <div className="flex-1 min-h-0 grid grid-cols-1 [@media(min-width:600px)]:grid-cols-12 gap-2.5 sm:gap-4">
-            {/* Left Column: Captain Identity Card */}
-            <section className="[@media(min-width:600px)]:col-span-5 flex flex-col justify-between gap-2.5 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)] shrink-0 [@media(min-width:600px)]:shrink">
-              <div className="flex flex-col gap-2 sm:gap-3.5">
-                {/* Captain Profile Header Preview (shown on landscape/tablet/desktop) */}
-                <div className="hidden [@media(min-width:600px)]:flex items-center gap-3">
-                  <div
-                    className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl overflow-hidden border-2 bg-[#061822] shrink-0 flex items-center justify-center shadow-lg"
-                    style={{ borderColor: identity.bannerColor }}
-                  >
-                    {!crestError ? (
-                      <img
-                        src={CREST_IMAGE_SRC}
-                        alt={isEn ? 'Captain crest' : 'Kaptan arması'}
-                        referrerPolicy="no-referrer"
-                        onError={() => setCrestError(true)}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Compass className="w-6 h-6 text-amber-300" />
-                    )}
+          /* STATE 3: Setup Cockpit (Platform-adapted) */
+          <div
+            className={`flex-1 min-h-0 ${
+              isMobilePortrait ? 'flex flex-col gap-3' : 'grid grid-cols-12 gap-4'
+            }`}
+          >
+            {/* Left Column: Captain Identity */}
+            <section
+              className={`${
+                isMobilePortrait ? '' : 'col-span-5'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between overflow-hidden`}
+            >
+              <div className="p-4 space-y-4">
+                {!isMobilePortrait && (
+                  <div className="flex items-center gap-3 pb-3 border-b border-white/[0.08]">
+                    <div
+                      className="w-12 h-12 rounded-xl overflow-hidden border-2 bg-[#061017] shrink-0 flex items-center justify-center"
+                      style={{ borderColor: identity.bannerColor }}
+                    >
+                      {!crestError ? (
+                        <img
+                          src={CREST_IMAGE_SRC}
+                          alt={isEn ? 'Captain crest' : 'Kaptan arması'}
+                          referrerPolicy="no-referrer"
+                          onError={() => setCrestError(true)}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Compass className="w-5 h-5 text-amber-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] text-slate-400">
+                        {isEn ? 'Captain Profile' : 'Kaptan Kimliği'}
+                      </div>
+                      <div className="font-display text-base font-bold text-slate-50 truncate">
+                        {identity.name.trim() || (isEn ? 'Unnamed Captain' : 'İsimsiz Kaptan')}
+                      </div>
+                      <div className="text-[11px] font-semibold" style={{ color: selectedBanner.color }}>
+                        {selectedBanner.name}
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-[11px] text-slate-400 font-medium">
-                      {isEn ? 'Captain Profile' : 'Kaptan Kimliği'}
-                    </div>
-                    <div className="font-display text-sm sm:text-base font-bold text-slate-50 truncate">
-                      {identity.name.trim() || (isEn ? 'Unnamed Captain' : 'İsimsiz Kaptan')}
-                    </div>
-                    <div className="text-[11px] font-semibold" style={{ color: selectedBanner.color }}>
-                      {selectedBanner.name}
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                {/* Captain Name & Banner Swatches */}
-                <div className="grid grid-cols-12 [@media(min-width:600px)]:grid-cols-1 gap-2 sm:gap-2.5">
-                  <div className="col-span-7 [@media(min-width:600px)]:col-span-1 flex flex-col gap-1">
+                <div className={isMobilePortrait ? 'grid grid-cols-12 gap-2.5' : 'space-y-3.5'}>
+                  <div className={isMobilePortrait ? 'col-span-7 space-y-1' : 'space-y-1.5'}>
                     <label
                       htmlFor="captain-name"
-                      className="text-[11px] sm:text-xs font-semibold text-slate-300"
+                      className="block text-xs font-semibold text-slate-300"
                     >
                       {isEn ? 'Captain Name' : 'Kaptan Adın'}
                     </label>
@@ -539,15 +573,15 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       value={identity.name}
                       onChange={(e) => onUpdateIdentity({ ...identity, name: e.target.value })}
                       placeholder={isEn ? 'e.g. Captain Jack' : 'Örn. Kaptan Ege'}
-                      className="h-10 px-3 rounded-xl bg-slate-950/75 border border-white/15 text-[16px] sm:text-sm text-slate-50 focus:outline-none focus:border-amber-400"
+                      className="w-full h-10 px-3 rounded-lg bg-[#061017] border border-white/12 text-[15px] sm:text-sm text-slate-50 focus:outline-none focus:border-amber-400"
                     />
                   </div>
 
-                  <div className="col-span-5 [@media(min-width:600px)]:col-span-1 flex flex-col gap-1">
-                    <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
-                      {isEn ? 'Banner' : 'Sancak Rengi'}
+                  <div className={isMobilePortrait ? 'col-span-5 space-y-1' : 'space-y-1.5'}>
+                    <span className="block text-xs font-semibold text-slate-300 truncate">
+                      {isEn ? 'Banner Color' : 'Sancak Rengi'}
                     </span>
-                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2 h-10">
+                    <div className="grid grid-cols-4 gap-1.5 h-10">
                       {PLAYER_BANNER_OPTIONS.map((opt) => {
                         const active = identity.bannerColor === opt.color;
                         return (
@@ -558,14 +592,14 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                             title={opt.name}
                             aria-label={opt.name}
                             aria-pressed={active}
-                            className={`rounded-xl border flex items-center justify-center cursor-pointer transition-all active:scale-95 ${
+                            className={`rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
                               active
-                                ? 'bg-white/20 border-white shadow'
-                                : 'bg-slate-950/60 border-white/10 hover:bg-white/10'
+                                ? 'bg-white/15 border-white'
+                                : 'bg-[#061017] border-white/10 hover:bg-white/[0.06]'
                             }`}
                           >
                             <span
-                              className="w-4 h-4 rounded-full border border-white/30"
+                              className="w-3.5 h-3.5 rounded-full"
                               style={{ backgroundColor: opt.color }}
                             />
                           </button>
@@ -576,74 +610,80 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 </div>
               </div>
 
-              {/* Feature Summary (visible on taller screens) */}
-              <div className="hidden [@media(min-height:540px)]:flex flex-col gap-1.5 pt-2.5 border-t border-white/10 text-xs text-slate-300">
-                <div className="flex items-center gap-2">
-                  <Anchor className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>{isEn ? 'Equal starter island per captain' : 'Her kaptana eşit başlangıç adası'}</span>
+              {!isMobilePortrait && !isMobileLandscape && (
+                <div className="px-4 py-3.5 border-t border-white/[0.08] bg-[#08131B] space-y-2 text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <Anchor className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>{isEn ? 'Equal starter island per captain' : 'Her kaptana eşit başlangıç adası'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mic className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span>{isEn ? 'Built-in WebRTC voice & quick chat' : 'Dahili sesli sohbet ve hızlı ifade'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>{isEn ? 'Host auto-saves crew progress' : 'Kurucu ekip gelişimini otomatik kaydeder'}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Mic className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                  <span>{isEn ? 'Built-in WebRTC voice & quick chat' : 'Dahili sesli sohbet ve hızlı ifade'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Globe className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>{isEn ? 'Host auto-saves all crew progress' : 'Kurucu tüm ekip gelişimini otomatik kaydeder'}</span>
-                </div>
-              </div>
+              )}
             </section>
 
-            {/* Right Column: Host / Join Mode Cockpit */}
-            <section className="[@media(min-width:600px)]:col-span-7 flex flex-col min-h-0 gap-2 sm:gap-3 bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] rounded-2xl p-3 sm:p-4 shadow-[0_20px_50px_rgba(2,10,18,0.65)]">
-              {/* Segmented Host / Join Switcher */}
-              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/10 shrink-0">
+            {/* Right Column: Host / Join */}
+            <section
+              className={`${
+                isMobilePortrait ? '' : 'col-span-7'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col min-h-0 overflow-hidden`}
+            >
+              {/* Clean Underline Segmented Header */}
+              <div className="grid grid-cols-2 border-b border-white/[0.08] bg-[#08131B] shrink-0">
                 <button
                   type="button"
                   onClick={() => setTab('HOST')}
-                  className={`h-9 sm:h-10 rounded-lg text-xs sm:text-sm font-bold transition-colors whitespace-nowrap cursor-pointer ${
-                    tab === 'HOST'
-                      ? 'bg-amber-500 text-slate-950 shadow'
-                      : 'text-slate-300 hover:text-white'
+                  className={`relative min-h-[44px] text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
+                    tab === 'HOST' ? 'text-amber-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   {isEn ? 'Host Room' : 'Oda Kur'}
+                  {tab === 'HOST' && (
+                    <span className="absolute bottom-0 inset-x-4 h-0.5 bg-amber-400 rounded-full" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => setTab('JOIN')}
-                  className={`h-9 sm:h-10 rounded-lg text-xs sm:text-sm font-bold transition-colors whitespace-nowrap cursor-pointer ${
-                    tab === 'JOIN'
-                      ? 'bg-sky-400 text-slate-950 shadow'
-                      : 'text-slate-300 hover:text-white'
+                  className={`relative min-h-[44px] text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
+                    tab === 'JOIN' ? 'text-sky-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   {isEn ? 'Join with Code' : 'Odaya Katıl'}
+                  {tab === 'JOIN' && (
+                    <span className="absolute bottom-0 inset-x-4 h-0.5 bg-sky-400 rounded-full" />
+                  )}
                 </button>
               </div>
 
               {tab === 'HOST' ? (
-                <div className="flex-1 min-h-0 flex flex-col gap-2 sm:gap-3">
-                  {/* Co-op vs PvP 2-Column Rule Cards */}
+                <div className="flex-1 min-h-0 flex flex-col p-4 gap-3.5">
                   <div className="grid grid-cols-2 gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => setSelectedRule('COOP')}
-                      className={`p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                         selectedRule === 'COOP'
-                          ? 'bg-emerald-950/60 border-emerald-400/80 shadow'
-                          : 'bg-slate-950/40 border-white/10 hover:bg-white/5'
+                          ? 'bg-emerald-500/12 border-emerald-400/60'
+                          : 'bg-[#061017]/60 border-white/[0.08] hover:bg-white/[0.03]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-100">
+                        <span className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-100">
                           <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="truncate">{isEn ? 'Co-op' : 'Ortak Takım'}</span>
-                        </div>
+                          <span>{isEn ? 'Co-op' : 'Ortak Takım'}</span>
+                        </span>
                         {selectedRule === 'COOP' && (
-                          <Check className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         )}
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-300 line-clamp-2 leading-snug">
+                      <p className="mt-1 text-[11px] text-slate-400 line-clamp-2">
                         {isEn
                           ? 'Friendly fire off. Hunt treasures together.'
                           : 'Dost ateşi kapalı. Hazineyi birlikte avla.'}
@@ -653,22 +693,22 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSelectedRule('PVP')}
-                      className={`p-2.5 sm:p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                      className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                         selectedRule === 'PVP'
-                          ? 'bg-red-950/55 border-red-400/80 shadow'
-                          : 'bg-slate-950/40 border-white/10 hover:bg-white/5'
+                          ? 'bg-red-500/12 border-red-400/60'
+                          : 'bg-[#061017]/60 border-white/[0.08] hover:bg-white/[0.03]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-100">
+                        <span className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-100">
                           <Swords className="w-4 h-4 text-red-400 shrink-0" />
-                          <span className="truncate">{isEn ? 'PvP War' : 'Devlet Savaşı'}</span>
-                        </div>
+                          <span>{isEn ? 'PvP War' : 'Devlet Savaşı'}</span>
+                        </span>
                         {selectedRule === 'PVP' && (
-                          <Check className="w-3.5 h-3.5 text-red-300 shrink-0" />
+                          <Check className="w-3.5 h-3.5 text-red-400 shrink-0" />
                         )}
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-300 line-clamp-2 leading-snug">
+                      <p className="mt-1 text-[11px] text-slate-400 line-clamp-2">
                         {isEn
                           ? 'Equal islands. Build your kingdom & clash.'
                           : 'Eşit adalarda başla, denizlerde çarpış.'}
@@ -676,26 +716,25 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Primary Create Room CTA */}
                   <button
                     type="button"
                     disabled={!identity.name.trim()}
                     onClick={() => onCreateRoom(selectedRule)}
-                    className="h-10 sm:h-11 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-white/10 disabled:text-slate-400 text-slate-950 font-display text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-[0.98] cursor-pointer whitespace-nowrap shrink-0"
+                    className="min-h-[44px] px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:bg-white/10 disabled:text-slate-500 text-slate-950 font-display text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-transform active:scale-[0.985] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Globe className="w-4 h-4" />
                     <span>{isEn ? 'Create New Online Room' : 'Yeni Online Oda Aç'}</span>
                   </button>
 
-                  {/* Saved Rooms Ledger (Self-contained scroll inside flex-1 box so screen never scrolls) */}
-                  <div className="flex-1 min-h-0 flex flex-col gap-1.5 pt-2 border-t border-white/10">
+                  {/* Saved Rooms Ledger */}
+                  <div className="flex-1 min-h-0 flex flex-col gap-2 pt-3 border-t border-white/[0.08]">
                     <div className="flex items-center justify-between gap-2 shrink-0">
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
+                      <span className="text-xs font-semibold text-slate-300">
                         {isEn
                           ? `Saved Rooms (${savedRooms.length})`
                           : `Kayıtlı Odalar (${savedRooms.length})`}
                       </span>
-                      <div className="shrink-0">
+                      <div>
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -706,7 +745,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="min-h-[36px] sm:h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                          className="min-h-[34px] px-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                         >
                           <Upload className="w-3.5 h-3.5" />
                           <span>{isEn ? 'Import' : 'Kayıt Yükle'}</span>
@@ -718,76 +757,73 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       <div className="text-[11px] text-sky-300 shrink-0">{importNotice}</div>
                     )}
 
-                    <div className="flex-1 min-h-[120px] [@media(min-width:600px)_and_(min-height:520px)]:min-h-0 overflow-y-auto pr-0.5">
+                    <div className="flex-1 min-h-[100px] overflow-y-auto divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-[#061017]/50">
                       {savedRooms.length === 0 ? (
-                        <div className="h-full min-h-[60px] px-3 py-2 rounded-xl bg-slate-950/35 border border-white/10 text-[11px] sm:text-xs text-slate-400 flex items-center justify-center text-center">
+                        <div className="h-full min-h-[72px] px-4 py-3 text-xs text-slate-400 flex items-center justify-center text-center">
                           {isEn
-                            ? 'No saved online rooms yet. Crew progress is saved here automatically.'
-                            : 'Henüz kayıtlı oda yok. Açtığın odaların ilerlemesi burada otomatik saklanır.'}
+                            ? 'No saved online rooms yet.'
+                            : 'Henüz kayıtlı oda yok.'}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 gap-1.5">
-                          {savedRooms.map((rm) => (
-                            <div
-                              key={rm.roomInfo.roomId}
-                              className="p-2.5 rounded-xl bg-slate-950/45 border border-white/10 flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-slate-100 font-mono-num truncate">
-                                  {isEn ? 'Room' : 'Oda'} {rm.roomInfo.roomId} ·{' '}
-                                  {rm.roomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
-                                </div>
-                                <div className="text-[11px] text-slate-400 truncate">
-                                  {Object.keys(rm.playersById).length}{' '}
-                                  {isEn ? 'Captains' : 'Kaptan'} · {rm.openedTreasureIds.length}{' '}
-                                  {isEn ? 'Treasures' : 'Hazine'}
-                                </div>
+                        savedRooms.map((rm) => (
+                          <div
+                            key={rm.roomInfo.roomId}
+                            className="px-3.5 py-2.5 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-100 font-mono-num truncate">
+                                {isEn ? 'Room' : 'Oda'} {rm.roomInfo.roomId} ·{' '}
+                                {rm.roomInfo.rule === 'COOP' ? 'Co-op' : 'PvP'}
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => onCreateRoom(selectedRule, rm.roomInfo.roomId)}
-                                  className="min-h-[38px] sm:h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold whitespace-nowrap cursor-pointer active:scale-95 transition-all"
-                                >
-                                  {isEn ? 'Resume' : 'Devam Et'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleExportRoom(rm)}
-                                  title={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
-                                  aria-label={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
-                                  className="min-w-[38px] min-h-[38px] sm:w-8 sm:h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    await deleteRoomLedger(rm.roomInfo.roomId);
-                                    await refreshSavedRooms();
-                                  }}
-                                  title={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
-                                  aria-label={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
-                                  className="min-w-[38px] min-h-[38px] sm:w-8 sm:h-8 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                              <div className="text-[11px] text-slate-400 font-mono-num truncate">
+                                {Object.keys(rm.playersById).length}{' '}
+                                {isEn ? 'Captains' : 'Kaptan'} · {rm.openedTreasureIds.length}{' '}
+                                {isEn ? 'Treasures' : 'Hazine'}
                               </div>
                             </div>
-                          ))}
-                        </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => onCreateRoom(selectedRule, rm.roomInfo.roomId)}
+                                className="min-h-[34px] px-3 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-xs font-bold whitespace-nowrap cursor-pointer"
+                              >
+                                {isEn ? 'Resume' : 'Devam Et'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleExportRoom(rm)}
+                                title={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
+                                aria-label={isEn ? 'Export Room' : 'Oda Kaydını İndir'}
+                                className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-white/[0.14] text-slate-200 flex items-center justify-center cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await deleteRoomLedger(rm.roomInfo.roomId);
+                                  await refreshSavedRooms();
+                                }}
+                                title={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
+                                aria-label={isEn ? 'Delete Room' : 'Oda Kaydını Sil'}
+                                className="w-8 h-8 rounded-lg bg-red-500/15 hover:bg-red-500/30 text-red-300 flex items-center justify-center cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
                 </div>
               ) : (
-                /* JOIN WITH CODE VIEW */
-                <div className="flex-1 min-h-0 flex flex-col justify-between gap-3">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-1.5">
+                <div className="flex-1 min-h-0 flex flex-col justify-between p-4 gap-4">
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
                       <label
                         htmlFor="join-room-code"
-                        className="text-xs font-semibold text-slate-200"
+                        className="block text-xs font-semibold text-slate-200"
                       >
                         {isEn
                           ? '6-Character Room Code from Host'
@@ -800,22 +836,22 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                         value={joinCode}
                         onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                         placeholder="AB3K9Z"
-                        className="h-12 sm:h-14 px-4 rounded-xl bg-slate-950/75 border border-white/15 font-mono-num text-xl font-extrabold tracking-[0.25em] uppercase text-amber-300 focus:outline-none focus:border-sky-400"
+                        className="w-full h-12 sm:h-14 px-4 rounded-xl bg-[#061017] border border-white/12 font-mono-num text-xl font-extrabold tracking-[0.25em] uppercase text-amber-300 focus:outline-none focus:border-sky-400"
                       />
                     </div>
 
-                    <div className="p-3 rounded-xl bg-slate-950/35 border border-white/10 text-xs text-slate-300 leading-relaxed">
+                    <p className="text-xs text-slate-400 leading-relaxed pt-1 border-t border-white/[0.08]">
                       {isEn
                         ? 'When you join, a balanced starter island spawns nearby on the water so every captain begins on equal footing.'
                         : 'Katıldığında sana diğer kaptanlara yakın mesafede, su üzerinde eşit şartlarda özel bir başlangıç adası açılır.'}
-                    </div>
+                    </p>
                   </div>
 
                   <button
                     type="button"
                     disabled={!identity.name.trim() || joinCode.trim().length < 4}
                     onClick={() => onJoinRoom(joinCode.trim().toUpperCase())}
-                    className="h-11 sm:h-12 px-6 rounded-xl bg-sky-400 hover:bg-sky-300 disabled:bg-white/10 disabled:text-slate-400 text-slate-950 font-display text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-[0.98] cursor-pointer whitespace-nowrap shrink-0"
+                    className="min-h-[46px] px-6 rounded-xl bg-sky-400 hover:bg-sky-300 disabled:bg-white/10 disabled:text-slate-500 text-slate-950 font-display text-sm font-bold flex items-center justify-center gap-2 transition-transform active:scale-[0.985] cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Users className="w-4 h-4" />
                     <span>{isEn ? 'Connect to Room' : 'Odaya Bağlan'}</span>

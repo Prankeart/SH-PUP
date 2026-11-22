@@ -179,9 +179,8 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       const live = readLive();
       const half = effectiveSize * 0.5;
 
-      // Background
       ctx.clearRect(0, 0, effectiveSize, effectiveSize);
-      ctx.fillStyle = live.activeCave ? '#070F1C' : '#062B3D';
+      ctx.fillStyle = live.activeCave ? '#070F1C' : '#051A25';
       ctx.fillRect(0, 0, effectiveSize, effectiveSize);
 
       if (live.activeCave) {
@@ -221,13 +220,11 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           ctx.fill();
         }
 
-        // Cave exit dot
         ctx.fillStyle = '#38BDF8';
         ctx.beginPath();
         ctx.arc(cave.exitPos.x * cScale, cave.exitPos.y * cScale, 3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Unopened chests
         ctx.fillStyle = '#FBBF24';
         for (const chest of cave.chests) {
           if (chest.opened) continue;
@@ -236,7 +233,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           ctx.fill();
         }
 
-        // Cave allies
         for (const rp of remotes) {
           if (!rp.connected || rp.inCaveId !== cave.caveId) continue;
           if (rp.caveX === undefined || rp.caveY === undefined) continue;
@@ -246,7 +242,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           ctx.fill();
         }
 
-        // Player arrow inside cave
         const px = live.activeCave.playerX * cScale;
         const py = live.activeCave.playerY * cScale;
         ctx.save();
@@ -269,7 +264,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         return;
       }
 
-      // Overworld Minimap
       const rawCx = live.isSailing ? live.boatX : live.playerX;
       const rawCy = live.isSailing ? live.boatY : live.playerY;
       const cx = Number.isFinite(rawCx) ? rawCx : 0;
@@ -277,8 +271,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       const worldRadius = 2650;
       const zoom = half / worldRadius;
 
-      // Subtle radar rings + crosshairs
-      ctx.strokeStyle = 'rgba(125, 211, 252, 0.12)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(half, half, half * 0.45, 0, Math.PI * 2);
@@ -332,17 +325,16 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         const isOwned = Boolean(onlineOwner) || effFaction !== 'NEUTRAL';
 
         if (discovered) {
-          // Shallow ring
           ctx.fillStyle =
             island.specialZone === 'CITY'
-              ? 'rgba(56, 189, 248, 0.28)'
+              ? 'rgba(56, 189, 248, 0.25)'
               : island.specialZone === 'ARENA'
-              ? 'rgba(249, 115, 22, 0.28)'
+              ? 'rgba(249, 115, 22, 0.25)'
               : island.specialZone === 'SECRET'
-              ? 'rgba(232, 121, 249, 0.28)'
+              ? 'rgba(232, 121, 249, 0.25)'
               : isOwned
               ? `${factionInfo.color}38`
-              : 'rgba(36, 180, 201, 0.28)';
+              : 'rgba(36, 180, 201, 0.24)';
           ctx.beginPath();
           island.coastPoints.forEach((p, idx) => {
             const sx = island.centerX + (p.x - island.centerX) * 1.2;
@@ -353,7 +345,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           ctx.closePath();
           ctx.fill();
 
-          // Sand
           ctx.fillStyle = '#E8C587';
           ctx.beginPath();
           island.coastPoints.forEach((p, idx) => {
@@ -363,7 +354,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
           ctx.closePath();
           ctx.fill();
 
-          // Grass
           ctx.fillStyle =
             island.specialZone === 'ARENA'
               ? '#78716C'
@@ -398,7 +388,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
             ctx.fill();
           }
         } else {
-          // Fogged uncharted silhouette
           ctx.fillStyle = 'rgba(15, 45, 62, 0.72)';
           ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
           ctx.lineWidth = 1 / zoom;
@@ -409,7 +398,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         }
       }
 
-      // Parked boat marker when walking on foot
       if (!live.isSailing) {
         ctx.fillStyle = '#38BDF8';
         ctx.strokeStyle = '#FFFFFF';
@@ -420,7 +408,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         ctx.stroke();
       }
 
-      // Remote players
       if (isOnline && remotes.length > 0) {
         for (const rp of remotes) {
           if (!rp.connected || rp.inCaveId) continue;
@@ -436,7 +423,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         }
       }
 
-      // Waypoint line + in-range dot
       if (pin) {
         const dx = pin.x - cx;
         const dy = pin.y - cy;
@@ -466,7 +452,6 @@ export const MiniMap: React.FC<MiniMapProps> = ({
 
       ctx.restore();
 
-      // Out-of-range waypoint edge indicator in screen coordinates
       if (pin) {
         const dx = pin.x - cx;
         const dy = pin.y - cy;
@@ -493,16 +478,11 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         }
       }
 
-      // Center player / boat heading arrow
       const heading = live.isSailing ? live.boatAngle : live.playerAngle;
       ctx.save();
       ctx.translate(half, half);
       ctx.rotate(heading);
-      ctx.fillStyle = live.isSailing
-        ? '#38BDF8'
-        : cbMode
-        ? '#22D3EE'
-        : '#10B981';
+      ctx.fillStyle = live.isSailing ? '#38BDF8' : cbMode ? '#22D3EE' : '#10B981';
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -600,43 +580,34 @@ export const MiniMap: React.FC<MiniMapProps> = ({
         }}
         aria-label={isEn ? 'Open Fullscreen Map (M)' : 'Tam Ekran Haritayı Aç (M)'}
         title={isEn ? 'Open Fullscreen Map (M)' : 'Tam Ekran Haritayı Aç (M)'}
-        className={`group relative w-full h-full rounded-2xl overflow-hidden bg-[#062231]/95 ring-1 ring-inset ring-white/10 shadow-[0_14px_34px_rgba(2,10,18,0.58)] transition-transform duration-100 touch-none focus-visible:outline-2 focus-visible:outline-amber-400 ${
+        className={`group relative w-full h-full rounded-xl overflow-hidden bg-[#051A25]/95 shadow-[0_12px_28px_rgba(0,0,0,0.5)] transition-transform duration-100 touch-none focus-visible:outline-2 focus-visible:outline-amber-400 ${
           isEditingLayout
             ? `cursor-move border-2 border-dashed ${
-                isSelected
-                  ? 'border-amber-300 ring-2 ring-amber-400/75'
-                  : 'border-sky-300/75 hover:border-amber-300/80'
+                isSelected ? 'border-amber-400' : 'border-sky-300/75 hover:border-amber-300'
               }`
-            : 'border-[1.5px] border-sky-300/35 hover:border-amber-300/75 active:scale-95 cursor-pointer'
+            : 'border border-white/14 hover:border-amber-400/60 active:scale-95 cursor-pointer'
         }`}
       >
         <canvas ref={canvasRef} className="block w-full h-full pointer-events-none" />
 
-        {/* North compass tick */}
-        <span className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-md bg-[#081A24]/80 border border-white/10 text-[9px] font-bold text-sky-200/95 leading-tight">
+        <span className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-wider text-slate-300/80 hud-text-shadow leading-none">
           {isEn ? 'N' : 'K'}
         </span>
 
-        {/* Active waypoint distance badge */}
         {pinDistM !== null && (
-          <span className="pointer-events-none absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-[#081A24]/90 border border-rose-400/50 text-[9px] font-bold font-mono-num text-rose-100 leading-none flex items-center gap-1 shadow">
+          <span className="pointer-events-none absolute bottom-1 left-1.5 font-mono-num text-[9px] font-bold text-rose-300 hud-text-shadow leading-none flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
             {pinDistM >= 1000 ? `${(pinDistM / 1000).toFixed(1)}km` : `${pinDistM}m`}
           </span>
         )}
 
-        {/* Expand or Move icon hint */}
-        <span className="pointer-events-none absolute bottom-1 right-1 w-5 h-5 rounded-md bg-[#081A24]/80 border border-white/12 text-slate-200 group-hover:text-amber-300 flex items-center justify-center transition-colors">
-          {isEditingLayout ? (
-            <Move className="w-2.5 h-2.5 text-amber-300" />
-          ) : (
-            <Maximize2 className="w-2.5 h-2.5" />
-          )}
+        <span className="pointer-events-none absolute bottom-1 right-1 w-4 h-4 rounded bg-[#061017]/75 text-slate-300 group-hover:text-amber-300 flex items-center justify-center transition-colors">
+          {isEditingLayout ? <Move className="w-2.5 h-2.5 text-amber-300" /> : <Maximize2 className="w-2.5 h-2.5" />}
         </span>
       </button>
 
       {isEditingLayout && (
-        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-md bg-[#081A24]/95 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap shadow">
+        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#061017]/95 border border-white/15 text-[9px] font-bold text-amber-300 whitespace-nowrap">
           {isEn ? 'Mini Map' : 'Mini Harita'} · %{Math.round(scale * 100)}
         </span>
       )}

@@ -265,7 +265,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
 
   const radarToastContent = showRadarStatus && lastRadar && (
     <div
-      className={`px-3 py-1.5 rounded-xl bg-[#081A24]/92 backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] text-xs font-medium flex items-center gap-2 shadow-[0_12px_28px_rgba(2,10,18,0.55)] transition-opacity duration-150 max-w-[calc(100vw-1.5rem)] ${
+      className={`px-3 py-1.5 rounded-xl bg-[#061017]/90 backdrop-blur-md border text-xs font-medium flex items-center gap-2 shadow-[0_10px_24px_rgba(0,0,0,0.45)] transition-opacity duration-150 max-w-[calc(100vw-1.5rem)] ${
         heatStyles[lastRadar.heat] || heatStyles.NONE
       }`}
     >
@@ -303,15 +303,15 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         {radarToastContent && (
           <div className="absolute bottom-full right-0 mb-2 z-30">{radarToastContent}</div>
         )}
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1.5 p-1.5 rounded-2xl bg-[#081A24]/90 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-[0_16px_38px_rgba(2,10,18,0.58)]">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 divide-x divide-white/[0.07] shadow-[0_12px_30px_rgba(0,0,0,0.5)] overflow-hidden">
           {onCycleStance && hasSoldiers && !isSailing && (
             <button
               type="button"
               onClick={onCycleStance}
               title={isEn ? `Cycle Army Stance (${kStance})` : `Ordu Düzenini Değiştir (${kStance})`}
-              className="h-9 px-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-emerald-200 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+              className="h-9 px-2.5 hover:bg-white/[0.06] text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
-              <Shield className="w-3.5 h-3.5" />
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
               <span>
                 {armyStance === 'FOLLOW'
                   ? isEn
@@ -325,7 +325,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                   ? 'Charge'
                   : 'Saldır'}
               </span>
-              <kbd className="text-[10px] opacity-75 font-mono-num">[{kStance}]</kbd>
+              <kbd className="ui-keycap">{kStance}</kbd>
             </button>
           )}
 
@@ -334,11 +334,11 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               type="button"
               onClick={onUseRepairKit}
               title={isEn ? `Use Repair Kit (${kRepair})` : `Tamir Kiti Kullan (${kRepair})`}
-              className="h-9 px-2.5 rounded-lg bg-emerald-600/85 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+              className="h-9 px-2.5 hover:bg-white/[0.06] text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
               <Wrench className="w-3.5 h-3.5" />
               <span className="font-mono-num">{repairKits}</span>
-              <kbd className="text-[10px] opacity-80 font-mono-num">[{kRepair}]</kbd>
+              <kbd className="ui-keycap">{kRepair}</kbd>
             </button>
           )}
 
@@ -347,12 +347,12 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               type="button"
               onClick={onFish}
               title={isEn ? `Cast / Reel Fishing Line (${kFish})` : `Olta At / Çek (${kFish})`}
-              className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`h-9 px-2.5 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
                 fishingBite
-                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 animate-pulse'
+                  ? 'bg-amber-400 text-slate-950'
                   : isFishing
-                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
-                  : 'bg-cyan-600/90 hover:bg-cyan-500 text-white'
+                  ? 'bg-sky-400/20 text-sky-200'
+                  : 'hover:bg-white/[0.06] text-sky-300'
               }`}
             >
               <Fish className="w-3.5 h-3.5" />
@@ -363,13 +363,13 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                     : 'Çek!'
                   : isFishing
                   ? isEn
-                    ? 'Waiting...'
-                    : 'Bekle...'
+                    ? 'Waiting'
+                    : 'Bekle'
                   : isEn
                   ? 'Fish'
                   : 'Balık'}
               </span>
-              <kbd className="text-[10px] opacity-80 font-mono-num">[{kFish}]</kbd>
+              <kbd className="ui-keycap">{kFish}</kbd>
             </button>
           )}
 
@@ -384,15 +384,19 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 ? `Tactical War Cry (${kAbility})`
                 : `Savaş Emri / Kalkan (${kAbility})`
             }
-            className={`relative overflow-hidden h-9 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`relative overflow-hidden h-9 px-2.5 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               abilityCooldownPct > 0
-                ? 'bg-white/5 text-slate-400 cursor-not-allowed'
-                : 'bg-indigo-600/90 hover:bg-indigo-500 text-white cursor-pointer'
+                ? 'text-slate-500 cursor-not-allowed'
+                : 'hover:bg-white/[0.06] text-slate-200 cursor-pointer'
             }`}
           >
-            <Zap className="w-3.5 h-3.5" />
+            <Zap
+              className={`w-3.5 h-3.5 ${
+                abilityCooldownPct > 0 ? 'text-slate-500' : 'text-indigo-400'
+              }`}
+            />
             <span>{isEn ? 'Order' : 'Emir'}</span>
-            <kbd className="text-[10px] opacity-80 font-mono-num">[{kAbility}]</kbd>
+            <kbd className="ui-keycap">{kAbility}</kbd>
             {abilityCooldownPct > 0 && (
               <span
                 className="pointer-events-none absolute bottom-0 left-0 h-[2px] bg-indigo-400"
@@ -409,10 +413,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               }}
               disabled={attackCooldownPct > 0}
               title={`${weaponDef.name} (${kAttack})`}
-              className={`relative overflow-hidden h-9 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              className={`relative overflow-hidden h-9 px-2.5 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                 attackCooldownPct > 0
-                  ? 'bg-white/5 text-slate-400 cursor-not-allowed'
-                  : 'bg-red-600/90 hover:bg-red-500 text-white cursor-pointer'
+                  ? 'text-slate-500 cursor-not-allowed'
+                  : 'hover:bg-red-500/15 text-red-300 cursor-pointer'
               }`}
             >
               {weaponDef.kind === 'MELEE' ? (
@@ -421,7 +425,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 <Crosshair className="w-3.5 h-3.5" />
               )}
               <span>{isEn ? 'Attack' : 'Saldır'}</span>
-              <kbd className="text-[10px] opacity-75 font-mono-num">[{kAttack}]</kbd>
+              <kbd className="ui-keycap">{kAttack}</kbd>
               {attackCooldownPct > 0 && (
                 <span
                   className="pointer-events-none absolute bottom-0 left-0 h-[2px] bg-red-400"
@@ -436,15 +440,15 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             onClick={onRadar}
             disabled={radarCooldownPct > 0}
             title={isEn ? `Treasure Radar (${kRadar})` : `Hazine Radarı (${kRadar})`}
-            className={`relative overflow-hidden h-9 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`relative overflow-hidden h-9 px-2.5 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               radarCooldownPct > 0
-                ? 'bg-white/5 text-slate-400 cursor-not-allowed'
-                : 'bg-white/10 hover:bg-white/15 text-sky-200 cursor-pointer'
+                ? 'text-slate-500 cursor-not-allowed'
+                : 'hover:bg-white/[0.06] text-sky-300 cursor-pointer'
             }`}
           >
             <Compass className="w-3.5 h-3.5" />
             <span>{isEn ? 'Radar' : 'Radar'}</span>
-            <kbd className="text-[10px] opacity-75 font-mono-num">[{kRadar}]</kbd>
+            <kbd className="ui-keycap">{kRadar}</kbd>
             {radarCooldownPct > 0 && (
               <span
                 className="pointer-events-none absolute bottom-0 left-0 h-[2px] bg-sky-400"
@@ -458,11 +462,11 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               type="button"
               onClick={onInteract}
               title={`${interactLabel} (${kBoat})`}
-              className="h-9 px-3 rounded-xl bg-purple-600/95 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shadow-md"
+              className="h-9 px-3 bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
               <DoorOpen className="w-3.5 h-3.5" />
               <span>{interactLabel}</span>
-              <kbd className="text-[10px] opacity-85 font-mono-num">[{kBoat}]</kbd>
+              <kbd className="ui-keycap">{kBoat}</kbd>
             </button>
           ) : (
             boatActionEnabled && (
@@ -478,7 +482,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                     ? `Board Ship (${kBoat})`
                     : `Tekneye Bin (${kBoat})`
                 }
-                className="h-9 px-3 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+                className="h-9 px-2.5 hover:bg-emerald-500/15 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
               >
                 {isSailing ? <Anchor className="w-3.5 h-3.5" /> : <Ship className="w-3.5 h-3.5" />}
                 <span>
@@ -490,7 +494,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                     ? 'Board'
                     : 'Tekneye Bin'}
                 </span>
-                <kbd className="text-[10px] opacity-85 font-mono-num">[{kBoat}]</kbd>
+                <kbd className="ui-keycap">{kBoat}</kbd>
               </button>
             )
           )}
@@ -512,21 +516,29 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
                 ? `Dig Sand (${kDig})`
                 : `Kazı Yap (${kDig})`
             }
-            className={`relative overflow-hidden h-9 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`relative overflow-hidden h-9 px-3.5 text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
               isSailing
                 ? primaryCooldown === 0
                   ? 'bg-red-500 hover:bg-red-400 text-white cursor-pointer'
-                  : 'bg-white/5 text-slate-400 cursor-not-allowed'
+                  : 'text-slate-500 cursor-not-allowed'
                 : canDig && digCooldownPct === 0
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
-                : 'bg-white/5 text-slate-400 cursor-not-allowed'
+                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
+                : 'text-slate-500 cursor-not-allowed'
             }`}
           >
             {isSailing ? <Crosshair className="w-3.5 h-3.5" /> : <Pickaxe className="w-3.5 h-3.5" />}
             <span>
               {isSailing ? (isEn ? 'Fire' : 'Top At') : isEn ? 'Dig' : 'Kazı Yap'}
             </span>
-            <kbd className="text-[10px] opacity-80 font-mono-num">[{kDig}]</kbd>
+            <kbd
+              className={
+                primaryEnabled
+                  ? 'font-mono-num text-[10px] px-1 py-0.5 rounded bg-black/20'
+                  : 'ui-keycap'
+              }
+            >
+              {kDig}
+            </kbd>
             {primaryCooldown > 0 && (
               <span
                 className={`pointer-events-none absolute bottom-0 left-0 h-[2px] ${
@@ -676,7 +688,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         style={{ width: `${container.w}px`, height: `${container.h}px` }}
         className="pointer-events-none relative touch-none"
       >
-        {/* Contextual Repair Kit button (H key equivalent) on Touch HUD */}
+        {/* Contextual Repair Kit button */}
         {showRepairBtn && (
           <button
             type="button"
@@ -701,10 +713,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${repairGeom.t.dx}px, ${repairGeom.t.dy}px) scale(${repairGeom.t.scale})`,
               opacity: btnDisplayOpacity(repairGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_10px_24px_rgba(2,10,18,0.48)] transition-transform duration-100 active:scale-[0.91] cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
               repairKits > 0
-                ? 'bg-emerald-600/90 border-emerald-300/70 text-white hover:bg-emerald-500'
-                : 'bg-[#081A24]/85 border-white/15 text-slate-300'
+                ? 'bg-[#061017]/86 border-emerald-400/50 text-emerald-300 hover:bg-[#0D212C]'
+                : 'bg-[#061017]/78 border-white/12 text-slate-500'
             } ${editRingClass('repair')}`}
           >
             <Wrench className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
@@ -713,7 +725,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             </span>
           </button>
         )}
-        {/* Contextual Army Stance button (V key equivalent) on Touch HUD */}
+
+        {/* Contextual Army Stance button */}
         {showStanceBtn && (
           <button
             type="button"
@@ -738,16 +751,16 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${stanceGeom.t.dx}px, ${stanceGeom.t.dy}px) scale(${stanceGeom.t.scale})`,
               opacity: btnDisplayOpacity(stanceGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_10px_24px_rgba(2,10,18,0.48)] transition-transform duration-100 active:scale-[0.91] cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer bg-[#061017]/86 hover:bg-[#0D212C] ${
               armyStance === 'FOLLOW'
-                ? 'bg-sky-600/90 border-sky-300/70 text-white hover:bg-sky-500'
+                ? 'border-sky-400/55 text-sky-300'
                 : armyStance === 'DEFEND'
-                ? 'bg-emerald-600/90 border-emerald-300/70 text-white hover:bg-emerald-500'
-                : 'bg-rose-600/90 border-rose-300/70 text-white hover:bg-rose-500'
+                ? 'border-emerald-400/55 text-emerald-300'
+                : 'border-rose-400/55 text-rose-300'
             } ${editRingClass('stance')}`}
           >
             <Shield className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
-            <span className="text-[8px] font-bold whitespace-nowrap">
+            <span className="text-[8px] font-semibold whitespace-nowrap">
               {armyStance === 'FOLLOW'
                 ? isEn
                   ? 'Follow'
@@ -763,7 +776,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </button>
         )}
 
-        {/* Contextual Fishing button on Touch HUD */}
+        {/* Contextual Fishing button */}
         {showFishBtn && (
           <button
             type="button"
@@ -787,16 +800,16 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${fishGeom.t.dx}px, ${fishGeom.t.dy}px) scale(${fishGeom.t.scale})`,
               opacity: btnDisplayOpacity(fishGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_10px_24px_rgba(2,10,18,0.48)] transition-transform duration-100 active:scale-[0.91] cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
               fishingBite
-                ? 'bg-amber-400 border-amber-100 text-slate-950 animate-pulse'
+                ? 'bg-amber-400 border-amber-200 text-slate-950'
                 : isFishing
-                ? 'bg-cyan-500 border-cyan-200 text-slate-950'
-                : 'bg-cyan-700/90 border-cyan-300/65 text-white'
+                ? 'bg-sky-400/25 border-sky-300 text-sky-100'
+                : 'bg-[#061017]/86 border-sky-400/45 text-sky-300 hover:bg-[#0D212C]'
             } ${editRingClass('fish')}`}
           >
             <Fish className="w-4 h-4" />
-            <span className="text-[8px] font-bold whitespace-nowrap">
+            <span className="text-[8px] font-semibold whitespace-nowrap">
               {fishingBite ? (isEn ? 'Reel!' : 'Çek!') : isEn ? 'Fish' : 'Olta'}
             </span>
           </button>
@@ -827,10 +840,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${abilityGeom.t.dx}px, ${abilityGeom.t.dy}px) scale(${abilityGeom.t.scale})`,
             opacity: btnDisplayOpacity(abilityGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(2,10,18,0.5)] transition-transform duration-100 active:scale-[0.91] cursor-pointer ${
+          className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
             !isEditingLayout && abilityCooldownPct > 0
-              ? 'bg-[#081A24]/88 border-indigo-400/20 text-slate-400'
-              : 'bg-indigo-600/92 border-indigo-300/70 text-white hover:bg-indigo-500'
+              ? 'bg-[#061017]/75 border-white/10 text-slate-500'
+              : 'bg-[#061017]/86 border-indigo-400/50 text-indigo-300 hover:bg-[#0D212C]'
           } ${editRingClass('ability')}`}
         >
           {!isEditingLayout && <CooldownRing pct={abilityCooldownPct} color="#818CF8" />}
@@ -844,7 +857,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </span>
         </button>
 
-        {/* Contextual Land Attack button when player has found a weapon */}
+        {/* Contextual Land Attack button */}
         {showAttackBtn && (
           <button
             type="button"
@@ -870,10 +883,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${attackGeom.t.dx}px, ${attackGeom.t.dy}px) scale(${attackGeom.t.scale})`,
               opacity: btnDisplayOpacity(attackGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_12px_28px_rgba(2,10,18,0.52)] transition-transform duration-100 active:scale-[0.91] focus-visible:outline-2 focus-visible:outline-red-400 cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-red-400 cursor-pointer ${
               !isEditingLayout && attackCooldownPct > 0
-                ? 'bg-[#081A24]/90 border-red-400/25 text-slate-400'
-                : 'bg-red-600/92 border-red-300/70 text-white hover:bg-red-500'
+                ? 'bg-[#061017]/78 border-red-400/20 text-slate-500'
+                : 'bg-[#1D0B10]/90 border-red-400/60 text-red-200 hover:bg-[#2B1018]'
             } ${editRingClass('attack')}`}
           >
             {!isEditingLayout && <CooldownRing pct={attackCooldownPct} color="#F87171" />}
@@ -892,7 +905,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </button>
         )}
 
-        {/* Top-right secondary button: Hazine Radarı */}
+        {/* Secondary button: Treasure Radar */}
         <button
           type="button"
           onPointerDown={
@@ -917,10 +930,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${radarGeom.t.dx}px, ${radarGeom.t.dy}px) scale(${radarGeom.t.scale})`,
             opacity: btnDisplayOpacity(radarGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/12 backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_12px_28px_rgba(2,10,18,0.52)] transition-transform duration-100 active:scale-[0.91] focus-visible:outline-2 focus-visible:outline-amber-400 cursor-pointer ${
+          className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-400 cursor-pointer ${
             !isEditingLayout && radarCooldownPct > 0
-              ? 'bg-[#081A24]/90 border-white/15 text-slate-400'
-              : 'bg-[#081A24]/92 border-sky-300/50 text-sky-200 hover:bg-[#0E2B3B]'
+              ? 'bg-[#061017]/78 border-white/10 text-slate-500'
+              : 'bg-[#061017]/86 border-sky-400/45 text-sky-300 hover:bg-[#0D212C]'
           } ${editRingClass('radar')}`}
         >
           {!isEditingLayout && <CooldownRing pct={radarCooldownPct} color="#38BDF8" />}
@@ -934,7 +947,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </span>
         </button>
 
-        {/* Contextual Cave / Arena / Altar Interact button OR Tekneye Bin / İn */}
+        {/* Contextual Interact or Board/Disembark */}
         {!isEditingLayout && interactLabel && onInteract ? (
           <button
             type="button"
@@ -952,7 +965,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
               opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
-            className="pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/20 backdrop-blur-md bg-purple-600/95 border-purple-200/75 text-white hover:bg-purple-500 flex flex-col items-center justify-center gap-0.5 shadow-[0_12px_28px_rgba(2,10,18,0.55)] transition-transform duration-100 active:scale-[0.91] cursor-pointer"
+            className="pointer-events-auto absolute rounded-full border backdrop-blur-md bg-[#16102A]/92 border-violet-400/65 text-violet-200 hover:bg-[#221740] flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_26px_rgba(0,0,0,0.52)] transition-transform duration-100 active:scale-[0.92] cursor-pointer"
           >
             <DoorOpen className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
             <span
@@ -988,10 +1001,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
               opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border ring-1 ring-inset ring-white/15 backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_12px_28px_rgba(2,10,18,0.52)] transition-transform duration-100 active:scale-[0.91] focus-visible:outline-2 focus-visible:outline-emerald-400 ${
+            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-emerald-400 ${
               isEditingLayout || boatActionEnabled
-                ? 'bg-emerald-600/92 border-emerald-300/70 text-white hover:bg-emerald-500 cursor-pointer'
-                : 'bg-[#081A24]/82 border-white/12 text-slate-400 cursor-not-allowed'
+                ? 'bg-[#061017]/86 border-emerald-400/55 text-emerald-300 hover:bg-[#0D212C] cursor-pointer'
+                : 'bg-[#061017]/74 border-white/10 text-slate-500 cursor-not-allowed'
             } ${editRingClass('boatOrInteract')}`}
           >
             {isSailing ? (
@@ -1019,7 +1032,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           </button>
         )}
 
-        {/* Bottom-right primary large button */}
+        {/* Primary Thumb Action Button (Exclusive solid fill emphasis) */}
         <button
           type="button"
           onPointerDown={
@@ -1046,18 +1059,18 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${digGeom.t.dx}px, ${digGeom.t.dy}px) scale(${digGeom.t.scale})`,
             opacity: btnDisplayOpacity(digGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border-2 ring-1 ring-inset ring-white/20 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_14px_34px_rgba(2,10,18,0.62)] transition-transform duration-100 active:scale-[0.91] focus-visible:outline-2 focus-visible:outline-amber-300 ${
+          className={`pointer-events-auto absolute rounded-full border-2 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_14px_32px_rgba(0,0,0,0.58)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-300 ${
             compact ? 'gap-0.5' : 'gap-1'
           } ${
             isEditingLayout
-              ? 'bg-amber-500 border-amber-200 text-slate-950'
+              ? 'bg-amber-400 border-amber-200 text-slate-950'
               : isSailing
               ? primaryCooldown === 0
-                ? 'bg-red-500 border-amber-200 text-white hover:bg-red-400 cursor-pointer'
-                : 'bg-[#081A24]/90 border-red-400/25 text-slate-300 cursor-not-allowed'
+                ? 'bg-red-500 border-red-300 text-white hover:bg-red-400 cursor-pointer'
+                : 'bg-[#061017]/86 border-red-400/25 text-slate-400 cursor-not-allowed'
               : canDig && digCooldownPct === 0
-              ? 'bg-amber-500 border-amber-200 text-slate-950 hover:bg-amber-400 cursor-pointer'
-              : 'bg-[#081A24]/86 border-white/15 text-slate-400 cursor-not-allowed'
+              ? 'bg-amber-400 border-amber-200 text-slate-950 hover:bg-amber-300 cursor-pointer'
+              : 'bg-[#061017]/84 border-white/12 text-slate-500 cursor-not-allowed'
           } ${editRingClass('digOrFire')}`}
         >
           {!isEditingLayout && (

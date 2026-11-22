@@ -309,7 +309,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
   };
 
   // =========================================================================
-  // MOBILE LAYOUT — Standoff 2 inspired compact, thumb-friendly swipe + tap HUD
+  // MOBILE / TOUCH LAYOUT — Clean thumb-swipe & tap weapon strip
   // =========================================================================
   if (isTouchMode) {
     return (
@@ -322,81 +322,193 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
         role="region"
         aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
         style={wrapperStyle}
-        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_14px_34px_rgba(2,10,18,0.56)] transition-colors duration-100 ${
+        className={`relative pointer-events-auto touch-none select-none max-w-full rounded-xl backdrop-blur-md border transition-colors duration-100 shadow-[0_10px_28px_rgba(0,0,0,0.45)] ${
           isEmpty
-            ? 'bg-gradient-to-l from-[#240B11]/94 via-[#140F17]/90 to-[#081A24]/88 border-red-400/65'
+            ? 'bg-[#1D0B10]/90 border-red-400/55'
             : isReloading
-            ? 'bg-gradient-to-l from-[#1C180A]/94 via-[#0D212D]/90 to-[#081A24]/88 border-amber-400/55'
-            : 'bg-gradient-to-l from-[#071822]/94 via-[#09202D]/88 to-[#0B2635]/82 border-white/14'
+            ? 'bg-[#161308]/90 border-amber-400/45'
+            : 'bg-[#061017]/84 border-white/10'
         } ${editFrameClass}`}
       >
         <div className="rounded-xl overflow-hidden">
-        {/* Top ultra-slim 2-slot active bar (Standoff 2 style) */}
-        {hasMultiple && (
-          <div className="flex items-center gap-0.5 px-2 pt-1.5">
-            {weaponSlots.map((slotId, idx) => {
-              const isAct = idx === activeIdx;
-              return (
-                <span
-                  key={slotId}
-                  className="h-[2.5px] flex-1 rounded-full transition-opacity duration-150"
-                  style={{
-                    backgroundColor: isAct ? def.color : 'rgba(255,255,255,0.18)',
-                    opacity: isAct ? 1 : 0.65,
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Main Weapon + Ammo Tap Zone (Tap to Reload, Swipe Left/Right to Switch) */}
-        <div
-          className={`px-2.5 flex items-center justify-between gap-2.5 cursor-pointer active:opacity-85 ${
-            hasMultiple ? 'pt-1 pb-1.5' : 'py-2'
-          }`}
-        >
-          {/* Weapon silhouette & clean title */}
-          <div className="min-w-0 flex-1 flex flex-col justify-center">
-            <div className="flex items-center gap-1.5">
-              <WeaponSilhouette
-                weaponId={equippedWeapon}
-                className="w-12 h-[20px] shrink-0 transition-transform duration-150"
-                style={{ color: def.color }}
-              />
-              {isRanged && needsReload && (
-                <RotateCw
-                  className={`w-3.5 h-3.5 shrink-0 ${
-                    isEmpty ? 'text-red-400' : 'text-amber-300/90'
-                  }`}
-                />
-              )}
+          {hasMultiple && (
+            <div className="flex items-center gap-1 px-2 pt-1.5">
+              {weaponSlots.map((slotId, idx) => {
+                const isAct = idx === activeIdx;
+                return (
+                  <span
+                    key={slotId}
+                    className="h-[2px] flex-1 rounded-full transition-opacity duration-150"
+                    style={{
+                      backgroundColor: isAct ? def.color : 'rgba(255,255,255,0.16)',
+                      opacity: isAct ? 1 : 0.6,
+                    }}
+                  />
+                );
+              })}
             </div>
-            <span className="text-[11px] font-semibold text-slate-100 truncate leading-tight mt-0.5">
-              {isEn ? def.nameEn : def.name}
-            </span>
-          </div>
+          )}
 
-          {/* Hairline divider + High-Contrast Standoff-style Ammo */}
-          <div className="h-8 w-px bg-white/12 shrink-0" />
+          <div
+            className={`px-2.5 flex items-center justify-between gap-2 cursor-pointer active:opacity-80 ${
+              hasMultiple ? 'pt-1 pb-1.5' : 'py-1.5'
+            }`}
+          >
+            <div className="min-w-0 flex-1 flex flex-col justify-center">
+              <div className="flex items-center gap-1.5">
+                <WeaponSilhouette
+                  weaponId={equippedWeapon}
+                  className="w-11 h-[18px] shrink-0"
+                  style={{ color: def.color }}
+                />
+                {isRanged && needsReload && (
+                  <RotateCw
+                    className={`w-3 h-3 shrink-0 ${
+                      isEmpty ? 'text-red-400' : 'text-amber-300'
+                    }`}
+                  />
+                )}
+              </div>
+              <span className="text-[11px] font-semibold text-slate-100 truncate leading-tight mt-0.5">
+                {isEn ? def.nameEn : def.name}
+              </span>
+            </div>
 
-          <div className="shrink-0 flex flex-col items-end justify-center min-w-[54px]">
-            {isRanged ? (
-              isReloading ? (
-                <div className="flex flex-col items-end gap-1">
+            <div className="h-7 w-px bg-white/10 shrink-0" />
+
+            <div className="shrink-0 flex flex-col items-end justify-center min-w-[48px]">
+              {isRanged ? (
+                isReloading ? (
                   <div className="flex items-center gap-1 text-amber-300">
-                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <RotateCw className="w-3 h-3 animate-spin" />
                     <span className="font-mono-num text-[11px] font-bold">
                       {Math.min(99, Math.max(1, Math.round(reloadProgress * 100)))}%
                     </span>
                   </div>
-                  <span className="text-[9px] font-medium text-amber-200/85 leading-none">
-                    {isEn ? 'Reloading' : 'Yenileniyor'}
+                ) : (
+                  <div className="flex items-baseline gap-0.5 font-mono-num leading-none">
+                    <span
+                      className={`text-lg font-extrabold tracking-tight ${
+                        isEmpty
+                          ? 'text-red-400'
+                          : currentAmmo <= Math.ceil(maxAmmo * 0.3)
+                          ? 'text-amber-300'
+                          : 'text-white'
+                      }`}
+                    >
+                      {currentAmmo}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      /{maxAmmo}
+                    </span>
+                  </div>
+                )
+              ) : (
+                <span className="font-mono-num text-lg font-extrabold text-slate-100 leading-none">
+                  ∞
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="h-[2px] w-full bg-white/[0.06] overflow-hidden">
+            {isReloading ? (
+              <div
+                className="h-full bg-amber-400 transition-[width] duration-75"
+                style={{ width: `${Math.max(8, Math.min(100, Math.round(reloadProgress * 100)))}%` }}
+              />
+            ) : (
+              <div
+                className="h-full transition-[width] duration-150"
+                style={{
+                  width: `${Math.round(ammoRatio * 100)}%`,
+                  backgroundColor: isEmpty ? '#F87171' : def.color,
+                }}
+              />
+            )}
+          </div>
+
+          {hasMultiple && otherDef && (
+            <button
+              type="button"
+              data-slot-control="true"
+              onClick={(e) => {
+                if (isEditingLayout) return;
+                e.stopPropagation();
+                onSelectSlot(otherIdx);
+              }}
+              className="w-full h-6 px-2.5 bg-[#040B11]/60 hover:bg-white/[0.06] border-t border-white/[0.08] flex items-center justify-between gap-2 text-[10px] text-slate-300 cursor-pointer transition-colors"
+            >
+              <span className="flex items-center gap-1.5 min-w-0">
+                <ArrowLeftRight className="w-3 h-3 text-slate-400 shrink-0" />
+                <span className="truncate font-medium text-slate-200">
+                  {isEn ? otherDef.nameEn : otherDef.name}
+                </span>
+              </span>
+              <span className="font-mono-num text-[10px] text-slate-400 shrink-0">
+                {activeIdx + 1}/2
+              </span>
+            </button>
+          )}
+        </div>
+
+        {isEditingLayout && (
+          <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#061017]/95 border border-white/15 text-[9px] font-bold text-amber-300 whitespace-nowrap flex items-center gap-1">
+            <Move className="w-2.5 h-2.5 text-amber-300" />
+            {isEn ? 'Weapon Panel' : 'Silah Paneli'} · %{Math.round(scale * 100)}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // DESKTOP / TABLET WIDE LAYOUT — Minimalist Tactical Readout
+  // =========================================================================
+  return (
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handlePointerCancel}
+      role="region"
+      aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
+      style={wrapperStyle}
+      className={`relative pointer-events-auto touch-none select-none rounded-xl backdrop-blur-md border transition-colors shadow-[0_12px_30px_rgba(0,0,0,0.48)] ${
+        isEmpty
+          ? 'bg-[#1D0B10]/90 border-red-400/55'
+          : isReloading
+          ? 'bg-[#161308]/90 border-amber-400/45'
+          : 'bg-[#061017]/84 border-white/10'
+      } ${editFrameClass}`}
+    >
+      <div className="rounded-xl overflow-hidden">
+        <div
+          onClick={(e) => {
+            if (isEditingLayout || !isRanged) return;
+            e.stopPropagation();
+            onReload();
+          }}
+          title={
+            isRanged && !isEditingLayout
+              ? `${isEn ? 'Click or press' : 'Yenilemek için tıkla veya bas:'} [${reloadKeyLabel}]`
+              : undefined
+          }
+          className="px-3 py-2 flex items-center justify-between gap-3 cursor-pointer hover:bg-white/[0.03] transition-colors"
+        >
+          <div className="flex flex-col items-start justify-center min-w-[70px]">
+            {isRanged ? (
+              isReloading ? (
+                <div className="flex items-center gap-1.5 text-amber-300">
+                  <RotateCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span className="font-mono-num text-xs font-bold leading-none">
+                    {Math.min(99, Math.max(1, Math.round(reloadProgress * 100)))}%
                   </span>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-baseline gap-0.5 font-mono-num leading-none">
+                  <div className="flex items-baseline gap-1 font-mono-num leading-none">
                     <span
                       className={`text-xl font-extrabold tracking-tight ${
                         isEmpty
@@ -413,35 +525,43 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
                     </span>
                   </div>
                   <span
-                    className={`text-[9px] font-medium leading-none mt-1 ${
-                      isEmpty ? 'text-red-300' : 'text-slate-400'
+                    className={`mt-1 text-[10px] font-medium leading-none flex items-center gap-1 ${
+                      isEmpty
+                        ? 'text-red-300'
+                        : needsReload
+                        ? 'text-amber-300'
+                        : 'text-slate-400'
                     }`}
                   >
-                    {isEmpty
-                      ? isEn
-                        ? 'Tap: Reload'
-                        : 'Dokun: Yenile'
-                      : isEn
-                      ? 'Ammo'
-                      : 'Mermi'}
+                    {needsReload ? `[${reloadKeyLabel}] ${isEn ? 'Reload' : 'Yenile'}` : `[${reloadKeyLabel}]`}
                   </span>
                 </>
               )
             ) : (
-              <div className="flex flex-col items-end justify-center">
+              <>
                 <span className="font-mono-num text-xl font-extrabold text-slate-100 leading-none">
                   ∞
                 </span>
-                <span className="text-[9px] font-medium text-slate-400 leading-none mt-1">
+                <span className="mt-1 text-[10px] font-medium text-slate-400 leading-none">
                   {isEn ? 'Melee' : 'Yakın'}
                 </span>
-              </div>
+              </>
             )}
+          </div>
+
+          <div className="flex flex-col items-end justify-center min-w-0 flex-1">
+            <WeaponSilhouette
+              weaponId={equippedWeapon}
+              className="w-14 h-[20px] shrink-0"
+              style={{ color: def.color }}
+            />
+            <span className="text-[11px] font-semibold text-slate-100 truncate max-w-full mt-0.5 leading-tight">
+              {isEn ? def.nameEn : def.name}
+            </span>
           </div>
         </div>
 
-        {/* Reload / Ammo capacity hairline progress bar */}
-        <div className="h-[2.5px] w-full bg-slate-950/60 overflow-hidden">
+        <div className="h-[2px] w-full bg-white/[0.06] overflow-hidden">
           {isReloading ? (
             <div
               className="h-full bg-amber-400 transition-[width] duration-75"
@@ -458,230 +578,65 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
           )}
         </div>
 
-        {/* Full-width effortless 1-tap swap bar when carrying 2 weapons */}
-        {hasMultiple && otherDef && (
-          <button
-            type="button"
-            data-slot-control="true"
-            onClick={(e) => {
-              if (isEditingLayout) return;
-              e.stopPropagation();
-              onSelectSlot(otherIdx);
-            }}
-            className="w-full h-7 px-2.5 bg-slate-950/45 hover:bg-slate-900/60 active:bg-white/10 border-t border-white/10 flex items-center justify-between gap-2 text-[10px] text-slate-300 cursor-pointer transition-colors"
-          >
-            <span className="flex items-center gap-1.5 min-w-0">
-              <ArrowLeftRight className="w-3 h-3 text-slate-400 shrink-0" />
-              <span className="truncate font-medium text-slate-200">
-                {isEn ? otherDef.nameEn : otherDef.name}
-              </span>
-            </span>
-            <span className="font-mono-num text-[10px] text-slate-400 shrink-0">
-              {activeIdx + 1}/2
-            </span>
-          </button>
-        )}
-        </div>
-
-        {isEditingLayout && (
-          <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap flex items-center gap-1">
-            <Move className="w-2.5 h-2.5 text-amber-300" />
-            {isEn ? 'Weapon Panel' : 'Silah Paneli'} · %{Math.round(scale * 100)}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // DESKTOP LAYOUT — Counter-Strike (CS2) inspired tactical HUD stack
-  // =========================================================================
-  return (
-    <div
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onLostPointerCapture={handlePointerCancel}
-      role="region"
-      aria-label={isEn ? 'Equipped Weapon & Ammo' : 'Aktif Silah ve Mermi'}
-      style={wrapperStyle}
-      className={`relative pointer-events-auto touch-none select-none rounded-xl backdrop-blur-xl border ring-1 ring-inset ring-white/[0.05] shadow-[0_16px_38px_rgba(2,10,18,0.6)] transition-colors ${
-        isEmpty
-          ? 'bg-gradient-to-l from-[#240B11]/94 via-[#140F17]/90 to-[#081A24]/86 border-red-400/65'
-          : isReloading
-          ? 'bg-gradient-to-l from-[#1C180A]/94 via-[#0D212D]/90 to-[#081A24]/86 border-amber-400/55'
-          : 'bg-gradient-to-l from-[#071822]/94 via-[#09202D]/88 to-[#0B2635]/80 border-white/14'
-      } ${editFrameClass}`}
-    >
-      <div className="rounded-xl overflow-hidden">
-      {/* CS2 Primary Active Readout: Big Left Ammo + Right Silhouette & Name */}
-      <div
-        onClick={(e) => {
-          if (isEditingLayout || !isRanged) return;
-          e.stopPropagation();
-          onReload();
-        }}
-        title={
-          isRanged && !isEditingLayout
-            ? `${isEn ? 'Click or press' : 'Yenilemek için tıkla veya bas:'} [${reloadKeyLabel}]`
-            : undefined
-        }
-        className="px-3 pt-2.5 pb-2 flex items-center justify-between gap-3 cursor-pointer hover:bg-white/[0.03] transition-colors"
-      >
-        {/* Left: CS2 Big Tabular Ammo + Reload Hint */}
-        <div className="flex flex-col items-start justify-center min-w-[78px]">
-          {isRanged ? (
-            isReloading ? (
-              <div className="flex flex-col gap-1 w-full">
-                <div className="flex items-center gap-1.5 text-amber-300">
-                  <RotateCw className="w-4 h-4 animate-spin shrink-0" />
-                  <span className="font-mono-num text-sm font-bold leading-none">
-                    {Math.min(99, Math.max(1, Math.round(reloadProgress * 100)))}%
-                  </span>
-                </div>
-                <span className="text-[10px] font-medium text-amber-200/85 leading-none">
-                  {isEn ? 'Reloading' : 'Yenileniyor'}
-                </span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1 font-mono-num leading-none">
-                  <span
-                    className={`text-2xl font-extrabold tracking-tight ${
-                      isEmpty
-                        ? 'text-red-400'
-                        : currentAmmo <= Math.ceil(maxAmmo * 0.3)
-                        ? 'text-amber-300'
-                        : 'text-white'
-                    }`}
-                  >
-                    {currentAmmo}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-400">
-                    / {maxAmmo}
-                  </span>
-                </div>
-                <span
-                  className={`mt-1 text-[10px] font-medium leading-none flex items-center gap-1 ${
-                    isEmpty
-                      ? 'text-red-300'
-                      : needsReload
-                      ? 'text-amber-300/90'
-                      : 'text-slate-400'
+        {hasMultiple && (
+          <div className="bg-[#040B11]/60 border-t border-white/[0.08] divide-y divide-white/[0.05]">
+            {weaponSlots.map((slotId, idx) => {
+              const slotDef = WEAPONS[slotId];
+              if (!slotDef) return null;
+              const isActive = idx === activeIdx;
+              return (
+                <button
+                  key={slotId}
+                  type="button"
+                  data-slot-control="true"
+                  onClick={(e) => {
+                    if (isEditingLayout) return;
+                    e.stopPropagation();
+                    onSelectSlot(idx);
+                  }}
+                  className={`w-full px-2.5 py-1 flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
+                    isActive
+                      ? 'bg-white/[0.07] text-white'
+                      : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
                   }`}
                 >
-                  {needsReload ? (
-                    <>
-                      <RotateCw className="w-2.5 h-2.5" />
-                      <span>
-                        [{reloadKeyLabel}] {isEn ? 'Reload' : 'Yenile'}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`font-mono-num text-[10px] font-bold w-3 text-center shrink-0 ${
+                        isActive ? 'text-amber-400' : 'text-slate-500'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className="text-[11px] font-medium truncate">
+                      {isEn ? slotDef.nameEn : slotDef.name}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <WeaponSilhouette
+                      weaponId={slotId}
+                      className="w-7 h-[12px]"
+                      style={{
+                        color: isActive ? slotDef.color : 'currentColor',
+                        opacity: isActive ? 0.95 : 0.4,
+                      }}
+                    />
+                    {!isActive && (
+                      <span className="font-mono-num text-[9px] text-slate-500">
+                        [{switchKeyLabel}]
                       </span>
-                    </>
-                  ) : (
-                    <span>[{reloadKeyLabel}] {isEn ? 'Ready' : 'Hazır'}</span>
-                  )}
-                </span>
-              </>
-            )
-          ) : (
-            <>
-              <span className="font-mono-num text-2xl font-extrabold text-slate-100 leading-none">
-                ∞
-              </span>
-              <span className="mt-1 text-[10px] font-medium text-slate-400 leading-none">
-                {isEn ? 'Melee' : 'Yakın Dövüş'}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Right: Weapon Silhouette + Name */}
-        <div className="flex flex-col items-end justify-center min-w-0 flex-1">
-          <WeaponSilhouette
-            weaponId={equippedWeapon}
-            className="w-16 h-[24px] shrink-0"
-            style={{ color: def.color }}
-          />
-          <span className="text-[11px] font-bold text-slate-100 truncate max-w-full mt-0.5 leading-tight">
-            {isEn ? def.nameEn : def.name}
-          </span>
-        </div>
-      </div>
-
-      {/* Reload / Ammo capacity progress bar */}
-      <div className="h-[2.5px] w-full bg-slate-950/70 overflow-hidden">
-        {isReloading ? (
-          <div
-            className="h-full bg-amber-400 transition-[width] duration-75"
-            style={{ width: `${Math.max(8, Math.min(100, Math.round(reloadProgress * 100)))}%` }}
-          />
-        ) : (
-          <div
-            className="h-full transition-[width] duration-150"
-            style={{
-              width: `${Math.round(ammoRatio * 100)}%`,
-              backgroundColor: isEmpty ? '#F87171' : def.color,
-            }}
-          />
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         )}
-      </div>
-
-      {/* CS2 Right-Side Inventory Slot Rows */}
-      <div className="bg-slate-950/45 border-t border-white/10 px-1.5 py-1 flex flex-col gap-0.5">
-        {weaponSlots.map((slotId, idx) => {
-          const slotDef = WEAPONS[slotId];
-          if (!slotDef) return null;
-          const isActive = idx === activeIdx;
-          return (
-            <button
-              key={slotId}
-              type="button"
-              data-slot-control="true"
-              onClick={(e) => {
-                if (isEditingLayout) return;
-                e.stopPropagation();
-                onSelectSlot(idx);
-              }}
-              className={`w-full px-2 py-1 rounded-md flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
-                isActive
-                  ? 'bg-white/10 text-white'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className={`font-mono-num text-[10px] font-bold w-3 text-center shrink-0 ${
-                    isActive ? 'text-amber-300' : 'text-slate-500'
-                  }`}
-                >
-                  {idx + 1}
-                </span>
-                <span className="text-[11px] font-medium truncate">
-                  {isEn ? slotDef.nameEn : slotDef.name}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <WeaponSilhouette
-                  weaponId={slotId}
-                  className="w-8 h-[13px]"
-                  style={{ color: isActive ? slotDef.color : 'currentColor', opacity: isActive ? 0.95 : 0.45 }}
-                />
-                {!isActive && hasMultiple && (
-                  <span className="font-mono-num text-[9px] text-slate-500">
-                    [{switchKeyLabel}]
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
       </div>
 
       {isEditingLayout && (
-        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 text-[9px] font-bold text-amber-200 whitespace-nowrap flex items-center gap-1">
+        <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#061017]/95 border border-white/15 text-[9px] font-bold text-amber-300 whitespace-nowrap flex items-center gap-1">
           <Move className="w-2.5 h-2.5 text-amber-300" />
           {isEn ? 'Weapon Panel' : 'Silah Paneli'} · %{Math.round(scale * 100)}
         </span>
@@ -689,3 +644,4 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
     </div>
   );
 };
+

@@ -671,17 +671,27 @@ export const MapModal: React.FC<MapModalProps> = ({
   const activeFilterLabel = filterOptions.find((f) => f.id === filter)?.label ?? filterOptions[0].label;
   const connectedOnlinePlayers = onlineMode ? onlinePlayers.filter((p) => p.connected) : [];
 
+  useEffect(() => {
+    const onEscClose = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !filterMenuOpen && !legendMenuOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onEscClose);
+    return () => window.removeEventListener('keydown', onEscClose);
+  }, [filterMenuOpen, legendMenuOpen, onClose]);
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#083A52] flex flex-col overflow-hidden overscroll-none select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="fixed inset-0 z-50 bg-[#061017] flex flex-col overflow-hidden overscroll-none select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       role="dialog"
       aria-modal="true"
       aria-label={isEn ? 'Open World Map' : 'Açık Dünya Haritası'}
     >
-      <div className="w-full h-full bg-[#081A24] flex flex-col overflow-hidden">
-        {/* Header - strictly single row without horizontal or vertical scroll */}
+      <div className="w-full h-full bg-[#061017] flex flex-col overflow-hidden">
+        {/* Header - single row obsidian bar */}
         <div
-          className={`relative z-30 border-b border-white/10 flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#081A24]/96 backdrop-blur-md ${
+          className={`relative z-30 border-b border-white/[0.08] flex flex-nowrap items-center justify-between gap-2 shrink-0 bg-[#061017]/96 backdrop-blur-md ${
             isMobileView ? 'px-3 h-13' : 'px-5 h-14'
           }`}
         >
@@ -695,7 +705,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               {isEn ? 'World Map' : 'Dünya Haritası'}
             </h2>
             {!isMobileView && (
-              <span className="hidden lg:inline text-xs text-slate-300 font-mono-num whitespace-nowrap">
+              <span className="hidden lg:inline text-xs text-slate-400 font-mono-num whitespace-nowrap border-l border-white/[0.08] pl-3">
                 {discoveredCount} {isEn ? 'Islands' : 'Ada'} · {totalOpened}{' '}
                 {isEn ? 'Treasures' : 'Hazine'} · {kingdom.conqueredIslandIds.length}{' '}
                 {isEn ? 'Conquered' : 'Fetih'}
@@ -705,18 +715,18 @@ export const MapModal: React.FC<MapModalProps> = ({
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isMobileView ? (
-              /* Desktop Inline Filter Tabs & Rings Toggle */
+              /* Desktop & Tablet Inline Filter Tabs & Rings Toggle */
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950/50 border border-white/10">
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#0A1720] border border-white/[0.08]">
                   {filterOptions.map((f) => (
                     <button
                       key={f.id}
                       type="button"
                       onClick={() => setFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                         filter === f.id
-                          ? 'bg-amber-500 text-slate-950'
-                          : 'text-slate-300 hover:text-white'
+                          ? 'bg-amber-400 text-slate-950'
+                          : 'text-slate-400 hover:text-white'
                       }`}
                     >
                       {f.label}
@@ -726,10 +736,10 @@ export const MapModal: React.FC<MapModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowRings((r) => !r)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                     showRings
-                      ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
-                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                      ? 'bg-sky-400/15 border-sky-400/40 text-sky-200'
+                      : 'bg-[#0A1720] border-white/[0.08] text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   {isEn ? 'Rings' : 'Mesafe'}
@@ -746,10 +756,10 @@ export const MapModal: React.FC<MapModalProps> = ({
                   }}
                   aria-expanded={filterMenuOpen}
                   aria-haspopup="menu"
-                  className={`min-h-[40px] px-3 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                  className={`min-h-[40px] px-3 rounded-lg border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     filter !== 'ALL' || filterMenuOpen
-                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                      : 'bg-slate-950/60 border-white/12 text-slate-100 hover:bg-slate-900'
+                      ? 'bg-amber-400/15 border-amber-400/45 text-amber-200'
+                      : 'bg-[#0A1720] border-white/[0.1] text-slate-100 hover:bg-[#0F212C]'
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
@@ -765,9 +775,9 @@ export const MapModal: React.FC<MapModalProps> = ({
                   <div
                     role="menu"
                     onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-[#081A24]/95 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.06] shadow-[0_18px_48px_rgba(2,10,18,0.72)] p-3 z-50"
+                    className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl bg-[#0A1720]/96 backdrop-blur-xl border border-white/12 shadow-[0_18px_48px_rgba(0,0,0,0.75)] p-3 z-50"
                   >
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-[11px] text-slate-300 font-mono-num">
+                    <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/[0.08] text-[11px] text-slate-300 font-mono-num">
                       <span>
                         {discoveredCount} {isEn ? 'Islands' : 'Ada'}
                       </span>
@@ -779,7 +789,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                       </span>
                     </div>
 
-                    <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 px-1">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5 px-0.5">
                       {isEn ? 'Map Filter' : 'Harita Filtresi'}
                     </p>
                     <div className="grid grid-cols-2 gap-1.5 mb-2.5">
@@ -793,10 +803,10 @@ export const MapModal: React.FC<MapModalProps> = ({
                               setFilter(f.id);
                               setFilterMenuOpen(false);
                             }}
-                            className={`h-9 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer whitespace-nowrap ${
+                            className={`h-9 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer whitespace-nowrap ${
                               active
-                                ? 'bg-amber-500 border-amber-300 text-slate-950'
-                                : 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10'
+                                ? 'bg-amber-400 border-amber-300 text-slate-950'
+                                : 'bg-[#08131B] border-white/[0.08] text-slate-200 hover:bg-white/[0.06]'
                             }`}
                           >
                             <span>{f.label}</span>
@@ -809,16 +819,16 @@ export const MapModal: React.FC<MapModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowRings((r) => !r)}
-                      className={`w-full h-9 px-3 rounded-xl text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer ${
+                      className={`w-full h-9 px-3 rounded-lg text-xs font-semibold flex items-center justify-between border transition-colors cursor-pointer ${
                         showRings
-                          ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
-                          : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                          ? 'bg-sky-400/15 border-sky-400/40 text-sky-200'
+                          : 'bg-[#08131B] border-white/[0.08] text-slate-300 hover:bg-white/[0.06]'
                       }`}
                     >
                       <span>{isEn ? 'Distance Rings' : 'Mesafe Halkaları'}</span>
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          showRings ? 'bg-sky-400/25 text-sky-100' : 'bg-white/10 text-slate-400'
+                        className={`text-[10px] font-bold font-mono-num ${
+                          showRings ? 'text-sky-300' : 'text-slate-500'
                         }`}
                       >
                         {showRings ? (isEn ? 'ON' : 'AÇIK') : isEn ? 'OFF' : 'KAPALI'}
@@ -833,7 +843,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={isEn ? 'Close Map' : 'Haritayı Kapat'}
-              className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
+              className="w-10 h-10 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1034,12 +1044,12 @@ export const MapModal: React.FC<MapModalProps> = ({
 
           {/* Active Waypoint Quick Bar / Placement Hint */}
           {mapPin ? (
-            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-2 rounded-xl bg-[#081A24]/92 backdrop-blur-md border border-rose-400/50 ring-1 ring-inset ring-white/[0.06] shadow-lg text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-400/35 shrink-0" />
+            <div className="absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-rose-400/45 shadow-lg text-xs">
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
               <button
                 type="button"
                 onClick={() => applyOffset({ x: mapPin.x, y: mapPin.y })}
-                className="font-semibold text-rose-100 hover:text-white truncate max-w-[160px] cursor-pointer text-left"
+                className="font-semibold text-rose-100 hover:text-white truncate max-w-[170px] cursor-pointer text-left"
                 title={isEn ? 'Center on Waypoint' : 'İşarete Odaklan'}
               >
                 {mapPin.label}
@@ -1053,7 +1063,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onSetMapPin(null)}
-                  className="ml-1 p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 cursor-pointer"
+                  className="ml-1 p-1 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-200 cursor-pointer"
                   title={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
                   aria-label={isEn ? 'Remove Waypoint' : 'İşareti Kaldır'}
                 >
@@ -1062,7 +1072,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               )}
             </div>
           ) : (
-            <div className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-2 rounded-xl bg-[#081A24]/88 backdrop-blur-md border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-md text-[11px] text-slate-200">
+            <div className="pointer-events-none absolute top-3 left-3 max-w-[calc(100%-1.5rem)] flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#061017]/84 backdrop-blur-md border border-white/10 shadow-md text-[11px] text-slate-300">
               <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
               <span className="truncate">
                 {isEn
@@ -1084,16 +1094,16 @@ export const MapModal: React.FC<MapModalProps> = ({
                 }}
                 aria-expanded={legendMenuOpen}
                 aria-haspopup="dialog"
-                className={`min-h-[44px] px-3.5 py-2 rounded-xl border ring-1 ring-inset ring-white/[0.06] shadow-[0_10px_28px_rgba(2,10,18,0.55)] flex items-center gap-2 text-xs font-semibold transition-all active:scale-95 cursor-pointer whitespace-nowrap backdrop-blur-md ${
+                className={`min-h-[42px] px-3.5 py-2 rounded-lg border shadow-lg flex items-center gap-2 text-xs font-semibold transition-colors active:scale-95 cursor-pointer whitespace-nowrap backdrop-blur-md ${
                   legendMenuOpen
-                    ? 'bg-sky-500/25 border-sky-300/60 text-sky-100'
-                    : 'bg-[#081A24]/90 border-white/15 text-slate-100 hover:bg-[#0F2F42]'
+                    ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
+                    : 'bg-[#061017]/90 border-white/12 text-slate-100 hover:bg-[#0F212C]'
                 }`}
               >
                 <Layers className="w-4 h-4 text-sky-300 shrink-0" />
                 <span>{isEn ? 'Legend' : 'Belirteçler'}</span>
                 {onlineMode && connectedOnlinePlayers.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-200 text-[10px] font-mono-num">
+                  <span className="text-emerald-300 text-[11px] font-mono-num font-bold">
                     {connectedOnlinePlayers.length}
                   </span>
                 )}
@@ -1107,9 +1117,9 @@ export const MapModal: React.FC<MapModalProps> = ({
               {legendMenuOpen && (
                 <div
                   onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-2xl bg-[#081A24]/95 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.06] shadow-[0_20px_50px_rgba(2,10,18,0.75)] p-3.5 text-xs text-slate-200 z-50"
+                  className="absolute bottom-full left-0 mb-2 w-[min(19.5rem,calc(100vw-1.5rem))] max-h-[52vh] overflow-y-auto overscroll-contain rounded-xl bg-[#0A1720]/96 backdrop-blur-xl border border-white/12 shadow-[0_20px_50px_rgba(0,0,0,0.78)] p-3.5 text-xs text-slate-200 z-50"
                 >
-                  <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
+                  <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/[0.08]">
                     <span className="font-display font-bold text-slate-50">
                       {isEn ? 'Markers & Players' : 'Belirteçler & Oyuncular'}
                     </span>
@@ -1117,7 +1127,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                       type="button"
                       onClick={() => setLegendMenuOpen(false)}
                       aria-label={isEn ? 'Close Legend' : 'Belirteçleri Kapat'}
-                      className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center cursor-pointer"
+                      className="w-7 h-7 rounded-md hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1161,7 +1171,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                   </div>
 
                   {!onlineMode && (
-                    <div className="pt-2.5 border-t border-white/10 mb-2.5">
+                    <div className="pt-2.5 border-t border-white/[0.08] mb-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
                         {isEn ? 'Nations' : 'Devletler'}
                       </p>
@@ -1188,7 +1198,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                   )}
 
                   {onlineMode && (
-                    <div className="pt-2.5 border-t border-white/10 mb-2.5">
+                    <div className="pt-2.5 border-t border-white/[0.08] mb-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1.5">
                         {isEn ? 'Online Players' : 'Çevrimiçi Oyuncular'}
                       </p>
@@ -1212,7 +1222,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                     </div>
                   )}
 
-                  <p className="pt-2 border-t border-white/10 text-[11px] text-slate-400 leading-relaxed">
+                  <p className="pt-2 border-t border-white/[0.08] text-[11px] text-slate-400 leading-relaxed">
                     {isEn
                       ? 'Tap to place/remove waypoint · Drag to pan · Pinch to zoom.'
                       : 'Dokunarak işaret koyabilir, sürükleyerek gezebilir ve iki parmakla yakınlaştırabilirsiniz.'}
@@ -1224,7 +1234,7 @@ export const MapModal: React.FC<MapModalProps> = ({
 
           {/* Zoom & Center Controls */}
           <div
-            className={`absolute z-20 flex flex-col gap-2 ${
+            className={`absolute z-20 flex flex-col gap-1.5 ${
               isMobileView ? 'bottom-3 right-3' : 'bottom-4 right-4'
             }`}
           >
@@ -1233,7 +1243,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => applyZoom(zoomRef.current * 1.25)}
               aria-label={isEn ? 'Zoom In' : 'Yakınlaştır'}
-              className="w-11 h-11 rounded-xl bg-[#081A24]/90 backdrop-blur-md border border-white/15 ring-1 ring-inset ring-white/[0.06] text-slate-100 hover:bg-[#0F2F42] active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(2,10,18,0.55)] cursor-pointer"
+              className="w-11 h-11 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-white/12 text-slate-100 hover:bg-[#0F212C] active:scale-95 transition-colors flex items-center justify-center shadow-lg cursor-pointer"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -1242,7 +1252,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => applyZoom(zoomRef.current * 0.8)}
               aria-label={isEn ? 'Zoom Out' : 'Uzaklaştır'}
-              className="w-11 h-11 rounded-xl bg-[#081A24]/90 backdrop-blur-md border border-white/15 ring-1 ring-inset ring-white/[0.06] text-slate-100 hover:bg-[#0F2F42] active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(2,10,18,0.55)] cursor-pointer"
+              className="w-11 h-11 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-white/12 text-slate-100 hover:bg-[#0F212C] active:scale-95 transition-colors flex items-center justify-center shadow-lg cursor-pointer"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
@@ -1252,7 +1262,7 @@ export const MapModal: React.FC<MapModalProps> = ({
               onClick={() => applyOffset({ x: playerPos.x, y: playerPos.y })}
               aria-label={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
               title={isEn ? 'Center on Player' : 'Konumuma Odaklan'}
-              className="w-11 h-11 rounded-xl bg-amber-500 border border-amber-200/80 text-slate-950 hover:bg-amber-400 active:scale-95 transition-all flex items-center justify-center shadow-[0_8px_24px_rgba(245,158,11,0.35)] cursor-pointer"
+              className="w-11 h-11 rounded-lg bg-amber-400 text-slate-950 hover:bg-amber-300 active:scale-95 transition-colors flex items-center justify-center shadow-lg cursor-pointer"
             >
               <MapPin className="w-4 h-4" />
             </button>
@@ -1261,9 +1271,9 @@ export const MapModal: React.FC<MapModalProps> = ({
 
         {/* Desktop Legend Footer */}
         {!isMobileView && (
-          <div className="flex px-5 py-2.5 border-t border-white/10 items-center justify-between gap-x-4 gap-y-1.5 text-xs text-slate-300 shrink-0">
+          <div className="flex px-5 py-2.5 border-t border-white/[0.08] bg-[#061017] items-center justify-between gap-x-4 gap-y-1.5 text-xs text-slate-400 shrink-0">
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-slate-200">
                 <span
                   className={`w-2.5 h-2.5 rounded-full inline-block ${
                     colorblindMode ? 'bg-cyan-400' : 'bg-emerald-400'
@@ -1271,11 +1281,11 @@ export const MapModal: React.FC<MapModalProps> = ({
                 />
                 {isEn ? 'Player' : 'Oyuncu'}
               </span>
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-slate-200">
                 <Ship className="w-3.5 h-3.5 text-sky-400" />
                 {isEn ? 'Ship' : 'Tekne'}
               </span>
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-slate-200">
                 <Store className="w-3.5 h-3.5 text-amber-400" />
                 {isEn ? 'Trader' : 'Tüccar'}
               </span>
@@ -1292,7 +1302,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                 {isEn ? 'Cave / Secret' : 'Mağara / Gizli'}
               </span>
               {kingdom.founded && (
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 text-slate-200">
                   <Flag className="w-3.5 h-3.5" style={{ color: kingdom.bannerColor }} />
                   {kingdom.name}
                 </span>
@@ -1318,7 +1328,7 @@ export const MapModal: React.FC<MapModalProps> = ({
                   </span>
                 ))}
             </div>
-            <span className="text-slate-400 whitespace-nowrap">
+            <span className="text-slate-500 whitespace-nowrap">
               {isEn
                 ? 'Click to place/remove waypoint · Drag to pan'
                 : 'Tıklayarak konum işareti koyabilir · Sürükleyerek gezebilirsiniz'}

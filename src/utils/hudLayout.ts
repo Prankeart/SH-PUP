@@ -471,14 +471,21 @@ function hasAnyObstacleCollision(
 export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout {
   const vw = Math.max(280, Math.round(input.vw || 800));
   const vh = Math.max(280, Math.round(input.vh || 600));
-  const isCompactTouch = input.isCoarseDevice || vw < 640 || vh < 540;
-  const pad = isCompactTouch ? 8 : 20;
-  const isTopRightCompact = input.isCoarseDevice || vw < 760 || vh < 500;
-
-  // 1. Phone-screen-adaptive baseline scale & Top-Right Row 1 HUD geometry
   const shortSide = Math.min(vw, vh);
+  const isTabletSized = input.isCoarseDevice && shortSide >= 600 && vw >= 720;
+  const isCompactTouch = isTabletSized
+    ? false
+    : input.isCoarseDevice || vw < 640 || vh < 540;
+  const pad = isCompactTouch ? 8 : isTabletSized ? 14 : 20;
+  const isTopRightCompact = isTabletSized
+    ? vw < 860
+    : input.isCoarseDevice || vw < 760 || vh < 500;
+
+  // 1. Screen-adaptive baseline scale & Top-Right Row 1 HUD geometry
   let deviceAdaptiveScale = 1;
-  if (input.isCoarseDevice || isCompactTouch) {
+  if (isTabletSized) {
+    deviceAdaptiveScale = 0.86;
+  } else if (input.isCoarseDevice || isCompactTouch) {
     if (shortSide <= 340) {
       deviceAdaptiveScale = 0.68;
     } else if (shortSide <= 440) {
@@ -486,7 +493,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     } else if (shortSide <= 660) {
       deviceAdaptiveScale = 0.8 + ((shortSide - 440) / 220) * 0.14;
     } else {
-      deviceAdaptiveScale = 0.96;
+      deviceAdaptiveScale = 0.94;
     }
   }
 
@@ -495,27 +502,27 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
   let topRightEstH = 0;
   const topRightMaxWidth = isTopRightCompact
     ? Math.max(150, vw - 2 * pad - 88)
-    : Math.max(220, Math.floor((vw - 2 * pad) * 0.54));
+    : Math.max(240, Math.floor((vw - 2 * pad) * 0.56));
 
   if (input.showTopRightHudButtons || input.showTopRightSettingsButton) {
     if (isTopRightCompact) {
       const goldDigits = Math.max(1, String(Math.max(0, Math.round(input.gold))).length);
-      const goldW = 54 + goldDigits * 7 + (input.bagCount > 0 ? 34 : 0);
+      const goldW = 50 + goldDigits * 7 + (input.bagCount > 0 ? 30 : 0);
       const row1W =
-        (input.showTopRightHudButtons ? 36 + 6 + goldW : 0) +
-        (input.showTopRightSettingsButton ? (input.showTopRightHudButtons ? 6 : 0) + 36 : 0);
-      topRightRow1H = 36;
+        (input.showTopRightHudButtons ? 40 + 6 + goldW : 0) +
+        (input.showTopRightSettingsButton ? (input.showTopRightHudButtons ? 6 : 0) + 40 : 0);
+      topRightRow1H = 40;
       topRightEstW = Math.min(topRightMaxWidth, row1W);
       topRightEstH = topRightRow1H;
     } else {
       const singleRowW =
-        (input.showTopRightHudButtons ? 390 + (input.bagCount > 0 ? 38 : 0) : 0) +
-        (input.showTopRightSettingsButton ? 48 : 0);
+        (input.showTopRightHudButtons ? 365 + (input.bagCount > 0 ? 34 : 0) : 0) +
+        (input.showTopRightSettingsButton ? 44 : 0);
       const wraps = singleRowW > topRightMaxWidth;
       topRightEstW = Math.min(singleRowW, topRightMaxWidth);
-      topRightRow1H = wraps ? 88 : 40;
+      topRightRow1H = wraps ? 84 : 40;
       const hasDesktopTraderRow = input.nearDock && input.showTopRightHudButtons;
-      topRightEstH = topRightRow1H + (hasDesktopTraderRow ? 46 : 0);
+      topRightEstH = topRightRow1H + (hasDesktopTraderRow ? 42 : 0);
     }
   }
 
@@ -526,12 +533,14 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     bottom: pad + topRightEstH,
   };
 
-  // 2. Compute viewport-adaptive auto scale so phone buttons shrink neatly to fit each screen
-  const miniMapBaseSize = isCompactTouch
+  // 2. Compute viewport-adaptive auto scale so touch clusters fit cleanly on any screen
+  const miniMapBaseSize = isTabletSized
+    ? 98
+    : isCompactTouch
     ? Math.round(clampVal(shortSide * 0.195, 62, 86))
-    : 124;
+    : 120;
 
-  const baseJoystickSize = isCompactTouch ? 112 : 160;
+  const baseJoystickSize = isCompactTouch ? 112 : isTabletSized ? 140 : 156;
   const baseActionSpec = isCompactTouch ? COMPACT_ACTION_CONTAINER : FULL_ACTION_CONTAINER;
   const baseActionReachH = isCompactTouch ? 208 : 254;
 
@@ -654,9 +663,9 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
 
   const wpRaw = layout.weaponPanel;
   const wpScale = clampVal(wpRaw?.scale ?? 1, 0.65, 1.45);
-  const wpBaseW = isTopRightCompact ? Math.round(clampVal(vw * 0.52, 184, 212)) : 256;
+  const wpBaseW = isTopRightCompact ? Math.round(clampVal(vw * 0.48, 178, 204)) : 238;
   const multiWep = Boolean(input.hasMultipleWeapons);
-  const wpBaseH = isTopRightCompact ? (multiWep ? 104 : 78) : (multiWep ? 112 : 84);
+  const wpBaseH = isTopRightCompact ? (multiWep ? 88 : 62) : (multiWep ? 94 : 68);
   const wpBaseRight = pad;
   const wpBaseTop = pad + (topRightRow1H > 0 ? topRightRow1H + (isTopRightCompact ? 6 : 8) : 0);
   const wpBaseCx = vw - wpBaseRight - wpBaseW / 2;
@@ -692,13 +701,13 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     720,
     Math.max(240, vw - 2 * pad - (input.onlineActive ? 220 : 0))
   );
-  const desktopEstSingleW = Math.max(92, input.desktopActionButtonCount * 86 + 16);
+  const desktopEstSingleW = Math.max(88, input.desktopActionButtonCount * 78 + 14);
   const desktopWraps =
     input.controlsDisplayMode === 'DESKTOP' && desktopEstSingleW > desktopActionMaxW;
   const desktopActionEstW =
     input.controlsDisplayMode === 'DESKTOP' ? Math.min(desktopEstSingleW, desktopActionMaxW) : 0;
   const desktopActionEstH =
-    input.controlsDisplayMode === 'DESKTOP' ? (desktopWraps ? 88 : 48) : 0;
+    input.controlsDisplayMode === 'DESKTOP' ? (desktopWraps ? 82 : 42) : 0;
 
   if (input.controlsDisplayMode === 'DESKTOP' && !input.isEditingLayout) {
     fixedObstacles.push({

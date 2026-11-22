@@ -114,27 +114,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   return (
     <div
       style={style}
-      className={`pointer-events-auto rounded-[20px] bg-[#081A24]/92 backdrop-blur-xl border border-white/12 ring-1 ring-inset ring-white/[0.05] shadow-[0_22px_54px_rgba(2,10,18,0.68)] text-slate-100 flex flex-col overflow-hidden ${className}`}
+      className={`pointer-events-auto rounded-2xl bg-[#0A1720]/94 backdrop-blur-xl border border-white/10 shadow-[0_18px_48px_rgba(0,0,0,0.65)] text-slate-100 flex flex-col overflow-hidden ${className}`}
     >
-      {/* Minimal Single-Row Header */}
       <div
-        className={`flex items-center justify-between shrink-0 ${
-          showCompactHeader ? 'px-3 pt-2 pb-1' : 'px-3.5 pt-2.5 pb-1.5'
+        className={`flex items-center justify-between shrink-0 border-b border-white/[0.08] ${
+          showCompactHeader ? 'px-3 py-1.5' : 'px-3.5 py-2'
         }`}
       >
         <div className="flex items-center gap-1.5 min-w-0">
-          <h2 className="font-display font-semibold text-[13px] text-slate-50 tracking-tight truncate">
+          <h2 className="font-display font-semibold text-xs text-slate-100 tracking-tight truncate">
             {isEn ? 'Fleet Chat' : 'Filo Sohbeti'}
           </h2>
           {playerCount > 0 && (
-            <>
-              <span className="text-slate-500 text-xs" aria-hidden="true">
-                ·
-              </span>
-              <span className="text-[11px] text-slate-400 font-mono-num whitespace-nowrap">
-                {isEn ? `${playerCount} online` : `${playerCount} kaptan`}
-              </span>
-            </>
+            <span className="text-[11px] text-slate-400 font-mono-num whitespace-nowrap">
+              · {isEn ? `${playerCount} online` : `${playerCount} kaptan`}
+            </span>
           )}
         </div>
 
@@ -142,29 +136,28 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           type="button"
           onClick={onClose}
           aria-label={isEn ? 'Close chat' : 'Sohbeti kapat'}
-          className={`flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition cursor-pointer shrink-0 ${
-            isTouchOrMobile ? 'w-9 h-9 -mr-1' : 'w-7 h-7 -mr-0.5'
+          className={`flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.07] transition cursor-pointer shrink-0 ${
+            isTouchOrMobile ? 'w-8 h-8 -mr-1' : 'w-7 h-7 -mr-0.5'
           }`}
         >
           <XIcon className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Scrollable Message Feed */}
       <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={listRef}
           onScroll={handleListScroll}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-1.5 space-y-2"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 py-2 space-y-2"
         >
           {messages.length === 0 ? (
-            <div className="h-full min-h-[76px] flex flex-col items-center justify-center text-center px-4 py-3 select-none">
-              <MessageCircle className="w-5 h-5 text-slate-500/70 mb-1.5" strokeWidth={1.6} />
-              <p className="text-xs font-medium text-slate-300/90">
+            <div className="h-full min-h-[72px] flex flex-col items-center justify-center text-center px-4 py-3 select-none">
+              <MessageCircle className="w-4 h-4 text-slate-500 mb-1.5" strokeWidth={1.6} />
+              <p className="text-xs font-medium text-slate-300">
                 {isEn ? 'No messages yet' : 'Henüz mesaj yok'}
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                {isEn ? 'Send a quick message or emote to your fleet.' : 'Filodaki kaptanlara ilk mesajı gönder.'}
+                {isEn ? 'Send a message or emote to your fleet.' : 'Filodaki kaptanlara ilk mesajı gönder.'}
               </p>
             </div>
           ) : (
@@ -176,7 +169,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 return (
                   <div
                     key={m.id}
-                    className="text-[11px] text-amber-200/75 text-center px-2 py-0.5 leading-relaxed break-words"
+                    className="text-[11px] text-amber-300/80 text-center px-2 py-0.5 leading-relaxed break-words"
                   >
                     {m.text}
                   </div>
@@ -202,12 +195,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     className={`flex flex-col items-end ${groupedWithPrev ? '-mt-1' : ''}`}
                   >
                     <div
-                      className={`max-w-[85%] px-3 py-1.5 text-[13px] leading-snug break-words select-text bg-sky-500/20 border border-sky-400/25 text-slate-50 ${
+                      className={`max-w-[85%] px-3 py-1.5 text-[13px] leading-snug break-words select-text bg-sky-400/18 text-slate-50 ${
                         groupedWithPrev && groupedWithNext
-                          ? 'rounded-2xl rounded-r-md'
+                          ? 'rounded-xl rounded-r-sm'
                           : groupedWithPrev
-                          ? 'rounded-2xl rounded-tr-md rounded-br-sm'
-                          : 'rounded-2xl rounded-br-sm'
+                          ? 'rounded-xl rounded-tr-sm rounded-br-sm'
+                          : 'rounded-xl rounded-br-sm'
                       }`}
                     >
                       {m.text}
@@ -231,7 +224,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5 select-none"
                       style={{
                         backgroundColor: `${accentColor}22`,
-                        border: `1px solid ${accentColor}55`,
                         color: accentColor,
                       }}
                       aria-hidden="true"
@@ -260,12 +252,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     )}
 
                     <div
-                      className={`px-3 py-1.5 text-[13px] leading-snug break-words select-text bg-white/[0.07] border border-white/[0.06] text-slate-100 ${
+                      className={`px-3 py-1.5 text-[13px] leading-snug break-words select-text bg-white/[0.07] text-slate-100 ${
                         groupedWithPrev && groupedWithNext
-                          ? 'rounded-2xl rounded-l-md'
+                          ? 'rounded-xl rounded-l-sm'
                           : groupedWithPrev
-                          ? 'rounded-2xl rounded-tl-md rounded-bl-sm'
-                          : 'rounded-2xl rounded-bl-sm'
+                          ? 'rounded-xl rounded-tl-sm rounded-bl-sm'
+                          : 'rounded-xl rounded-bl-sm'
                       }`}
                     >
                       {m.text}
@@ -282,7 +274,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             type="button"
             onClick={() => scrollToBottom('smooth')}
             aria-label={isEn ? 'Scroll to latest messages' : 'En yeni mesajlara git'}
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-slate-900/95 border border-sky-400/40 text-sky-200 text-[11px] font-medium flex items-center gap-1 shadow-lg hover:bg-slate-800 cursor-pointer"
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-[#061017]/95 border border-sky-400/40 text-sky-200 text-[11px] font-medium flex items-center gap-1 shadow-md hover:bg-[#0F212C] cursor-pointer"
           >
             <ArrowDown className="w-3 h-3" />
             <span>{isEn ? 'New messages' : 'Yeni mesajlar'}</span>
@@ -290,9 +282,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
       </div>
 
-      {/* Optional Collapsible Quick Emote Drawer */}
       {emotesOpen && !showCompactHeader && (
-        <div className="mx-2.5 mt-1 p-1 rounded-xl bg-white/[0.05] border border-white/[0.07] flex items-center justify-between gap-1 shrink-0">
+        <div className="mx-2.5 mt-1 p-1 rounded-lg bg-[#061017] border border-white/[0.08] flex items-center justify-between gap-1 shrink-0">
           {QUICK_EMOTES.map((em) => (
             <button
               key={em}
@@ -302,7 +293,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 setEmotesOpen(false);
               }}
               aria-label={isEn ? `Send ${em} emote` : `${em} ifadesi gönder`}
-              className="flex-1 py-1.5 rounded-lg hover:bg-white/12 active:scale-90 transition text-base leading-none cursor-pointer"
+              className="flex-1 py-1.5 rounded hover:bg-white/10 active:scale-90 transition text-base leading-none cursor-pointer"
             >
               {em}
             </button>
@@ -310,10 +301,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       )}
 
-      {/* Unified Composer */}
       <form
         onSubmit={handleSubmit}
-        className="mx-2.5 mb-2.5 mt-1.5 flex items-center gap-1 rounded-2xl bg-slate-950/75 border border-white/12 px-1.5 py-1 focus-within:border-sky-400/60 focus-within:bg-slate-950/90 transition-colors shrink-0"
+        className="px-2.5 py-2 border-t border-white/[0.08] bg-[#08131B] flex items-center gap-1.5 shrink-0"
       >
         {!showCompactHeader && (
           <button
@@ -321,11 +311,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             onClick={() => setEmotesOpen((prev) => !prev)}
             aria-label={isEn ? 'Quick emotes' : 'Hızlı ifadeler'}
             aria-expanded={emotesOpen}
-            className={`flex items-center justify-center rounded-xl transition cursor-pointer shrink-0 ${
+            className={`flex items-center justify-center rounded-lg transition cursor-pointer shrink-0 ${
               isTouchOrMobile ? 'w-9 h-9' : 'w-8 h-8'
             } ${
               emotesOpen
-                ? 'bg-sky-500/20 text-sky-300'
+                ? 'bg-sky-400/15 text-sky-300'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.07]'
             }`}
           >
@@ -349,13 +339,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             }
           }}
           placeholder={isEn ? 'Message fleet...' : 'Filoya mesaj yaz...'}
-          className={`flex-1 min-w-0 bg-transparent px-1.5 py-1 text-slate-100 placeholder:text-slate-500 focus:outline-none select-text touch-manipulation ${
+          className={`flex-1 min-w-0 bg-[#061017] border border-white/10 rounded-lg px-2.5 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-400/60 select-text touch-manipulation ${
             isTouchOrMobile ? 'text-[16px] leading-5' : 'text-[13px] leading-5'
           }`}
         />
 
         {chatInput.length >= 100 && (
-          <span className="text-[10px] font-mono-num text-amber-300/85 px-1 shrink-0">
+          <span className="text-[10px] font-mono-num text-amber-300 px-1 shrink-0">
             {140 - chatInput.length}
           </span>
         )}
@@ -364,11 +354,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           type="submit"
           disabled={!canSend}
           aria-label={isEn ? 'Send message' : 'Mesaj gönder'}
-          className={`flex items-center justify-center rounded-xl transition shrink-0 ${
+          className={`flex items-center justify-center rounded-lg transition shrink-0 ${
             isTouchOrMobile ? 'w-9 h-9' : 'w-8 h-8'
           } ${
             canSend
-              ? 'bg-sky-400 hover:bg-sky-300 active:scale-95 text-slate-950 shadow-sm cursor-pointer'
+              ? 'bg-sky-400 hover:bg-sky-300 text-slate-950 cursor-pointer'
               : 'bg-white/[0.06] text-slate-500 cursor-default'
           }`}
         >
