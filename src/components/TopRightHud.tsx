@@ -20,6 +20,7 @@ interface TopRightHudProps {
   journalBadgeCount?: number;
   weaponOffsetRight?: number;
   language?: 'tr' | 'en';
+  shopKeyLabel?: string;
   showSettingsButton?: boolean;
   showHudButtons?: boolean;
   onOpenSettings: () => void;
@@ -39,6 +40,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
   journalBadgeCount = 0,
   weaponOffsetRight = 0,
   language = 'tr',
+  shopKeyLabel,
   showSettingsButton = true,
   showHudButtons = true,
   onOpenSettings,
@@ -139,7 +141,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
                   {menuOpen && (
                     <div
                       role="menu"
-                      className="absolute right-0 top-full mt-2 w-52 max-w-[calc(100vw-1rem)] rounded-xl bg-[#0A1720]/96 backdrop-blur-xl border border-white/12 shadow-[0_18px_48px_rgba(0,0,0,0.7)] divide-y divide-white/[0.06] overflow-hidden z-40"
+                      className="absolute right-0 top-full mt-2 w-52 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-4.5rem)] overflow-y-auto rounded-xl bg-[#0A1720]/96 backdrop-blur-xl border border-white/12 shadow-[0_18px_48px_rgba(0,0,0,0.7)] divide-y divide-white/[0.06] z-50"
                     >
                       <button
                         type="button"
@@ -332,6 +334,11 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
           >
             <Store className="w-3.5 h-3.5 shrink-0" />
             <span>{isEn ? 'Open Trader' : 'Tüccarı Aç'}</span>
+            {shopKeyLabel && (
+              <kbd className="font-mono-num text-[10px] px-1 py-0.5 rounded bg-black/15">
+                {shopKeyLabel}
+              </kbd>
+            )}
           </button>
         </div>
       )}

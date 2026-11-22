@@ -14,10 +14,8 @@ import {
   Plus,
   Radio,
   RotateCcw,
-  RotateCw,
   ShieldAlert,
   ShieldCheck,
-  Store,
   Swords,
   Volume2,
   X as XIcon,
@@ -127,8 +125,10 @@ import { PerformanceGovernor } from './engine/perfGovernor';
 import { soundEngine } from './engine/audio';
 import { clamp, dist, lerp, lerpAngle } from './utils/prng';
 import {
+  enterLandscapeGameMode,
   exitAppFullscreen,
   isCurrentlyFullscreen,
+  lockLandscapeOrientation,
   requestAppFullscreen,
 } from './utils/fullscreen';
 import {
@@ -166,6 +166,7 @@ import { TitleOverlay } from './components/TitleOverlay';
 import { OnlineLobbyModal } from './components/OnlineLobbyModal';
 import { WeaponHudPanel } from './components/WeaponHudPanel';
 import { ChatPanel } from './components/ChatPanel';
+import { LandscapeGateOverlay } from './components/LandscapeGateOverlay';
 import {
   ActionButtonKey,
   ALL_ACTION_BUTTON_KEYS,
@@ -238,6 +239,7 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModal>('NONE');
   const [isPortrait, setIsPortrait] = useState<boolean>(false);
   const [dismissPortraitHint, setDismissPortraitHint] = useState<boolean>(false);
+  const landscapeGateOpenRef = useRef<boolean>(false);
 
   // Online P2P Multiplayer State
   const [identity, setIdentity] = useState<PlayerIdentity>(() => loadPlayerIdentity());
@@ -554,6 +556,33 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    const syncOrientationOnFullscreen = () => {
+      if (isCurrentlyFullscreen() && isCoarseDeviceRef.current) {
+        void lockLandscapeOrientation();
+      }
+    };
+    document.addEventListener('fullscreenchange', syncOrientationOnFullscreen);
+    document.addEventListener('webkitfullscreenchange', syncOrientationOnFullscreen);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncOrientationOnFullscreen);
+      document.removeEventListener('webkitfullscreenchange', syncOrientationOnFullscreen);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (phase === 'PLAYING') {
+      setDismissPortraitHint(false);
+      if (isCoarseDevice) {
+        if (settingsRef.current.autoFullscreen) {
+          void enterLandscapeGameMode();
+        } else {
+          void lockLandscapeOrientation();
+        }
+      }
+    }
+  }, [phase, isCoarseDevice]);
+
+  useEffect(() => {
     if (!settings.autoFullscreen) {
       sessionFullscreenHandledRef.current = true;
       void exitAppFullscreen();
@@ -561,11 +590,14 @@ export default function App() {
     }
 
     if (sessionFullscreenHandledRef.current || isCurrentlyFullscreen()) {
+      if (isCurrentlyFullscreen() && isCoarseDeviceRef.current) {
+        void lockLandscapeOrientation();
+      }
       return;
     }
 
     let cleanedUp = false;
-    void requestAppFullscreen().then((entered) => {
+    void requestAppFullscreen({ lockLandscape: isCoarseDeviceRef.current }).then((entered) => {
       if (!cleanedUp && entered) {
         sessionFullscreenHandledRef.current = true;
       }
@@ -577,7 +609,7 @@ export default function App() {
         return;
       }
       sessionFullscreenHandledRef.current = true;
-      void requestAppFullscreen();
+      void requestAppFullscreen({ lockLandscape: isCoarseDeviceRef.current });
       cleanup();
     };
 
@@ -747,7 +779,7 @@ export default function App() {
         preKeyboardViewportRef.current = { vw: rawVw, vh: rawVh };
       }
 
-      const portrait = vw < 860 && vh > vw;
+      const portrait = vh > vw;
       setViewport((prev) => (prev.vw === vw && prev.vh === vh ? prev : { vw, vh }));
       setIsPortrait(portrait);
     };
@@ -760,9 +792,11 @@ export default function App() {
       if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
       focusOutTimer = window.setTimeout(checkViewport, 90);
     };
+    const orientation = typeof screen !== 'undefined' ? screen.orientation : undefined;
     checkViewport();
     window.addEventListener('resize', checkViewport);
     window.addEventListener('orientationchange', checkViewport);
+    orientation?.addEventListener?.('change', checkViewport);
     window.addEventListener('focusin', handleFocusIn);
     window.addEventListener('focusout', handleFocusOut);
     window.visualViewport?.addEventListener('resize', checkViewport);
@@ -772,6 +806,7 @@ export default function App() {
       if (focusOutTimer !== null) window.clearTimeout(focusOutTimer);
       window.removeEventListener('resize', checkViewport);
       window.removeEventListener('orientationchange', checkViewport);
+      orientation?.removeEventListener?.('change', checkViewport);
       window.removeEventListener('focusin', handleFocusIn);
       window.removeEventListener('focusout', handleFocusOut);
       window.visualViewport?.removeEventListener('resize', checkViewport);
@@ -1257,6 +1292,9 @@ export default function App() {
           setOnlineActive(true);
           setShowOnlineLobby(false);
           setPhase('PLAYING');
+          if (isCoarseDeviceRef.current) {
+            void enterLandscapeGameMode();
+          }
         }
       },
       onGameStarted: (roomInfo, slots) => {
@@ -1269,6 +1307,9 @@ export default function App() {
         setOnlineActive(true);
         setShowOnlineLobby(false);
         setPhase('PLAYING');
+        if (isCoarseDeviceRef.current) {
+          void enterLandscapeGameMode();
+        }
       },
       onStarterAdded: (slot) => {
         setOnlineStarterSlots((prev) =>
@@ -4258,7 +4299,10 @@ export default function App() {
         sim.zoom = 1;
       }
 
-      const isPlaying = phaseRef.current === 'PLAYING' && modalRef.current === 'NONE';
+      const isPlaying =
+        phaseRef.current === 'PLAYING' &&
+        modalRef.current === 'NONE' &&
+        !landscapeGateOpenRef.current;
       const maxBoatHp = getMaxBoatHp(currentSave.upgrades.boatLevel);
       const activeUnitCount =
         sim.allySoldiers.length +
@@ -8886,8 +8930,10 @@ export default function App() {
     hudState.canDisembark,
   ]);
 
-  const showPortraitHintBanner =
-    isCoarseDevice && isPortrait && !dismissPortraitHint && phase === 'PLAYING' && !isEditingLayout;
+  const showLandscapeGate =
+    isCoarseDevice && isPortrait && phase === 'PLAYING' && !dismissPortraitHint && !isEditingLayout;
+  landscapeGateOpenRef.current = showLandscapeGate;
+  const showPortraitHintBanner = false;
 
   const hudLayoutBaseInput = useMemo(
     () => ({
@@ -9024,6 +9070,9 @@ export default function App() {
           }
           onOpenSettings={() => setActiveModal('SETTINGS')}
           onStart={() => {
+            if (isCoarseDeviceRef.current) {
+              void enterLandscapeGameMode();
+            }
             soundEngine.ensureAmbientOcean();
             onlineActiveRef.current = false;
             setOnlineActive(false);
@@ -9031,6 +9080,9 @@ export default function App() {
             setPhase('PLAYING');
           }}
           onOpenOnline={() => {
+            if (isCoarseDeviceRef.current) {
+              void enterLandscapeGameMode();
+            }
             soundEngine.ensureAmbientOcean();
             ensureOnlineManager();
             setShowOnlineLobby(true);
@@ -9051,16 +9103,25 @@ export default function App() {
           initialRoomCode={inviteRoomCode}
           language={settings.language}
           onCreateRoom={(rule: OnlineModeRule, resumeRoomId?: string) => {
+            if (isCoarseDeviceRef.current) {
+              void enterLandscapeGameMode();
+            }
             const mgr = ensureOnlineManager();
             void mgr.createOrResumeHostRoom(identity, rule, resumeRoomId).catch(() => {
               // Error surfaced via onStatusChange
             });
           }}
           onJoinRoom={(code: string) => {
+            if (isCoarseDeviceRef.current) {
+              void enterLandscapeGameMode();
+            }
             const mgr = ensureOnlineManager();
             mgr.joinRoom(code, identity);
           }}
           onHostStartGame={() => {
+            if (isCoarseDeviceRef.current) {
+              void enterLandscapeGameMode();
+            }
             onlineManagerRef.current?.hostStartGame();
           }}
           onHostChangeRule={(rule: OnlineModeRule) => {
@@ -9081,8 +9142,11 @@ export default function App() {
           {/* Active World Event Banner (Top-Center when gap allows, otherwise inside Top-Left stack) */}
           {activeWorldEvent && !onlineActive && hudLayout.showTopCenterEvent && (
             <div
-              style={{ maxWidth: `${hudLayout.topCenterEventMaxWidth}px` }}
-              className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 shadow-[0_12px_30px_rgba(2,8,14,0.55)]"
+              style={{
+                left: `${hudLayout.topCenterEventLeft}px`,
+                maxWidth: `${hudLayout.topCenterEventMaxWidth}px`,
+              }}
+              className="pointer-events-none fixed top-3 -translate-x-1/2 z-10 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#061017]/88 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 shadow-[0_12px_30px_rgba(2,8,14,0.55)]"
             >
               {activeWorldEvent.type === 'STORM' ? (
                 <CloudLightning className="w-3.5 h-3.5 text-sky-300 shrink-0" />
@@ -9099,7 +9163,7 @@ export default function App() {
           {/* Mini Map (Independently positioned & collision-solved) */}
           <div
             style={{ top: `${hudLayout.minimap.pad}px`, left: `${hudLayout.minimap.pad}px` }}
-            className={`pointer-events-auto absolute ${isEditingLayout ? 'z-30' : ''}`}
+            className={`pointer-events-auto absolute ${isEditingLayout ? 'z-30' : 'z-10'}`}
           >
             <MiniMap
               size={hudLayout.minimap.baseSize}
@@ -9145,7 +9209,7 @@ export default function App() {
                   maxWidth: `${hudLayout.topLeftPlacement.maxWidth}px`,
                   maxHeight: `${hudLayout.topLeftPlacement.maxHeight}px`,
                 }}
-                className={`pointer-events-auto absolute overflow-y-auto no-scrollbar flex flex-col items-start min-w-0 ${
+                className={`pointer-events-auto absolute z-10 overflow-y-auto no-scrollbar flex flex-col items-start min-w-0 ${
                   compactStack ? 'gap-1.5' : 'gap-2'
                 } ${isEditingLayout ? 'pointer-events-none opacity-45' : ''}`}
               >
@@ -9306,31 +9370,15 @@ export default function App() {
                     )}
                   </div>
                 )}
-
-                {hudState.nearDock &&
-                  !hudLayout.isTopRightCompact &&
-                  (isCoarseDevice || settings.desktopShowHudButtons) && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveModal('SHOP')}
-                      className="flex px-3 py-1.5 rounded-lg bg-[#061017]/90 hover:bg-[#0F212C] backdrop-blur-md border border-amber-400/45 text-amber-300 text-xs font-semibold items-center gap-2 shadow-md transition-colors active:scale-95 cursor-pointer shrink-0"
-                    >
-                      <Store className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {settings.language === 'en' ? 'Merchant Dock' : 'Tüccar İskelesi'}
-                      </span>
-                      <span className="ui-keycap">{formatKeyCode(settings.keybindings.shop)}</span>
-                    </button>
-                  )}
               </div>
             );
           })()}
 
-          {/* Top-Right HUD (independently anchored) */}
+          {/* Top-Right HUD (independently anchored, highest active HUD z-layer so dropdowns stay above Weapon/Action HUDs) */}
           <div
             style={{ top: `${hudLayout.pad}px`, right: `${hudLayout.pad}px` }}
             className={`pointer-events-none absolute ${
-              isEditingLayout ? 'opacity-35 pointer-events-none' : ''
+              isEditingLayout ? 'z-10 opacity-35 pointer-events-none' : 'z-[36]'
             }`}
           >
             <TopRightHud
@@ -9342,12 +9390,24 @@ export default function App() {
               kingdomFounded={save.kingdom.founded}
               soldierCount={save.kingdom.soldiers.length}
               journalBadgeCount={claimableMilestoneCount}
-              weaponOffsetRight={
-                !hudLayout.isTopRightCompact && hudLayout.weaponAtDefaultSpot
-                  ? Math.round(hudLayout.weaponPanel.baseW * hudLayout.weaponPanel.scale + 8)
-                  : 0
-              }
+              weaponOffsetRight={(() => {
+                if (
+                  hudLayout.isTopRightCompact ||
+                  (!hudState.weaponSlots.length && !isEditingLayout)
+                ) {
+                  return 0;
+                }
+                const wb = hudLayout.weaponPanel.screenBox;
+                const trRow2Top = hudLayout.pad + 46;
+                const trRow2Bottom = hudLayout.pad + 86;
+                const intersectsRow2 = wb.bottom > trRow2Top && wb.top < trRow2Bottom;
+                if (!intersectsRow2) return 0;
+                const needed = Math.max(0, Math.round(viewport.vw - hudLayout.pad - wb.left + 8));
+                const maxSafe = Math.max(0, hudLayout.topRightMaxWidth - 132);
+                return Math.min(needed, maxSafe);
+              })()}
               language={settings.language}
+              shopKeyLabel={formatKeyCode(settings.keybindings.shop)}
               showSettingsButton={isCoarseDevice ? true : settings.desktopShowSettingsButton}
               showHudButtons={isCoarseDevice ? true : settings.desktopShowHudButtons}
               onOpenSettings={() => setActiveModal('SETTINGS')}
@@ -9381,11 +9441,7 @@ export default function App() {
                 activeMaxAmmo={hudState.weaponSlots.length > 0 ? hudState.activeMaxAmmo : 6}
                 isReloading={hudState.weaponSlots.length > 0 ? hudState.isReloading : false}
                 reloadProgress={hudState.weaponSlots.length > 0 ? hudState.reloadProgress : 0}
-                isTouchMode={
-                  controlsDisplayMode === 'TOUCH' ||
-                  isCoarseDevice ||
-                  hudLayout.isTopRightCompact
-                }
+                isTouchMode={hudLayout.useTouchWeaponHud}
                 switchKeyLabel={formatKeyCode(settings.keybindings.switchWeapon)}
                 reloadKeyLabel={formatKeyCode(settings.keybindings.reload)}
                 language={settings.language}
@@ -9422,24 +9478,6 @@ export default function App() {
                   hudLayout.bottomStackPlacement.align === 'center' ? 'items-center' : 'items-start'
                 }`}
               >
-                {showPortraitHintBanner && (
-                  <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-white/12 text-[11px] text-slate-200 flex items-center gap-2 shadow-lg">
-                    <RotateCw className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span className="truncate">
-                      {settings.language === 'en'
-                        ? 'Rotate to landscape for best view'
-                        : 'En iyi deneyim için telefonu yatay çevirin'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setDismissPortraitHint(true)}
-                      className="text-amber-300 hover:text-amber-200 font-semibold ml-1 shrink-0 cursor-pointer"
-                    >
-                      {settings.language === 'en' ? 'Close' : 'Kapat'}
-                    </button>
-                  </div>
-                )}
-
                 {nextTutorialStep && !isEditingLayout && (
                   <div className="pointer-events-auto max-w-full px-3 py-1.5 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2 shadow-lg">
                     <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
@@ -9620,7 +9658,7 @@ export default function App() {
                 left: `${hudLayout.desktopTutorialPlacement.left}px`,
                 maxWidth: `${hudLayout.desktopTutorialPlacement.maxWidth}px`,
               }}
-              className="pointer-events-auto absolute -translate-x-1/2 z-25 px-3.5 py-2 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2.5 shadow-lg"
+              className="pointer-events-auto absolute -translate-x-1/2 z-20 px-3.5 py-2 rounded-lg bg-[#061017]/90 backdrop-blur-md border border-amber-400/35 text-xs text-slate-100 flex items-center gap-2.5 shadow-lg"
             >
               <HelpCircle className="w-4 h-4 text-amber-300 shrink-0" />
               <div className="min-w-0">
@@ -9841,7 +9879,7 @@ export default function App() {
                 bottom: `${hudLayout.joystick.pad}px`,
                 left: `${hudLayout.joystick.pad}px`,
               }}
-              className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : ''}`}
+              className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : 'z-10'}`}
             >
               <VirtualJoystick
                 mode={settings.joystickMode}
@@ -9867,7 +9905,7 @@ export default function App() {
               bottom: `${hudLayout.actionContainer.pad}px`,
               right: `${hudLayout.actionContainer.pad}px`,
             }}
-            className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : ''}`}
+            className={`pointer-events-none absolute ${isEditingLayout ? 'z-30' : 'z-10'}`}
           >
             <ActionControls
               displayMode={controlsDisplayMode}
@@ -10300,6 +10338,13 @@ export default function App() {
           onLeaveToMenu={phase === 'PLAYING' ? handleLeaveToMenu : undefined}
           onOpenLayoutEditor={phase === 'PLAYING' ? openLayoutEditor : undefined}
           onClose={() => setActiveModal('NONE')}
+        />
+      )}
+
+      {showLandscapeGate && (
+        <LandscapeGateOverlay
+          language={settings.language}
+          onContinuePortrait={() => setDismissPortraitHint(true)}
         />
       )}
     </div>

@@ -38,9 +38,11 @@ import {
   saveRoomLedger,
 } from '../engine/onlineStorage';
 import { usePlatformProfile } from '../utils/platform';
+import crestImg from '../assets/images/pirate_compass_crest_1795020662166.jpg';
+import keyartImg from '../assets/images/tropical_cove_keyart_1795020662703.jpg';
 
-const CREST_IMAGE_SRC = '/src/assets/images/pirate_compass_crest_1795020662166.jpg';
-const KEYART_IMAGE_SRC = '/src/assets/images/tropical_cove_keyart_1795020662703.jpg';
+const CREST_IMAGE_SRC = crestImg;
+const KEYART_IMAGE_SRC = keyartImg;
 
 interface OnlineLobbyModalProps {
   identity: PlayerIdentity;
@@ -180,6 +182,18 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     onClose();
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (isInLobbyOrConnecting) onDisconnect();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isInLobbyOrConnecting, onDisconnect, onClose]);
+
   const emptySquadSlots = Math.max(0, 4 - players.length);
 
   return (
@@ -207,7 +221,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
       <div
         className={`relative z-10 h-full w-full max-w-6xl mx-auto flex flex-col ${
           isMobileLandscape
-            ? 'px-4 py-2 gap-2'
+            ? 'px-4 py-2 gap-2 overflow-y-auto'
             : isMobilePortrait
             ? 'px-3.5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] gap-3 overflow-y-auto'
             : 'px-6 lg:px-8 py-5 gap-4 overflow-hidden'
@@ -266,20 +280,24 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         {/* STATE 1: Active Waiting Room */}
         {isInLobbyOrConnecting && roomInfo ? (
           <div
-            className={`flex-1 min-h-0 ${
+            className={`${
               isMobilePortrait
-                ? 'flex flex-col gap-3'
-                : 'grid grid-cols-12 gap-4'
+                ? 'flex flex-col gap-3 pb-2'
+                : isMobileLandscape
+                ? 'flex-1 min-h-0 grid grid-cols-12 gap-3'
+                : 'flex-1 min-h-0 grid grid-cols-12 gap-4'
             }`}
           >
             {/* Left Zone: Room Code, Mode & Start */}
             <section
               className={`${
-                isMobilePortrait ? '' : 'col-span-5'
-              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between overflow-hidden`}
+                isMobilePortrait
+                  ? 'shrink-0'
+                  : 'col-span-5 min-h-0 overflow-y-auto'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between`}
             >
               <div className="divide-y divide-white/[0.08]">
-                <div className="p-4 space-y-2.5">
+                <div className={isMobileLandscape ? 'p-3 space-y-2' : 'p-4 space-y-2.5'}>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>
                       {role === 'HOST'
@@ -421,8 +439,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             {/* Right Zone: Squad Roster */}
             <section
               className={`${
-                isMobilePortrait ? '' : 'col-span-7'
-              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col min-h-0 overflow-hidden`}
+                isMobilePortrait ? 'shrink-0' : 'col-span-7 min-h-0'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col overflow-hidden`}
             >
               <div className="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between gap-2 shrink-0">
                 <span className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
@@ -437,7 +455,11 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 </span>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/[0.06]">
+              <div
+                className={`overflow-y-auto divide-y divide-white/[0.06] ${
+                  isMobilePortrait ? 'max-h-60' : 'flex-1 min-h-0'
+                }`}
+              >
                 {players.map((p) => (
                   <div
                     key={p.id}
@@ -515,17 +537,23 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         ) : (
           /* STATE 3: Setup Cockpit (Platform-adapted) */
           <div
-            className={`flex-1 min-h-0 ${
-              isMobilePortrait ? 'flex flex-col gap-3' : 'grid grid-cols-12 gap-4'
+            className={`${
+              isMobilePortrait
+                ? 'flex flex-col gap-3 pb-2'
+                : isMobileLandscape
+                ? 'flex-1 min-h-0 grid grid-cols-12 gap-3'
+                : 'flex-1 min-h-0 grid grid-cols-12 gap-4'
             }`}
           >
             {/* Left Column: Captain Identity */}
             <section
               className={`${
-                isMobilePortrait ? '' : 'col-span-5'
-              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between overflow-hidden`}
+                isMobilePortrait
+                  ? 'shrink-0'
+                  : 'col-span-5 min-h-0 overflow-y-auto'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col justify-between`}
             >
-              <div className="p-4 space-y-4">
+              <div className={isMobileLandscape ? 'p-3 space-y-3' : 'p-4 space-y-4'}>
                 {!isMobilePortrait && (
                   <div className="flex items-center gap-3 pb-3 border-b border-white/[0.08]">
                     <div
@@ -631,8 +659,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             {/* Right Column: Host / Join */}
             <section
               className={`${
-                isMobilePortrait ? '' : 'col-span-7'
-              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col min-h-0 overflow-hidden`}
+                isMobilePortrait ? 'shrink-0' : 'col-span-7 min-h-0'
+              } rounded-2xl bg-[#0A1720]/94 border border-white/10 flex flex-col overflow-hidden`}
             >
               {/* Clean Underline Segmented Header */}
               <div className="grid grid-cols-2 border-b border-white/[0.08] bg-[#08131B] shrink-0">
@@ -663,7 +691,15 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
               </div>
 
               {tab === 'HOST' ? (
-                <div className="flex-1 min-h-0 flex flex-col p-4 gap-3.5">
+                <div
+                  className={`flex-1 min-h-0 flex flex-col ${
+                    isMobileLandscape
+                      ? 'p-3 gap-2.5 overflow-y-auto'
+                      : isMobilePortrait
+                      ? 'p-3.5 gap-3'
+                      : 'p-4 gap-3.5'
+                  }`}
+                >
                   <div className="grid grid-cols-2 gap-2 shrink-0">
                     <button
                       type="button"
@@ -757,7 +793,15 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                       <div className="text-[11px] text-sky-300 shrink-0">{importNotice}</div>
                     )}
 
-                    <div className="flex-1 min-h-[100px] overflow-y-auto divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-[#061017]/50">
+                    <div
+                      className={`overflow-y-auto divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-[#061017]/50 ${
+                        isMobilePortrait
+                          ? 'max-h-52 min-h-[72px]'
+                          : isMobileLandscape
+                          ? 'flex-1 min-h-[68px]'
+                          : 'flex-1 min-h-[100px]'
+                      }`}
+                    >
                       {savedRooms.length === 0 ? (
                         <div className="h-full min-h-[72px] px-4 py-3 text-xs text-slate-400 flex items-center justify-center text-center">
                           {isEn
@@ -818,7 +862,11 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 min-h-0 flex flex-col justify-between p-4 gap-4">
+                <div
+                  className={`flex-1 min-h-0 flex flex-col justify-between overflow-y-auto ${
+                    isMobileLandscape ? 'p-3 gap-3' : 'p-4 gap-4'
+                  }`}
+                >
                   <div className="space-y-3">
                     <div className="space-y-1.5">
                       <label

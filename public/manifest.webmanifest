@@ -1,0 +1,10 @@
+{
+  "name": "Tropik Ada: Hazine Avı",
+  "short_name": "Tropik Ada",
+  "description": "Üstten görünüm, prosedürel adalarla dolu açık dünya hayatta kalma ve hazine avı oyunu.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#061017",
+  "theme_color": "#061017"
+}

@@ -307,14 +307,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ) : undefined;
 
   const footerBar = onLeaveToMenu ? (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex items-center justify-between gap-2.5 min-w-0">
       <button
         type="button"
         onClick={onLeaveToMenu}
-        className="min-h-[42px] sm:min-h-[38px] px-3.5 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-200 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
+        className="min-w-0 min-h-[42px] sm:min-h-[38px] px-3.5 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-200 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
       >
-        <LogOut className="w-3.5 h-3.5" />
-        <span>
+        <LogOut className="w-3.5 h-3.5 shrink-0" />
+        <span className="truncate">
           {onlineMode && onlineRoomId
             ? isEn
               ? `Leave Room (${onlineRoomId})`
@@ -328,7 +328,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <button
         type="button"
         onClick={onClose}
-        className="min-h-[42px] sm:min-h-[38px] px-5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer whitespace-nowrap"
+        className="min-h-[42px] sm:min-h-[38px] px-5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
       >
         {isEn ? 'Done' : 'Tamam'}
       </button>
@@ -1172,13 +1172,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     return (
                       <div
                         key={item.key}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#08131B] border border-white/[0.06] text-xs"
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#08131B] border border-white/[0.06] text-xs"
                       >
                         <span className="text-slate-300 truncate">{item.label}</span>
                         <button
                           type="button"
                           onClick={() => setListeningKey(active ? null : item.key)}
-                          className={`px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer transition-colors ${
+                          className={`shrink-0 px-2.5 py-1 rounded font-mono-num text-[11px] font-bold cursor-pointer transition-colors ${
                             active
                               ? 'bg-amber-400 text-slate-950'
                               : 'bg-white/[0.08] hover:bg-white/[0.14] text-amber-200 border border-white/10'
@@ -1349,7 +1349,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Reset Progress */}
-          <div className="p-3.5 rounded-xl bg-rose-500/[0.06] border border-rose-400/25 flex items-center justify-between gap-3">
+          <div className="p-3.5 rounded-xl bg-rose-500/[0.06] border border-rose-400/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {!confirmReset ? (
               <>
                 <div className="min-w-0">

@@ -203,7 +203,7 @@ export const WeaponHudPanel: React.FC<WeaponHudPanelProps> = ({
   const scale = resolvedGeom?.scale ?? fallbackTransform?.scale ?? 1;
   const opacity = resolvedGeom?.opacity ?? fallbackTransform?.opacity ?? 1;
   const displayOpacity = isEditingLayout ? Math.max(0.35, opacity) : opacity;
-  const baseW = resolvedGeom?.baseW ?? (isTouchMode ? 212 : 256);
+  const baseW = resolvedGeom?.baseW ?? (isTouchMode ? 220 : 248);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isEditingLayout) {

@@ -166,10 +166,12 @@ export interface UnifiedHudLayout {
   };
   compassSafeZones: HudCompassSafeZones;
   showTopCenterEvent: boolean;
+  topCenterEventLeft: number;
   topCenterEventMaxWidth: number;
   minimap: ResolvedMiniMapGeom;
   joystick: ResolvedJoystickGeom;
   weaponPanel: ResolvedWeaponPanelGeom;
+  useTouchWeaponHud: boolean;
   weaponAtDefaultSpot: boolean;
   actionContainer: { w: number; h: number; pad: number };
   actionButtons: Record<ActionButtonKey, ResolvedButtonGeom>;
@@ -478,8 +480,8 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     : input.isCoarseDevice || vw < 640 || vh < 540;
   const pad = isCompactTouch ? 8 : isTabletSized ? 14 : 20;
   const isTopRightCompact = isTabletSized
-    ? vw < 860
-    : input.isCoarseDevice || vw < 760 || vh < 500;
+    ? vw < 900
+    : input.isCoarseDevice || vw < 860 || vh < 500;
 
   // 1. Screen-adaptive baseline scale & Top-Right Row 1 HUD geometry
   let deviceAdaptiveScale = 1;
@@ -502,7 +504,7 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
   let topRightEstH = 0;
   const topRightMaxWidth = isTopRightCompact
     ? Math.max(150, vw - 2 * pad - 88)
-    : Math.max(240, Math.floor((vw - 2 * pad) * 0.56));
+    : Math.max(260, Math.floor((vw - 2 * pad) * 0.56));
 
   if (input.showTopRightHudButtons || input.showTopRightSettingsButton) {
     if (isTopRightCompact) {
@@ -516,13 +518,12 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
       topRightEstH = topRightRow1H;
     } else {
       const singleRowW =
-        (input.showTopRightHudButtons ? 365 + (input.bagCount > 0 ? 34 : 0) : 0) +
+        (input.showTopRightHudButtons ? 410 + (input.bagCount > 0 ? 40 : 0) : 0) +
         (input.showTopRightSettingsButton ? 44 : 0);
-      const wraps = singleRowW > topRightMaxWidth;
       topRightEstW = Math.min(singleRowW, topRightMaxWidth);
-      topRightRow1H = wraps ? 84 : 40;
+      topRightRow1H = 40;
       const hasDesktopTraderRow = input.nearDock && input.showTopRightHudButtons;
-      topRightEstH = topRightRow1H + (hasDesktopTraderRow ? 42 : 0);
+      topRightEstH = topRightRow1H + (hasDesktopTraderRow ? 44 : 0);
     }
   }
 
@@ -663,9 +664,23 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
 
   const wpRaw = layout.weaponPanel;
   const wpScale = clampVal(wpRaw?.scale ?? 1, 0.65, 1.45);
-  const wpBaseW = isTopRightCompact ? Math.round(clampVal(vw * 0.48, 178, 204)) : 238;
+  const useTouchWeaponHud =
+    input.controlsDisplayMode === 'TOUCH' ||
+    input.isCoarseDevice ||
+    isTopRightCompact;
+  const wpBaseW = useTouchWeaponHud
+    ? isTopRightCompact
+      ? Math.round(clampVal(vw * 0.48, 178, 204))
+      : 220
+    : 248;
   const multiWep = Boolean(input.hasMultipleWeapons);
-  const wpBaseH = isTopRightCompact ? (multiWep ? 88 : 62) : (multiWep ? 94 : 68);
+  const wpBaseH = useTouchWeaponHud
+    ? multiWep
+      ? 84
+      : 54
+    : multiWep
+    ? 112
+    : 60;
   const wpBaseRight = pad;
   const wpBaseTop = pad + (topRightRow1H > 0 ? topRightRow1H + (isTopRightCompact ? 6 : 8) : 0);
   const wpBaseCx = vw - wpBaseRight - wpBaseW / 2;
@@ -698,10 +713,10 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
 
   // Estimate desktop action bar dimensions first so minimap also stays clear of it
   const desktopActionMaxW = Math.min(
-    720,
+    880,
     Math.max(240, vw - 2 * pad - (input.onlineActive ? 220 : 0))
   );
-  const desktopEstSingleW = Math.max(88, input.desktopActionButtonCount * 78 + 14);
+  const desktopEstSingleW = Math.max(88, input.desktopActionButtonCount * 92 + 16);
   const desktopWraps =
     input.controlsDisplayMode === 'DESKTOP' && desktopEstSingleW > desktopActionMaxW;
   const desktopActionEstW =
@@ -991,15 +1006,18 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
         : vh,
   };
 
-  // Top-Center World Event fits cleanly only if wide gap between Top-Left and Top-Right
+  // Top-Center World Event fits cleanly inside the open gap between Top-Left and Top-Right
   const topLeftOccupiedRight = minimapInTopLeft
     ? stackBelowMinimap
       ? minimapBox.right
       : Math.min(statusRightLimit, statusLeft + Math.min(statusMaxWidth, 230))
     : statusLeft + 210;
-  const topCenterGap = topRightBox.left - topLeftOccupiedRight - 24;
+  const topCenterLeftBound = topLeftOccupiedRight + 12;
+  const topCenterRightBound = topRightBox.left - 12;
+  const topCenterGap = topCenterRightBound - topCenterLeftBound;
   const showTopCenterEvent = input.hasWorldEvent && vw >= 768 && topCenterGap >= 220;
   const topCenterEventMaxWidth = Math.max(200, Math.min(420, topCenterGap));
+  const topCenterEventLeft = Math.round((topCenterLeftBound + topCenterRightBound) / 2);
 
   // 5. Radar Toast placement in TOUCH mode (above highest visible action button, or to its left if near top)
   const toastNeededTop = actionsBounds.top - 42;
@@ -1201,10 +1219,12 @@ export function computeUnifiedHudLayout(input: HudLayoutInput): UnifiedHudLayout
     },
     compassSafeZones,
     showTopCenterEvent,
+    topCenterEventLeft,
     topCenterEventMaxWidth,
     minimap,
     joystick,
     weaponPanel,
+    useTouchWeaponHud,
     weaponAtDefaultSpot,
     actionContainer,
     actionButtons,

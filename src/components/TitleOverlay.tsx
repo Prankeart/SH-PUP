@@ -14,9 +14,11 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { usePlatformProfile } from '../utils/platform';
+import crestImg from '../assets/images/pirate_compass_crest_1795020662166.jpg';
+import keyartImg from '../assets/images/tropical_cove_keyart_1795020662703.jpg';
 
-const CREST_IMAGE_SRC = '/src/assets/images/pirate_compass_crest_1795020662166.jpg';
-const KEYART_IMAGE_SRC = '/src/assets/images/tropical_cove_keyart_1795020662703.jpg';
+const CREST_IMAGE_SRC = crestImg;
+const KEYART_IMAGE_SRC = keyartImg;
 
 interface TitleOverlayProps {
   hasSavedProgress: boolean;
@@ -52,7 +54,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   onOpenOnline,
 }) => {
   const isEn = language === 'en';
-  const { profile } = usePlatformProfile();
+  const { profile, isPortrait } = usePlatformProfile();
   const [selectedMode, setSelectedMode] = useState<'OFFLINE' | 'ONLINE'>(
     inviteRoomCode ? 'ONLINE' : 'OFFLINE'
   );
@@ -326,9 +328,9 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   // 2. MOBILE LANDSCAPE: Compact Side-by-Side Split (Zero vertical clipping)
   if (profile === 'mobile-landscape') {
     return (
-      <div className="fixed inset-0 z-30 flex flex-col justify-between bg-[#061017]/75 select-none overflow-hidden px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+      <div className="fixed inset-0 z-30 bg-[#061017]/75 select-none overflow-y-auto px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
         {backdrop}
-        <div className="relative z-10 w-full max-w-5xl mx-auto h-full flex flex-col justify-between gap-2">
+        <div className="relative z-10 w-full max-w-5xl mx-auto min-h-full flex flex-col justify-between gap-2">
           {utilityBar}
 
           <div className="flex-1 min-h-0 grid grid-cols-12 items-center gap-5">
@@ -465,6 +467,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
 
   // 3. TABLET & DESKTOP: Widescreen Editorial Command Screen
   const isTablet = profile === 'tablet';
+  const isTabletPortrait = isTablet && isPortrait;
 
   return (
     <div className="fixed inset-0 z-30 overflow-y-auto bg-[#061017]/68 select-none">
@@ -473,9 +476,15 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
       <div className="relative z-10 min-h-full w-full max-w-6xl mx-auto px-6 lg:px-10 py-6 lg:py-8 flex flex-col justify-between gap-6">
         {utilityBar}
 
-        <main className="flex-1 min-h-0 grid grid-cols-12 items-center gap-8 lg:gap-12 py-2">
+        <main
+          className={
+            isTabletPortrait
+              ? 'flex-1 min-h-0 flex flex-col justify-center gap-6 max-w-2xl w-full mx-auto py-2'
+              : 'flex-1 min-h-0 grid grid-cols-12 items-center gap-8 lg:gap-12 py-2'
+          }
+        >
           {/* Left Editorial Showcase */}
-          <section className="col-span-7 space-y-5 min-w-0">
+          <section className={`${isTabletPortrait ? '' : 'col-span-7'} space-y-5 min-w-0`}>
             <div className="space-y-2.5">
               <h1
                 className={`font-display ${
@@ -514,7 +523,7 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
                 </div>
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-[#061017]/95 via-[#061017]/20 to-transparent" />
-              <div className="absolute bottom-0 inset-x-0 px-4 py-3 flex items-center gap-5 text-xs text-slate-200">
+              <div className="absolute bottom-0 inset-x-0 px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-200">
                 <span className="flex items-center gap-1.5 font-medium whitespace-nowrap">
                   <Compass className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                   {isEn ? 'Hot-Cold Radar' : 'Hazine Radarı'}
@@ -561,7 +570,11 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
           </section>
 
           {/* Right Mode Command Panel */}
-          <section className="col-span-5 rounded-2xl bg-[#0A1720]/90 backdrop-blur-xl border border-white/10 p-6 space-y-5 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
+          <section
+            className={`${
+              isTabletPortrait ? '' : 'col-span-5'
+            } rounded-2xl bg-[#0A1720]/90 backdrop-blur-xl border border-white/10 p-6 space-y-5 shadow-[0_24px_64px_rgba(0,0,0,0.6)]`}
+          >
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
               <h2 className="font-display text-base font-bold text-slate-100">
                 {isEn ? 'Select Expedition' : 'Sefer Modu'}

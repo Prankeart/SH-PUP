@@ -163,17 +163,17 @@ export const ResponsiveModalShell: React.FC<ResponsiveModalShellProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="w-full h-full max-w-4xl rounded-xl bg-[#0A1720] border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.72)] flex overflow-hidden"
         >
-          {/* Left Compact Navigation Rail */}
-          <aside className="w-44 shrink-0 border-r border-white/[0.08] bg-[#08131B] flex flex-col justify-between">
-            <div className="p-3 border-b border-white/[0.08] flex items-center gap-2 min-w-0">
-              {icon && <div className="text-amber-400 shrink-0">{icon}</div>}
-              <div className="min-w-0">
-                <h2 className="font-display text-sm font-bold text-slate-50 truncate">{title}</h2>
-                {subtitle && <p className="text-[10px] text-slate-400 truncate">{subtitle}</p>}
+          {/* Left Compact Navigation Rail (only when tabs exist) */}
+          {hasTabs && tabs && (
+            <aside className="w-44 shrink-0 border-r border-white/[0.08] bg-[#08131B] flex flex-col justify-between">
+              <div className="p-3 border-b border-white/[0.08] flex items-center gap-2 min-w-0">
+                {icon && <div className="text-amber-400 shrink-0">{icon}</div>}
+                <div className="min-w-0">
+                  <h2 className="font-display text-sm font-bold text-slate-50 truncate">{title}</h2>
+                  {subtitle && <p className="text-[10px] text-slate-400 truncate">{subtitle}</p>}
+                </div>
               </div>
-            </div>
 
-            {hasTabs && tabs ? (
               <nav className="flex-1 overflow-y-auto p-1.5 space-y-0.5 no-scrollbar">
                 {tabs.map((tab) => {
                   const active = tab.id === activeTab;
@@ -205,29 +205,44 @@ export const ResponsiveModalShell: React.FC<ResponsiveModalShellProps> = ({
                   );
                 })}
               </nav>
-            ) : (
-              <div className="flex-1" />
-            )}
 
-            {railFooter && (
-              <div className="p-2.5 border-t border-white/[0.08] text-[11px] text-slate-400">
-                {railFooter}
-              </div>
-            )}
-          </aside>
+              {railFooter && (
+                <div className="p-2.5 border-t border-white/[0.08] text-[11px] text-slate-400">
+                  {railFooter}
+                </div>
+              )}
+            </aside>
+          )}
 
           {/* Right Main Viewport */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col">
             <div className="px-4 py-2 border-b border-white/[0.08] flex items-center justify-between gap-3 shrink-0 bg-[#0A1720]">
-              <div className="flex items-center gap-2 min-w-0">{headerRight}</div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="w-9 h-9 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {hasTabs ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400 truncate">
+                    {tabs?.find((t) => t.id === activeTab)?.label ?? title}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                  {icon && <div className="text-amber-400 shrink-0">{icon}</div>}
+                  <div className="min-w-0">
+                    <h2 className="font-display text-sm font-bold text-slate-50 truncate">{title}</h2>
+                    {subtitle && <p className="text-[10px] text-slate-400 truncate">{subtitle}</p>}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {headerRight}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="w-9 h-9 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div

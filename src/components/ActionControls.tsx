@@ -303,7 +303,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         {radarToastContent && (
           <div className="absolute bottom-full right-0 mb-2 z-30">{radarToastContent}</div>
         )}
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 divide-x divide-white/[0.07] shadow-[0_12px_30px_rgba(0,0,0,0.5)] overflow-hidden">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 [&>*:not(:last-child)]:border-r [&>*:not(:last-child)]:border-white/[0.07] shadow-[0_12px_30px_rgba(0,0,0,0.5)] overflow-hidden">
           {onCycleStance && hasSoldiers && !isSailing && (
             <button
               type="button"

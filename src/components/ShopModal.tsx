@@ -530,7 +530,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       disabled={equipped}
                       onClick={() => onEquipWeapon?.(w.id, carried ? undefined : effectiveReplaceSlot)}
-                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
+                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 text-center leading-tight transition-colors ${
                         equipped
                           ? 'bg-emerald-500/15 border border-emerald-400/35 text-emerald-200 cursor-default'
                           : carried
@@ -566,7 +566,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       disabled={!canBuy}
                       onClick={() => onBuyWeapon?.(w.id, effectiveReplaceSlot)}
-                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold font-mono-num flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
+                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold font-mono-num flex items-center justify-center gap-1.5 text-center leading-tight transition-colors ${
                         canBuy
                           ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
                           : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'
@@ -639,7 +639,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 type="button"
                 disabled={!nearDock || resourceSellValue <= 0}
                 onClick={onSellResources}
-                className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold text-center leading-tight transition-colors ${
                   nearDock && resourceSellValue > 0
                     ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
                     : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'
@@ -680,7 +680,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   type="button"
                   disabled={!canCraftWithRes && !canCraftWithGold}
                   onClick={onCraftRepairKit}
-                  className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                  className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold text-center leading-tight transition-colors ${
                     canCraftWithRes || canCraftWithGold
                       ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer'
                       : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'
@@ -701,7 +701,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   type="button"
                   disabled={repairKits <= 0}
                   onClick={onUseRepairKit}
-                  className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                  className={`w-full min-h-[42px] py-2.5 px-4 rounded-lg text-xs font-bold text-center leading-tight transition-colors ${
                     repairKits > 0
                       ? 'bg-sky-400 hover:bg-sky-300 text-slate-950 cursor-pointer'
                       : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'
@@ -774,7 +774,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                     <button
                       type="button"
                       onClick={() => onEquipPet?.(active ? null : pet.id)}
-                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold text-center leading-tight transition-colors cursor-pointer ${
                         active
                           ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
                           : 'bg-white/10 text-slate-100 hover:bg-white/15'
@@ -793,7 +793,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       type="button"
                       disabled={!canAfford}
                       onClick={() => onAdoptPet?.(pet.id)}
-                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold font-mono-num transition-colors whitespace-nowrap ${
+                      className={`w-full min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold font-mono-num text-center leading-tight transition-colors ${
                         canAfford
                           ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
                           : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'

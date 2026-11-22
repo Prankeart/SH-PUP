@@ -17,9 +17,10 @@ export function detectIsCoarseDevice(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const anyCoarse = window.matchMedia('(any-pointer: coarse)').matches;
     const noHover = window.matchMedia('(hover: none)').matches;
     const touchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints ?? 0 : 0;
-    return coarse || (noHover && touchPoints > 0);
+    return coarse || (anyCoarse && touchPoints > 0) || (noHover && touchPoints > 0);
   } catch {
     return typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0;
   }
@@ -104,13 +105,16 @@ export function usePlatformProfile(): PlatformState {
       });
     };
 
+    const orientation = typeof screen !== 'undefined' ? screen.orientation : undefined;
     window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', sync);
     window.visualViewport?.addEventListener('resize', sync);
+    orientation?.addEventListener?.('change', sync);
     return () => {
       window.removeEventListener('resize', sync);
       window.removeEventListener('orientationchange', sync);
       window.visualViewport?.removeEventListener('resize', sync);
+      orientation?.removeEventListener?.('change', sync);
     };
   }, []);
 

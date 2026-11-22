@@ -269,7 +269,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
               type="button"
               disabled={gold < KINGDOM_COSTS.FOUND_KINGDOM || !draftName.trim()}
               onClick={() => onFoundKingdom(draftName.trim(), draftColor)}
-              className={`w-full min-h-[46px] py-3 px-4 rounded-lg font-display text-sm font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap ${
+              className={`w-full min-h-[46px] py-3 px-4 rounded-lg font-display text-sm font-bold flex items-center justify-center gap-2 text-center leading-tight transition-colors ${
                 gold >= KINGDOM_COSTS.FOUND_KINGDOM && draftName.trim()
                   ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer'
                   : 'bg-white/[0.06] text-slate-500 cursor-not-allowed'
@@ -603,7 +603,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => onDeclareOnlineWar(rp.id, false)}
-                                      className="min-h-[38px] px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-400 text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                      className="min-h-[38px] px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-400 text-slate-950 transition-colors cursor-pointer text-center leading-tight"
                                     >
                                       {isEn ? 'Accept War' : 'Savaş Aç (Kabul Et)'}
                                     </button>
@@ -611,7 +611,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => onDeclareOnlineWar(rp.id, true)}
-                                      className="min-h-[38px] px-3 py-2 rounded-lg text-xs font-semibold bg-amber-400/15 hover:bg-amber-400/25 text-amber-200 border border-amber-400/35 transition-colors cursor-pointer whitespace-nowrap"
+                                      className="min-h-[38px] px-3 py-2 rounded-lg text-xs font-semibold bg-amber-400/15 hover:bg-amber-400/25 text-amber-200 border border-amber-400/35 transition-colors cursor-pointer text-center leading-tight"
                                     >
                                       {isEn ? 'Cancel' : 'İlanı İptal Et'}
                                     </button>
@@ -619,7 +619,7 @@ export const KingdomModal: React.FC<KingdomModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => onDeclareOnlineWar(rp.id, false)}
-                                      className="min-h-[38px] px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-400 text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                      className="min-h-[38px] px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-400 text-slate-950 transition-colors cursor-pointer text-center leading-tight"
                                     >
                                       {isEn ? 'Declare War' : 'Savaş Aç'}
                                     </button>
