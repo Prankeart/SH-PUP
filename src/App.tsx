@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   CloudLightning,
@@ -170,16 +170,18 @@ import {
   UnifiedHudLayout,
 } from './utils/hudLayout';
 
+import { LazyModalBoundary, retryableLazy } from './components/LazyModalBoundary';
+
 const loadMapModal = () => import('./components/MapModal');
 const loadShopModal = () => import('./components/ShopModal');
 const loadKingdomModal = () => import('./components/KingdomModal');
 const loadJournalModal = () => import('./components/JournalModal');
 const loadOnlineLobbyModal = () => import('./components/OnlineLobbyModal');
-const MapModal = lazy(() => loadMapModal().then((m) => ({ default: m.MapModal })));
-const ShopModal = lazy(() => loadShopModal().then((m) => ({ default: m.ShopModal })));
-const KingdomModal = lazy(() => loadKingdomModal().then((m) => ({ default: m.KingdomModal })));
-const JournalModal = lazy(() => loadJournalModal().then((m) => ({ default: m.JournalModal })));
-const OnlineLobbyModal = lazy(() =>
+const MapModal = retryableLazy(() => loadMapModal().then((m) => ({ default: m.MapModal })));
+const ShopModal = retryableLazy(() => loadShopModal().then((m) => ({ default: m.ShopModal })));
+const KingdomModal = retryableLazy(() => loadKingdomModal().then((m) => ({ default: m.KingdomModal })));
+const JournalModal = retryableLazy(() => loadJournalModal().then((m) => ({ default: m.JournalModal })));
+const OnlineLobbyModal = retryableLazy(() =>
   loadOnlineLobbyModal().then((m) => ({ default: m.OnlineLobbyModal }))
 );
 
@@ -9139,7 +9141,7 @@ export default function App() {
       )}
 
       {showOnlineLobby && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary onError={() => setShowOnlineLobby(false)}>
         <OnlineLobbyModal
           identity={identity}
           onUpdateIdentity={setIdentity}
@@ -9184,7 +9186,7 @@ export default function App() {
           }}
           onClose={() => setShowOnlineLobby(false)}
         />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {phase === 'PLAYING' && (
@@ -10274,7 +10276,7 @@ export default function App() {
       )}
 
       {activeModal === 'MAP' && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <MapModal
           worldManager={worldManagerRef.current}
           discoveredIslandIds={save.discoveredIslandIds}
@@ -10294,11 +10296,11 @@ export default function App() {
           onSetMapPin={(pin) => commitSave((prev) => ({ ...prev, mapPin: pin }), false)}
           onClose={() => setActiveModal('NONE')}
         />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'SHOP' && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <ShopModal
           gold={save.gold}
           bag={save.bag}
@@ -10333,11 +10335,11 @@ export default function App() {
           onEquipPet={handleEquipPet}
           onClose={() => setActiveModal('NONE')}
         />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'KINGDOM' && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <KingdomModal
           gold={save.gold}
           kingdom={save.kingdom}
@@ -10364,18 +10366,18 @@ export default function App() {
           onBuildFortTurret={handleBuildFortTurret}
           onClose={() => setActiveModal('NONE')}
         />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'JOURNAL' && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary onError={() => setActiveModal('NONE')}>
         <JournalModal
           save={save}
           language={settings.language}
           onClaimMilestone={handleClaimMilestone}
           onClose={() => setActiveModal('NONE')}
         />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {activeModal === 'SETTINGS' && (
