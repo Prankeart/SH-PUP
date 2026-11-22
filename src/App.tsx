@@ -4274,11 +4274,11 @@ export default function App() {
   // Main 60fps Loop
   useEffect(() => {
     const prefetch = () => {
-      void loadMapModal();
-      void loadShopModal();
-      void loadKingdomModal();
-      void loadJournalModal();
-      void loadOnlineLobbyModal();
+      loadMapModal().catch(() => {});
+      loadShopModal().catch(() => {});
+      loadKingdomModal().catch(() => {});
+      loadJournalModal().catch(() => {});
+      loadOnlineLobbyModal().catch(() => {});
     };
     const timer = window.setTimeout(prefetch, 2500);
     return () => window.clearTimeout(timer);
