@@ -115,7 +115,7 @@ export class PerformanceGovernor {
    */
   private updateRenderScale(nowMs: number): void {
     const slow = this.emaFrameMs >= 22;
-    const fast = this.emaFrameMs < 15.5;
+    const fast = this.emaFrameMs < 18; // steady 60 Hz is ~16.7 ms
     this.renderScaleSlowSince = slow ? (this.renderScaleSlowSince < 0 ? nowMs : this.renderScaleSlowSince) : -1;
     this.renderScaleFastSince = fast ? (this.renderScaleFastSince < 0 ? nowMs : this.renderScaleFastSince) : -1;
 
