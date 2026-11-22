@@ -89,7 +89,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
         {(showHudButtons || showSettingsButton) && (
           <div
             ref={mobileMenuRef}
-            className="pointer-events-auto relative flex items-center rounded-xl bg-[#061017]/86 backdrop-blur-md border border-white/10 divide-x divide-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+            className="pointer-events-auto relative flex items-center rounded-xl bg-[#061017]/86 border border-white/10 divide-x divide-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
           >
             {showHudButtons && (
               <>
@@ -141,7 +141,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
                   {menuOpen && (
                     <div
                       role="menu"
-                      className="absolute right-0 top-full mt-2 w-52 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-4.5rem)] overflow-y-auto rounded-xl bg-[#0A1720]/96 backdrop-blur-xl border border-white/12 shadow-[0_18px_48px_rgba(0,0,0,0.7)] divide-y divide-white/[0.06] z-50"
+                      className="absolute right-0 top-full mt-2 w-52 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-4.5rem)] overflow-y-auto rounded-xl bg-[#0A1720]/96 border border-white/12 shadow-[0_18px_48px_rgba(0,0,0,0.7)] divide-y divide-white/[0.06] z-50"
                     >
                       <button
                         type="button"
@@ -249,7 +249,7 @@ export const TopRightHud: React.FC<TopRightHudProps> = ({
     >
       {/* Unified Single-Row Hairline Command Bar */}
       {(showHudButtons || showSettingsButton) && (
-        <div className="pointer-events-auto flex items-center rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 divide-x divide-white/[0.08] shadow-[0_10px_28px_rgba(0,0,0,0.45)] overflow-hidden">
+        <div className="pointer-events-auto flex items-center rounded-xl bg-[#061017]/84 border border-white/10 divide-x divide-white/[0.08] shadow-[0_10px_28px_rgba(0,0,0,0.45)] overflow-hidden">
           {showHudButtons && (
             <>
               <button

@@ -235,7 +235,7 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
         }}
         className={`${
           !isEditingLayout && mode === 'DYNAMIC' && dynamicOrigin ? 'absolute' : 'relative'
-        } rounded-full border backdrop-blur-md transition-colors duration-150 flex items-center justify-center ${
+        } rounded-full border transition-colors duration-150 flex items-center justify-center ${
           isActive
             ? 'bg-[#061017]/75 border-amber-400/75 shadow-[0_8px_24px_rgba(0,0,0,0.45)]'
             : 'bg-[#061017]/52 border-white/16 shadow-[0_8px_24px_rgba(0,0,0,0.38)]'

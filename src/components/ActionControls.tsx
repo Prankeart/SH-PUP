@@ -265,7 +265,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
 
   const radarToastContent = showRadarStatus && lastRadar && (
     <div
-      className={`px-3 py-1.5 rounded-xl bg-[#061017]/90 backdrop-blur-md border text-xs font-medium flex items-center gap-2 shadow-[0_10px_24px_rgba(0,0,0,0.45)] transition-opacity duration-150 max-w-[calc(100vw-1.5rem)] ${
+      className={`px-3 py-1.5 rounded-xl bg-[#061017]/90 border text-xs font-medium flex items-center gap-2 shadow-[0_10px_24px_rgba(0,0,0,0.45)] transition-opacity duration-150 max-w-[calc(100vw-1.5rem)] ${
         heatStyles[lastRadar.heat] || heatStyles.NONE
       }`}
     >
@@ -303,7 +303,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         {radarToastContent && (
           <div className="absolute bottom-full right-0 mb-2 z-30">{radarToastContent}</div>
         )}
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end rounded-xl bg-[#061017]/84 backdrop-blur-md border border-white/10 [&>*:not(:last-child)]:border-r [&>*:not(:last-child)]:border-white/[0.07] shadow-[0_12px_30px_rgba(0,0,0,0.5)] overflow-hidden">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end rounded-xl bg-[#061017]/84 border border-white/10 [&>*:not(:last-child)]:border-r [&>*:not(:last-child)]:border-white/[0.07] shadow-[0_12px_30px_rgba(0,0,0,0.5)] overflow-hidden">
           {onCycleStance && hasSoldiers && !isSailing && (
             <button
               type="button"
@@ -713,7 +713,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${repairGeom.t.dx}px, ${repairGeom.t.dy}px) scale(${repairGeom.t.scale})`,
               opacity: btnDisplayOpacity(repairGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
               repairKits > 0
                 ? 'bg-[#061017]/86 border-emerald-400/50 text-emerald-300 hover:bg-[#0D212C]'
                 : 'bg-[#061017]/78 border-white/12 text-slate-500'
@@ -751,7 +751,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${stanceGeom.t.dx}px, ${stanceGeom.t.dy}px) scale(${stanceGeom.t.scale})`,
               opacity: btnDisplayOpacity(stanceGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer bg-[#061017]/86 hover:bg-[#0D212C] ${
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer bg-[#061017]/86 hover:bg-[#0D212C] ${
               armyStance === 'FOLLOW'
                 ? 'border-sky-400/55 text-sky-300'
                 : armyStance === 'DEFEND'
@@ -800,7 +800,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${fishGeom.t.dx}px, ${fishGeom.t.dy}px) scale(${fishGeom.t.scale})`,
               opacity: btnDisplayOpacity(fishGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
               fishingBite
                 ? 'bg-amber-400 border-amber-200 text-slate-950'
                 : isFishing
@@ -840,7 +840,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${abilityGeom.t.dx}px, ${abilityGeom.t.dy}px) scale(${abilityGeom.t.scale})`,
             opacity: btnDisplayOpacity(abilityGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
+          className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-[0_8px_22px_rgba(0,0,0,0.45)] transition-transform duration-100 active:scale-[0.92] cursor-pointer ${
             !isEditingLayout && abilityCooldownPct > 0
               ? 'bg-[#061017]/75 border-white/10 text-slate-500'
               : 'bg-[#061017]/86 border-indigo-400/50 text-indigo-300 hover:bg-[#0D212C]'
@@ -883,7 +883,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${attackGeom.t.dx}px, ${attackGeom.t.dy}px) scale(${attackGeom.t.scale})`,
               opacity: btnDisplayOpacity(attackGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-red-400 cursor-pointer ${
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-red-400 cursor-pointer ${
               !isEditingLayout && attackCooldownPct > 0
                 ? 'bg-[#061017]/78 border-red-400/20 text-slate-500'
                 : 'bg-[#1D0B10]/90 border-red-400/60 text-red-200 hover:bg-[#2B1018]'
@@ -930,7 +930,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${radarGeom.t.dx}px, ${radarGeom.t.dy}px) scale(${radarGeom.t.scale})`,
             opacity: btnDisplayOpacity(radarGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-400 cursor-pointer ${
+          className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-400 cursor-pointer ${
             !isEditingLayout && radarCooldownPct > 0
               ? 'bg-[#061017]/78 border-white/10 text-slate-500'
               : 'bg-[#061017]/86 border-sky-400/45 text-sky-300 hover:bg-[#0D212C]'
@@ -965,7 +965,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
               opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
-            className="pointer-events-auto absolute rounded-full border backdrop-blur-md bg-[#16102A]/92 border-violet-400/65 text-violet-200 hover:bg-[#221740] flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_26px_rgba(0,0,0,0.52)] transition-transform duration-100 active:scale-[0.92] cursor-pointer"
+            className="pointer-events-auto absolute rounded-full border bg-[#16102A]/92 border-violet-400/65 text-violet-200 hover:bg-[#221740] flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_26px_rgba(0,0,0,0.52)] transition-transform duration-100 active:scale-[0.92] cursor-pointer"
           >
             <DoorOpen className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
             <span
@@ -1001,7 +1001,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
               transform: `translate(${boatGeom.t.dx}px, ${boatGeom.t.dy}px) scale(${boatGeom.t.scale})`,
               opacity: btnDisplayOpacity(boatGeom.t.opacity),
             }}
-            className={`pointer-events-auto absolute rounded-full border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-emerald-400 ${
+            className={`pointer-events-auto absolute rounded-full border flex flex-col items-center justify-center gap-0.5 shadow-[0_10px_24px_rgba(0,0,0,0.48)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-emerald-400 ${
               isEditingLayout || boatActionEnabled
                 ? 'bg-[#061017]/86 border-emerald-400/55 text-emerald-300 hover:bg-[#0D212C] cursor-pointer'
                 : 'bg-[#061017]/74 border-white/10 text-slate-500 cursor-not-allowed'
@@ -1059,7 +1059,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             transform: `translate(${digGeom.t.dx}px, ${digGeom.t.dy}px) scale(${digGeom.t.scale})`,
             opacity: btnDisplayOpacity(digGeom.t.opacity),
           }}
-          className={`pointer-events-auto absolute rounded-full border-2 backdrop-blur-md flex flex-col items-center justify-center shadow-[0_14px_32px_rgba(0,0,0,0.58)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-300 ${
+          className={`pointer-events-auto absolute rounded-full border-2 flex flex-col items-center justify-center shadow-[0_14px_32px_rgba(0,0,0,0.58)] transition-transform duration-100 active:scale-[0.92] focus-visible:outline-2 focus-visible:outline-amber-300 ${
             compact ? 'gap-0.5' : 'gap-1'
           } ${
             isEditingLayout

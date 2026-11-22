@@ -61,10 +61,15 @@ const BUDGETS: Record<QualityTier, PerformanceBudget> = {
   },
 };
 
+const RENDER_SCALE_STEPS = [2, 1.5, 1.25, 1];
+
 export class PerformanceGovernor {
   private emaFrameMs = 16.6;
   private tier: QualityTier = 'HIGH';
   private lastTierChangeAt = 0;
+  private renderScaleCap = 2;
+  private renderScaleSlowSince = -1;
+  private renderScaleFastSince = -1;
 
   public update(rawDeltaMs: number, activeUnitCount: number, nowMs: number): PerformanceBudget {
     // Ignore huge pauses (tab backgrounded / modal pause) so EMA isn't poisoned
@@ -100,7 +105,33 @@ export class PerformanceGovernor {
       }
     }
 
+    this.updateRenderScale(nowMs);
     return BUDGETS[this.tier];
+  }
+
+  /**
+   * Canvas resolution cap driven only by sustained frame time (not unit count),
+   * with long windows so it never oscillates frame-to-frame.
+   */
+  private updateRenderScale(nowMs: number): void {
+    const slow = this.emaFrameMs >= 22;
+    const fast = this.emaFrameMs < 15.5;
+    this.renderScaleSlowSince = slow ? (this.renderScaleSlowSince < 0 ? nowMs : this.renderScaleSlowSince) : -1;
+    this.renderScaleFastSince = fast ? (this.renderScaleFastSince < 0 ? nowMs : this.renderScaleFastSince) : -1;
+
+    const idx = RENDER_SCALE_STEPS.indexOf(this.renderScaleCap);
+    if (this.renderScaleSlowSince >= 0 && nowMs - this.renderScaleSlowSince >= 2500 && idx < RENDER_SCALE_STEPS.length - 1) {
+      this.renderScaleCap = RENDER_SCALE_STEPS[idx + 1];
+      this.renderScaleSlowSince = nowMs;
+      this.emaFrameMs = 16.6;
+    } else if (this.renderScaleFastSince >= 0 && nowMs - this.renderScaleFastSince >= 20000 && idx > 0) {
+      this.renderScaleCap = RENDER_SCALE_STEPS[idx - 1];
+      this.renderScaleFastSince = nowMs;
+    }
+  }
+
+  public getRenderScaleCap(): number {
+    return this.renderScaleCap;
   }
 
   public getCurrentBudget(): PerformanceBudget {
@@ -111,5 +142,8 @@ export class PerformanceGovernor {
     this.emaFrameMs = 16.6;
     this.tier = 'HIGH';
     this.lastTierChangeAt = 0;
+    this.renderScaleCap = 2;
+    this.renderScaleSlowSince = -1;
+    this.renderScaleFastSince = -1;
   }
 }

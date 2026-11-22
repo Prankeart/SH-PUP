@@ -114,7 +114,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   return (
     <div
       style={style}
-      className={`pointer-events-auto rounded-2xl bg-[#0A1720]/94 backdrop-blur-xl border border-white/10 shadow-[0_18px_48px_rgba(0,0,0,0.65)] text-slate-100 flex flex-col overflow-hidden ${className}`}
+      className={`pointer-events-auto rounded-2xl bg-[#0A1720]/94 border border-white/10 shadow-[0_18px_48px_rgba(0,0,0,0.65)] text-slate-100 flex flex-col overflow-hidden ${className}`}
     >
       <div
         className={`flex items-center justify-between shrink-0 border-b border-white/[0.08] ${
